@@ -2,18 +2,28 @@ new Vue({
     el: '#app',
     data() {
         return {
-            data: []
+            repositories: {}
         }
     },
     created() {
-        this.getData()
+        this.getRepositories()
     },
     methods: {
-        async getData() {
-            const res = await fetch('/data', {})
+        async getRepositories() {
+            const res = await fetch('/repositories', {})
+            const data = await res.json()
+
+            const repositories = {}
+        
+            data.forEach(repoId => repositories[repoId] = {})
+
+            this.repositories = repositories
+        },
+        async openRepository(repoId) {
+            const res = await fetch(`/commits/${repoId}`)
             const data = await res.json()
         
-            this.data = data
+            this.$set(this.repositories[repoId], 'commits', data)
         }
     }
 })

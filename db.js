@@ -13,25 +13,19 @@ const db = new sqlite3.Database(
     }
 )
 
-const fetch = () => {
+const fetch = (query, mapper) => {
     return new Promise((resolve, reject) => {
         db.all(
-            `
-                SELECT * from github_jira_link gjl
-                LEFT JOIN git_commit gc on (gjl.sha = gc.sha)
-                LIMIT 10
-            `,
+            query,
             [],
             (err, rows) => {
                 if (err) {
                     throw err;
                 }
-    
-                rows.forEach((row) => {
-                  // do some structuring  
-                })
 
-                resolve(rows)
+                resolve(
+                    mapper ? rows.map(mapper) : rows
+                )
           })
         }
     )
