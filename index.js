@@ -47,12 +47,39 @@ app.get('/entry/:entryId', async (req, res) => {
 
     const entry = (await fetch(`SELECT * from github_jira_link WHERE id = ${entryId}`))[0]
 
-    const [comments, commits] = await Promise.all([
+    const [
+        comments, 
+        commits, 
+        github_issues,
+        github_issues_comments,
+        github_pulls,
+        github_pulls_comments,
+        github_pulls_reviews,
+        jira_issues,
+        jira_issues_comments
+    ] = await Promise.all([
         fetch(`SELECT * from git_comment WHERE sha = "${entry.sha}"`),
-        fetch(`SELECT * from git_commit WHERE sha = "${entry.sha}"`)
+        fetch(`SELECT * from git_commit WHERE sha = "${entry.sha}"`),
+        fetch(`SELECT * from github_issue WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * from github_issue_comment WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * from github_pull WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * from github_pull_comment WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * from github_pull_review WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * from jira_issue WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`),
+        fetch(`SELECT * from jira_issue_comment WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`)
     ])
 
-    res.send({ entry, comments, commits })
+    res.send({
+        comments, 
+        commits, 
+        github_issues,
+        github_issues_comments,
+        github_pulls,
+        github_pulls_comments,
+        github_pulls_reviews,
+        jira_issues,
+        jira_issues_comments 
+    })
 })
 
 app.listen(PORT, () => {
