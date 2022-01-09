@@ -64,7 +64,7 @@ app.get('/entry/:entryId', async (req, res) => {
 
     ] = await Promise.all([
 
-        fetch(`SELECT comment from git_comment WHERE sha = "${entry.sha}"`),
+        fetch(`SELECT comment from git_comment WHERE sha = "${entry.sha}"`, d => d.comment),
         fetch(`SELECT summary, message from git_commit WHERE sha = "${entry.sha}"`),
 
         // Prevent from doing any computation if no issue
