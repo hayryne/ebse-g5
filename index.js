@@ -48,30 +48,43 @@ app.get('/entry/:entryId', async (req, res) => {
     const entry = (await fetch(`SELECT * from github_jira_link WHERE id = ${entryId}`))[0]
 
     const [
-        comments, 
-        commits, 
+
+        git_comments, 
+        git_commits, 
+
         github_issues,
         github_issues_comments,
+
         github_pulls,
         github_pulls_comments,
         github_pulls_reviews,
+
         jira_issues,
         jira_issues_comments
+
     ] = await Promise.all([
-        fetch(`SELECT * from git_comment WHERE sha = "${entry.sha}"`),
-        fetch(`SELECT * from git_commit WHERE sha = "${entry.sha}"`),
-        fetch(`SELECT * from github_issue WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
-        fetch(`SELECT * from github_issue_comment WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
-        fetch(`SELECT * from github_pull WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
-        fetch(`SELECT * from github_pull_comment WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
-        fetch(`SELECT * from github_pull_review WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
-        fetch(`SELECT * from jira_issue WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`),
-        fetch(`SELECT * from jira_issue_comment WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`)
+
+        fetch(`SELECT comment from git_comment WHERE sha = "${entry.sha}"`),
+        fetch(`SELECT summary, message from git_commit WHERE sha = "${entry.sha}"`),
+
+        // Prevent from doing any computation if no issue
+        entry.issue_number === null ? null :
+            fetch(`SELECT * FROM github_issue WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
+        entry.issue_number === null ? null :
+            fetch(`SELECT * FROM github_issue_comment WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
+
+        fetch(`SELECT title, body FROM github_pull WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT body FROM github_pull_comment WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+        fetch(`SELECT * FROM github_pull_review WHERE number = ${entry.pull_number} AND repo_id = ${entry.repo_id}`),
+
+        fetch(`SELECT summary, description FROM jira_issue WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`),
+        fetch(`SELECT body FROM jira_issue_comment WHERE number = ${entry.jira_number} AND identifier = "${entry.jira_identifier}"`)
+
     ])
 
     res.send({
-        comments, 
-        commits, 
+        git_comments, 
+        git_commits, 
         github_issues,
         github_issues_comments,
         github_pulls,
