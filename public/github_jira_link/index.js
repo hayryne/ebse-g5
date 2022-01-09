@@ -15,13 +15,14 @@ new Vue({
 
             const entries = {}
         
-            data.forEach(entryId => entries[entryId] = {})
+            data.forEach(entryId => entries[entryId] = { loading: false, entry: { } })
 
             this.entries = entries
         },
         async openEntry(entryId) {
+            console.log('Open entry', entryId);
             this.$set(this.entries[entryId], 'loading', true)
-            
+
             const res = await fetch(`/entry/${entryId}`)
             const data = await res.json()
         
