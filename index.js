@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 8080
 const app = express()
 
 app.use(express.static('public'))
+app.use(express.json());
 
 app.get('/repositories', async (req, res) => {
     const data = await fetch(
@@ -28,14 +29,9 @@ app.get('/commits/:repoId', async (req, res) => {
 
 app.get('/entries', async (req, res) => {
 
-    console.log('Went in get')
-
     const data = await fetch(
         `SELECT * from github_jira_link LIMIT 20`,
-        data => {
-            console.log(data);
-            return data.id
-        }
+        data => data.id
     )
 
     res.send(data)
@@ -49,8 +45,8 @@ app.get('/entry/:entryId', async (req, res) => {
 
     const [
 
-        git_comments, 
-        git_commits, 
+        git_comments,
+        git_commits,
 
         github_issues,
         github_issues_comments,
@@ -83,16 +79,34 @@ app.get('/entry/:entryId', async (req, res) => {
     ])
 
     res.send({
-        git_comments, 
-        git_commits, 
+        git_comments,
+        git_commits,
         github_issues,
         github_issues_comments,
         github_pulls,
         github_pulls_comments,
         github_pulls_reviews,
         jira_issues,
-        jira_issues_comments 
+        jira_issues_comments
     })
+})
+
+app.post('/request', async (req, res) => {
+
+    const request = req.body.request
+    fetch(request)
+        .then(data => res.send(data))
+        .catch(err => res.send(err))
+})
+
+app.get('/tables', async (req, res) => {
+    const tablenames = await fetch(`select name from sqlite_master where type='table'`, d => d.name)
+    
+    const result = {}
+    for (const tablename of tablenames)
+        result[tablename] = await fetch(`PRAGMA table_info(${tablename});`, d => d.name)
+
+    res.send(result)
 })
 
 app.listen(PORT, () => {

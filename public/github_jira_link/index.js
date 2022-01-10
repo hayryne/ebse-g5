@@ -20,7 +20,6 @@ new Vue({
             this.entries = entries
         },
         async openEntry(entryId) {
-            console.log('Open entry', entryId);
             this.$set(this.entries[entryId], 'loading', true)
 
             const res = await fetch(`/entry/${entryId}`)

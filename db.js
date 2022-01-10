@@ -19,16 +19,13 @@ const fetch = (query, mapper) => {
             query,
             [],
             (err, rows) => {
-                if (err) {
-                    throw err;
-                }
-
-                resolve(
-                    mapper ? rows.map(mapper) : rows
-                )
-          })
-        }
-    )
+                if (err) 
+                    reject(err)
+                else
+                    resolve(mapper ? rows.map(mapper) : rows)
+            }
+        )
+    })
 }
 
 exports.fetch = fetch
