@@ -36,6 +36,18 @@ new Vue({
 
             this.$set(this.data, 'body', data)
             this.$set(this.data, 'loading', false)
-        }
+        },
+        async saveData() {
+            const data = this.data.body;
+            const filePath = document.querySelector("#saveAs").value
+
+            fetch(`/save`, {
+                method: 'post',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ data, filePath })
+            })
+        }   
     }
 })
