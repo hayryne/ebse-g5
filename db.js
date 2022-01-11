@@ -32,3 +32,4 @@ const fetch = (query, mapper) => {
 }
 
 exports.fetch = fetch
+exports.db = db
