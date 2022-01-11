@@ -101,7 +101,7 @@ app.post('/request', async (req, res) => {
 
 app.get('/tables', async (req, res) => {
     const tablenames = await fetch(`select name from sqlite_master where type='table'`, d => d.name)
-    
+
     const result = {}
     for (const tablename of tablenames)
         result[tablename] = await fetch(`PRAGMA table_info(${tablename});`, d => d.name)
@@ -120,30 +120,31 @@ app.get('/dataset', async (req, res) => {
     const repoCountsResult = await fetch(repoCountQuery)
     const repoCounts = {}
 
-    repoCountsResult.forEach(( { repo_id, number }) => repoCounts[repo_id] = number)
+    repoCountsResult.forEach(({ repo_id, number }) => repoCounts[repo_id] = number)
     console.log(repoCounts)
 
-    const result = []
+    let result = []
 
-    Object.keys(repoCounts).forEach(async repoId => {
-        const query = `
+    const ps = Object.keys(repoCounts).map(repoId => {
+        return new Promise((resolve, reject) => {
+            const query = `
             select id from github_jira_link
             where repo_id = '${repoId}'
-            and exists (
+            and ((exists (
                 select 1 from git_commit
                 join git_commit_satd on git_commit_satd.sha = git_commit.sha
                 where git_commit.sha = github_jira_link.sha
                       and git_commit_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from git_comment_satd
                 where git_comment_satd.sha = github_jira_link.sha
                       and git_comment_satd.repo_id = github_jira_link.repo_id
                       and git_comment_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from github_issue
                 join github_issue_satd on (
                     github_issue_satd.number = github_issue.number and
@@ -153,8 +154,8 @@ app.get('/dataset', async (req, res) => {
                       github_issue.repo_id = github_jira_link.repo_id
                       and github_issue_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from github_issue_comment
                 join github_issue_satd on (
                     github_issue_satd.number = github_issue_comment.number and
@@ -165,8 +166,8 @@ app.get('/dataset', async (req, res) => {
                       github_issue_comment.repo_id = github_jira_link.repo_id
                       and github_issue_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from github_pull
                 join github_pull_satd on (
                     github_pull_satd.number = github_pull.number and
@@ -176,8 +177,8 @@ app.get('/dataset', async (req, res) => {
                 github_pull.repo_id = github_jira_link.repo_id
                       and github_pull_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from github_pull_comment
                 join github_pull_satd on (
                     github_pull_satd.number = github_pull_comment.number and
@@ -188,8 +189,8 @@ app.get('/dataset', async (req, res) => {
                 github_pull_comment.repo_id = github_jira_link.repo_id
                       and github_pull_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from github_pull_review
                 join github_pull_satd on (
                     github_pull_satd.number = github_pull_review.number and
@@ -200,8 +201,8 @@ app.get('/dataset', async (req, res) => {
                 github_pull_review.repo_id = github_jira_link.repo_id
                       and github_pull_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from jira_issue
                 join jira_issue_satd on (
                     jira_issue_satd.number = jira_issue.number and
@@ -211,8 +212,8 @@ app.get('/dataset', async (req, res) => {
                       jira_issue.number = github_jira_link.jira_number
                       and jira_issue_satd.label_id != 0
                 limit 1
-            )
-            and exists (
+            ))
+            + (exists (
                 select 1 from jira_issue_comment
                 join jira_issue_satd on (
                     jira_issue_satd.number = jira_issue_comment.number and
@@ -223,13 +224,20 @@ app.get('/dataset', async (req, res) => {
                       jira_issue_comment.number = github_jira_link.jira_number
                       and jira_issue_satd.label_id != 0
                 limit 1
-            )
+            ))) > 1
             limit ${repoCounts[repoId]}
         `
 
-        const repoRes = await fetch(query)
-        console.log(repoRes)
-    })  
+            fetch(query, res => res.id).then(repoRes => {
+                result = result.concat(repoRes)
+
+                resolve()
+            })
+        })
+    })
+
+    Promise.all(ps).then(() => res.send(result))
+
 })
 
 app.listen(PORT, () => {
