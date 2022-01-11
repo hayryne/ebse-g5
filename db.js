@@ -19,9 +19,12 @@ const fetch = (query, mapper) => {
             query,
             [],
             (err, rows) => {
-                if (err) 
+                if (err) {
                     reject(err)
-                else
+                    console.error(err.message)
+                    console.error(err.name)
+                    // throw err;
+                } else
                     resolve(mapper ? rows.map(mapper) : rows)
             }
         )
