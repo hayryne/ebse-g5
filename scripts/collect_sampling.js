@@ -1,6 +1,7 @@
 const { fetch, db } = require('../db')
 const sampling_data = require("../saved_data/sampling_0.json")
-const fs = require('fs')
+const path = require('path')
+const extra = require('fs-extra')
 const cliProgress = require('cli-progress');
 
 db.on('open', async () => {
@@ -8,6 +9,7 @@ db.on('open', async () => {
     const final_data = []
 
     const bar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
+    
     bar.start(ids.length, 0)
     
     let i = 1
@@ -36,9 +38,9 @@ db.on('open', async () => {
             fetch(`SELECT comment from git_comment WHERE sha = "${entry.sha}" AND repo_id = ${entry.repo_id}`, d => d.comment),
             fetch(`SELECT summary, message from git_commit WHERE sha = "${entry.sha}" AND repo_id = ${entry.repo_id}`),
 
-            // Prevent from doing any computation if no issue
+            // // Prevent from doing any computation if no issue
             entry.issue_number === null ? null :
-                fetch(`SELECT * FROM github_issue WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
+                 fetch(`SELECT * FROM github_issue WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
             entry.issue_number === null ? null :
                 fetch(`SELECT * FROM github_issue_comment WHERE number = ${entry.issue_number} AND repo_id = ${entry.repo_id}`),
 
@@ -69,8 +71,13 @@ db.on('open', async () => {
         bar.update(i++)
     }
 
-    fs.writeFile('../saved_data/sampling.json', JSON.stringify(final_data), () => {
-        bar.stop()
-    })
+    extra.outputFile(path.join(__dirname, '../saved_data/sampling.json'), JSON.stringify(final_data))
+        .catch(err => {
+            console.error(err);
+        }) 
+        .finally(() => {
+            bar.stop()
+        })
 
+    console.log(final_data[0])
 })
