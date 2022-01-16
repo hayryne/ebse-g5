@@ -1,5 +1,6 @@
 const { fetch, db } = require('../db')
 const cliProgress = require('cli-progress')
+const extra = require('fs-extra')
 
 db.on('open', main)
 
@@ -133,8 +134,9 @@ async function main() {
         bar.update(i++)
     }
 
+    bar.stop()
+
     /* Saving data */
     extra.outputFile(path.join(__dirname, '../saved_data/sampling_2.json'), JSON.stringify(final_data))
-        .catch(console.error) 
-        .finally(() => bar.stop())
+        .catch(console.error)
 }
