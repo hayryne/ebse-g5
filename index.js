@@ -244,6 +244,12 @@ app.get('/dataset', async (req, res) => {
 
 })
 
+app.get('/sampleData', async (req, res) => {
+    const data = require('./saved_data/sampling_2.json')
+
+    res.send(data)
+})
+
 app.post('/save', async (req, res) => {
 
     const { filePath } = req.body
