@@ -1,22 +1,84 @@
 const { fetch, db } = require('../db')
-const sampling_data = require("../saved_data/sampling_0.json")
-const path = require('path')
-const extra = require('fs-extra')
-const cliProgress = require('cli-progress');
+const cliProgress = require('cli-progress')
 
-db.on('open', async () => {
-    const ids = sampling_data.result.map(d => d.id)
-    const final_data = []
+db.on('open', main)
 
-    const bar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
+async function main() {
+    const countMap = new Map()
+
+    console.log();
+    /* Getting count of links by repository */
+    const repoCount = await fetch(`
     
-    bar.start(ids.length, 0)
+    SELECT count(*) as num, repo_id 
+    FROM github_jira_link 
+    WHERE satd_count > 2 
+    GROUP BY repo_id
+    
+    `)
+
+    for (const { num, repo_id } of repoCount)
+        countMap.set(repo_id, num)
+
+        
+    const totalCount = Array.from(countMap.values()).reduce((a, b) => a + b, 0)
+    console.log('Total link count:', totalCount);
+        
+    const sampleGoal = 500
+    const ids = []
+    
+    console.log('Collecting repositories link ids')
     
     let i = 1
+    let bar = new cliProgress.SingleBar()
+    bar.start(countMap.size, 0)
+
+    /* Getting ids of github_jira_link that are good */
+    for (const repoId of countMap.keys()) {
+        const count = countMap.get(repoId)
+        const repoIds = await fetch(`
+    
+    SELECT id FROM (
+        SELECT 
+            *, 
+            row_number() 
+                OVER (
+                    PARTITION BY linked 
+                    ORDER BY random()
+                ) as seqnum 
+    
+        FROM github_jira_link
+        WHERE  
+            repo_id = ${repoId} AND
+            satd_count > 2
+    )
+    
+    WHERE 
+        linked = 0 AND seqnum <= ${0.59 * sampleGoal * (count / totalCount)} OR
+        linked = 1 AND seqnum <= ${0.39 * sampleGoal * (count / totalCount)} OR
+        linked = 2 AND seqnum <= ${0.02 * sampleGoal * (count / totalCount)} OR
+        linked = 3 AND seqnum <= ${0.0002 * sampleGoal * (count / totalCount)}
+
+        `, d => d.id)
+
+        ids.push(...repoIds)
+
+        bar.update(i++)
+    }
+
+    bar.stop()
+
+
+    console.log(`Got ${ids.length} results`);
+
+    const final_data = []
+    
+    i = 1
+    bar = new cliProgress.SingleBar();
+    bar.start(ids.length, 0)
 
     for (const id of ids) {
         const entry = (await fetch(`SELECT * from github_jira_link WHERE id = ${id}`))[0]
-
 
         const [
 
@@ -71,11 +133,8 @@ db.on('open', async () => {
         bar.update(i++)
     }
 
-    extra.outputFile(path.join(__dirname, '../saved_data/sampling.json'), JSON.stringify(final_data))
-        .catch(err => {
-            console.error(err);
-        }) 
-        .finally(() => {
-            bar.stop()
-        })
-})
+    /* Saving data */
+    extra.outputFile(path.join(__dirname, '../saved_data/sampling_2.json'), JSON.stringify(final_data))
+        .catch(console.error) 
+        .finally(() => bar.stop())
+}
