@@ -1,5 +1,5 @@
 const express = require('express')
-const { fetch } = require('./db.js')
+const { fetch, memory } = require('./db.js')
 const fs = require('fs')
 const path = require('path')
 
@@ -246,11 +246,18 @@ app.get('/dataset', async (req, res) => {
 
 app.post('/save', async (req, res) => {
 
-    const { data, filePath } = req.body
+    const { filePath } = req.body
+    
+    if (!!memory.lastResult)
+        fs.writeFileSync(
+            path.join('saved_data', filePath + '.json'), 
+            JSON.stringify({ 
+                request: memory.lastRequest, 
+                result: memory.lastResult 
+            })
+        )
 
-    fs.writeFileSync(path.join('saved_data', filePath + '.json'), JSON.stringify(data))
-
-    res.send();
+    res.send()
 });
 
 app.listen(PORT, () => {
