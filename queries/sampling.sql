@@ -2,7 +2,7 @@
 Partitions over linkedness in order to obtain amounts proportional to chosen
 sampling strata; e.g. 100 samples with linkedness = 1
 */
-SELECT * FROM (
+SELECT id FROM (
   SELECT 
     *, 
     row_number() 
