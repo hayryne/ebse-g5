@@ -1,0 +1,1 @@
+CREATE INDEX github_jira_link_repo_sha ON github_jira_link (sha, repo_id);
