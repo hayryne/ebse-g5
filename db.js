@@ -1,5 +1,10 @@
 const sqlite3 = require('sqlite3').verbose()
 
+const memory = {
+    lastResult: null,
+    lastRequest: null
+}
+
 const db = new sqlite3.Database(
     './apache.db',
     sqlite3.OPEN_READWRITE,
@@ -19,13 +24,14 @@ const fetch = (query, mapper) => {
             query,
             [],
             (err, rows) => {
-                if (err) {
-                    reject(err)
-                    console.error(err.message)
-                    console.error(err.name)
-                    // throw err;
-                } else
-                    resolve(mapper ? rows.map(mapper) : rows)
+                if (err)
+                    reject({ message: err.message })
+                else {
+                    const result = mapper ? rows.map(mapper) : rows
+                    memory.lastResult = result
+                    memory.lastRequest = query
+                    resolve(result)
+                }
             }
         )
     })
@@ -33,3 +39,4 @@ const fetch = (query, mapper) => {
 
 exports.fetch = fetch
 exports.db = db
+exports.memory = memory

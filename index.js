@@ -1,5 +1,7 @@
 const express = require('express')
-const { fetch } = require('./db.js')
+const { fetch, memory } = require('./db.js')
+const fs = require('fs')
+const path = require('path')
 
 const PORT = process.env.PORT || 8080
 
@@ -241,6 +243,22 @@ app.get('/dataset', async (req, res) => {
     Promise.all(ps).then(() => res.send(result))
 
 })
+
+app.post('/save', async (req, res) => {
+
+    const { filePath } = req.body
+    
+    if (!!memory.lastResult)
+        fs.writeFileSync(
+            path.join('saved_data', filePath + '.json'), 
+            JSON.stringify({ 
+                request: memory.lastRequest, 
+                result: memory.lastResult 
+            })
+        )
+
+    res.send()
+});
 
 app.listen(PORT, () => {
     console.log(`Server listening on ${PORT}`);

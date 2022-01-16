@@ -8,6 +8,11 @@ new Vue({
     },
     created() {
         this.getTables()
+        
+        const lastRequest = localStorage.getItem('last-request')
+        console.log('got last request', lastRequest);
+        if (lastRequest)
+            document.querySelector('#request').innerHTML = lastRequest
     },
     methods: {
         async getTables() {
@@ -25,6 +30,8 @@ new Vue({
             const request = document.querySelector('#request').value
             this.$set(this.data, 'loading', true)
 
+            localStorage.setItem('last-request', request)
+
             const res = await fetch(`/request`, {
                 method: 'post',
                 headers: {
@@ -36,6 +43,17 @@ new Vue({
 
             this.$set(this.data, 'body', data)
             this.$set(this.data, 'loading', false)
-        }
+        },
+        async saveData() {
+            const filePath = document.querySelector("#saveAs").value
+
+            fetch(`/save`, {
+                method: 'post',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filePath })
+            })
+        }   
     }
 })
