@@ -23,13 +23,24 @@ new Vue({
         async getData() {
             const res = await fetch('/sampleData')
             const data = await res.json()
-            console.log(Object.keys(data[0]))
+
+            data.forEach(item => item.shown = true)
 
             this.items = data
         },
         showItem(item, index) {
             item.shown = !item.shown
             this.$set(this.items, index, item)
+        },
+        print() {
+            for (let i = 1; i <= this.items.length; i++) {
+                const content = document.getElementById(i).innerHTML
+
+                const html = `<!DOCTYPE html><html>${content}</html>`
+                const blob = new Blob([html], { type: "text/html;charset=utf-8" })
+
+                saveAs(blob, `item_${i}.html`)
+            }
         }
     }
 })
