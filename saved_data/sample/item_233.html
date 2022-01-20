@@ -1,0 +1,258 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 233
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa.
+                </div><div><b>message:</b> YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa.
+
+
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1588369 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> TestZKRMStateStoreZKClientConnections fails intermittently
+                </div><div><b>description:</b> The test fails intermittently - haven't been able to reproduce the failure deterministically. 
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Looking into the stack trace of a sample failure, it looks like a timeout waiting for connection to ZooKeeper.
+
+{noformat}
+java.lang.AssertionError: Unable to connect to server
+	at org.junit.Assert.fail(Assert.java:93)
+	at org.apache.hadoop.ha.ClientBaseWithFixes.createClient(ClientBaseWithFixes.java:180)
+	at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections.access$100(TestZKRMStateStoreZKClientConnections.java:44)
+{noformat}
+
+Not sure if we can do anything but just bump up the default value for the timeout? 
+              </div></li><li><div>
+                The timeout currently is 30 seconds. On my local machine, the test pass even with a timeout of 3 seconds. Thoughts? 
+              </div></li><li><div>
+                The test also pass in my local machine. Sometimes tests in hadoop can fail because DNS settings is wrong and sockets cannot be connected to local server. Is this one of these?
+              </div></li><li><div>
+                Agree with Ozawa, I tested it on my laptop. It passed. 
+              </div></li><li><div>
+                Is this failure just related to the test or is there some bug in hadoop?
+              </div></li><li><div>
+                I believe it is just related to the test, as other testing didn't reveal anything. Haven't been able to reliably reproduce it either. 
+              </div></li><li><div>
+                +1 on Karthik's comment. I tested on my local machine today. It passed.
+              </div></li><li><div>
+                I had tried it on my machine and it was passing too. Just wanted to make sure it is a test issue and not a real bug
+              </div></li><li><div>
+                This JIRA has been open for a long time and the issue does not seem to be reproducible. I am closing it for now. We can open it again if we find out that it is failing again.
+              </div></li><li><div>
+                I actually see this failing in our nightly builds every so often. It is just that, I haven't figured out a way to reliably reproduce it. 
+              </div></li><li><div>
+                I see Karthik. Reopening it
+              </div></li><li><div>
+                [~kasha], are you still seeing this test failing?
+              </div></li><li><div>
+                Yes. Almost in every nightly run. I have been caught up with other things, and haven't been able to look into this. Temporarily marked it "Unassigned" so someone else can pick it. Will take it back when I get a chance to fix. 
+              </div></li><li><div>
+                Reproduced bug.
+
+{quote}
+-------------------------------------------------------------------------------
+Test set: org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections
+-------------------------------------------------------------------------------
+Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.73 sec &lt;&lt;&lt; FAILURE! - in org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections
+testZKClientDisconnectAndReconnect(org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections)  Time elapsed: 0.174 sec  &lt;&lt;&lt; FAILURE!
+java.lang.AssertionError: Unable to connect to server
+        at org.junit.Assert.fail(Assert.java:93)
+        at org.apache.hadoop.ha.ClientBaseWithFixes.createClient(ClientBaseWithFixes.java:180)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections.access$100(TestZKRMStateStoreZKClientConnections.java:47)
+{quote}
+
+{quote}
+2014-04-15 04:11:27,000 INFO  [SessionTracker] server.SessionTrackerImpl (SessionTrackerImpl.java:run(162)) - SessionTrackerImpl exited loop!
+2014-04-15 04:11:27,660 INFO  [Thread-2-SendThread(localhost:11221)] zookeeper.ClientCnxn (ClientCnxn.java:logStartConnect(966)) - Opening socket connection to server localhost/127.0.0.1:11221. Will not attempt to authenticate using SASL (unknown error)
+2014-04-15 04:11:27,661 WARN  [Thread-2-SendThread(localhost:11221)] zookeeper.ClientCnxn (ClientCnxn.java:run(1089)) - Session 0x145639514f70000 for server null, unexpected error, closing socket connection and attempting reconnect
+java.net.ConnectException: Connection refused
+        at sun.nio.ch.SocketChannelImpl.checkConnect(Native Method)
+        at sun.nio.ch.SocketChannelImpl.finishConnect(SocketChannelImpl.java:739)
+        at org.apache.zookeeper.ClientCnxnSocketNIO.doTransport(ClientCnxnSocketNIO.java:350)
+        at org.apache.zookeeper.ClientCnxn$SendThread.run(ClientCnxn.java:1068)
+{quote}
+
+I'll take a look deeper.
+              </div></li><li><div>
+                Attached complete log at the failure. ZMZKUtils#getZKAcls() fails to read ACLs. Maybe this is because of setup timing.
+
+{quote}
+2014-04-15 08:13:04,712 ERROR [Thread-12] resourcemanager.RMZKUtils (RMZKUtils.java:getZKAcls(51)) - Couldn't read ACLs based on yarn.resourcemanager.zk-acl
+2014-04-15 08:13:04,713 INFO  [Thread-12] service.AbstractService (AbstractService.java:noteFailure(272)) - Service org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore failed in state INITED; cause: org.apache.hadoop.util.ZKUtil$BadAclFormatException: ACL 'randomstring&amp;*' not of expected form scheme:id:perm
+org.apache.hadoop.util.ZKUtil$BadAclFormatException: ACL 'randomstring&amp;*' not of expected form scheme:id:perm
+        at org.apache.hadoop.util.ZKUtil.parseACLs(ZKUtil.java:110)
+        at org.apache.hadoop.yarn.server.resourcemanager.RMZKUtils.getZKAcls(RMZKUtils.java:49)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore.initInternal(ZKRMStateStore.java:206)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore.serviceInit(RMStateStore.java:276)
+        at org.apache.hadoop.service.AbstractService.init(AbstractService.java:163)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections$TestZKClient$TestZKRMStateStore.&lt;init&gt;(TestZKRMStateStoreZKClientConnections.java:79)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections$TestZKClient.getRMStateStore(TestZKRMStateStoreZKClientConnections.java:129)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections.testInvalidZKAclConfiguration(TestZKRMStateStoreZKClientConnections.java:261)
+        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.lang.reflect.Method.invoke(Method.java:606)
+        at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:45)
+        at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:15)
+        at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:42)
+        at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:20)
+        at org.apache.zookeeper.JUnit4ZKTestRunner$LoggedInvokeMethod.evaluate(JUnit4ZKTestRunner.java:52)
+        at org.junit.internal.runners.statements.FailOnTimeout$StatementThread.run(FailOnTimeout.java:62)
+{quote}
+              </div></li><li><div>
+                Sorry, the log I mentioned at the last time is correct behavior. Please ignore it.
+              </div></li><li><div>
+                Maybe this is a log related to the test failure:
+
+{quote}
+2014-04-15 08:13:04,905 INFO  [Thread-16] zookeeper.JUnit4ZKTestRunner (JUnit4ZKTestRunner.java:evaluate(54)) - TEST METHOD FAILED testZKClientRetry
+java.lang.AssertionError: Unable to connect to server
+        at org.junit.Assert.fail(Assert.java:93)
+        at org.apache.hadoop.ha.ClientBaseWithFixes.createClient(ClientBaseWithFixes.java:180)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections.access$100(TestZKRMStateStoreZKClientConnections.java:47)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections$TestZKClient$TestZKRMStateStore.getNewZooKeeper(TestZKRMStateStoreZKClientConnections.java:87)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore.createConnection(ZKRMStateStore.java:993)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore.startInternal(ZKRMStateStore.java:248)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore.serviceStart(RMStateStore.java:282)
+        at org.apache.hadoop.service.AbstractService.start(AbstractService.java:193)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections$TestZKClient$TestZKRMStateStore.&lt;init&gt;(TestZKRMStateStoreZKClientConnections.java:80)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections$TestZKClient.getRMStateStore(TestZKRMStateStoreZKClientConnections.java:129)
+        at org.apache.hadoop.yarn.server.resourcemanager.recovery.TestZKRMStateStoreZKClientConnections.testZKClientRetry(TestZKRMStateStoreZKClientConnections.java:141)
+        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.lang.reflect.Method.invoke(Method.java:606)
+        at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:45)
+        at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:15)
+        at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:42)
+        at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:20)
+        at org.apache.zookeeper.JUnit4ZKTestRunner$LoggedInvokeMethod.evaluate(JUnit4ZKTestRunner.java:52)
+        at org.junit.internal.runners.statements.FailOnTimeout$StatementThread.run(FailOnTimeout.java:62)
+{quote}
+              </div></li><li><div>
+                [~ozawa], If you are working on the issue, can you assign it to yourself?
+              </div></li><li><div>
+                Thank you for comment, Mit. Assigned this issue to myself.
+
+{code}
+      @Override
+      public ZooKeeper getNewZooKeeper()
+          throws IOException, InterruptedException {
+        return createClient(watcher, hostPort, 100);
+      }
+{code}
+
+I suspect that the timeout value is too short to connect ZK servers, because Jenkins servers can get overload sometimes. Attached patch changes the test to add timeout value. I'm running the test hundreds times on local. I'll report the result.
+
+The following comments are observation from code and log.
+1. ZK server startups correctly and its client fails to connect to server. We can observe it from the log, .
+2. ZKRMStateStore is not called stop() method after testing, but its connection is cleaned up after testing in ClientBaseWithFixes#tearDown. IIUC, it works well.
+
+              </div></li><li><div>
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12640495/YARN-1281.1.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager.
+
+    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-YARN-Build/3577//testReport/
+Console output: https://builds.apache.org/job/PreCommit-YARN-Build/3577//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                I'll take a look on the patch. I'll post comments by end of the day
+              </div></li><li><div>
+                Updated a patch to change ZK-related timeouts correctly.
+              </div></li><li><div>
+                Thanks, Mit. I found some mistakes in a first patch and updated it. Please check the latest one.
+              </div></li><li><div>
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12640514/YARN-1281.2.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager.
+
+    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-YARN-Build/3578//testReport/
+Console output: https://builds.apache.org/job/PreCommit-YARN-Build/3578//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                LGTM.
+Just one question. In the following change in patch-2
+{code}
+@@ -136,7 +137,7 @@ public void testZKClientRetry() throws Exception {
+     TestZKClient zkClientTester = new TestZKClient();
+     final String path = "/test";
+     YarnConfiguration conf = new YarnConfiguration();
+-    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, 1000);
++    conf.setInt(YarnConfiguration.RM_ZK_TIMEOUT_MS, ZK_TIMEOUT_MS);
+{code}
+The timeout was 1000ms and the ZK_TIMEOUT_MS is also set to 1000. Do you think this will not cause the timeout issue in future? If unsure, I think setting ZK_TIMEOUT_MS = 1500 would be a good idea.
+              </div></li><li><div>
+                Thanks for the review, Mit. 
+
+RM_ZK_TIMEOUT_MS is for ZK session timeout. IMO, 1000 msec is safe and enough time to keep alive. The test failure is caused by 100 msec timeout in TestZKRMStateStore#getNewZooKeeper() called by ZKRMStateStore#createConnection(). 
+
+Good news: I ran the test 300 times with patch-2, and confirmed all of them succeeded. Without the patch, the test fails each approx. 50 times.
+              </div></li><li><div>
+                +1 (non binding)
+              </div></li><li><div>
+                This looks good. Tx for the stress test of the test itself! Checking this in.
+              </div></li><li><div>
+                Committed this to trunk, branch-2 and branch-2.4. Thanks Tsuyoshi!
+
+Tx for the reviews, [~mitdesai].
+              </div></li><li><div>
+                SUCCESS: Integrated in Hadoop-trunk-Commit #5535 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/5535/])
+YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1588369)
+* /hadoop/common/trunk/hadoop-yarn-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/test/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/TestZKRMStateStoreZKClientConnections.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Hadoop-Yarn-trunk #544 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/544/])
+YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1588369)
+* /hadoop/common/trunk/hadoop-yarn-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/test/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/TestZKRMStateStoreZKClientConnections.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Hadoop-Hdfs-trunk #1736 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1736/])
+YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1588369)
+* /hadoop/common/trunk/hadoop-yarn-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/test/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/TestZKRMStateStoreZKClientConnections.java
+
+              </div></li><li><div>
+                SUCCESS: Integrated in Hadoop-Mapreduce-trunk #1761 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1761/])
+YARN-1281. Fixed TestZKRMStateStoreZKClientConnections to not fail intermittently due to ZK-client timeouts. Contributed by Tsuyoshi Ozawa. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1588369)
+* /hadoop/common/trunk/hadoop-yarn-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/test/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/TestZKRMStateStoreZKClientConnections.java
+
+              </div></li></ol></div></div></html>

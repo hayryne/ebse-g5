@@ -1,0 +1,145 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 293
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                !
+ * \brief Seed the global random number generator of the given device.
+ * \param seed the random number seed.
+ * \return 0 when success, -1 when failure happens.
+ 
+              </div></li><li><div>
+                !
+ * \brief Seed the random number generator of the device.
+ * \param seed the seed to set to global random number generators.
+ 
+              </div></li><li><div>
+                !
+   * \brief Seed the random number generators of the given context.
+   * \param seed the seed to the random number generators.
+   
+              </div></li><li><div>
+                 set seed to a sampler using global_seed and device id
+              </div></li><li><div>
+                 reset pointer to ensure the same result with the same seed.
+              </div></li><li><div>
+                 set seed to a sampler
+              </div></li><li><div>
+                 set seed to a PRNG using global_seed and device id
+              </div></li><li><div>
+                 Tests that seed setting of parallel rng for specific context is synchronous w.r.t. rng use before and after.
+              </div></li><li><div>
+                 Avoid excessive test cpu runtimes.
+              </div></li><li><div>
+                 Create enough samples such that we get a meaningful distribution.
+              </div></li><li><div>
+                 The samples should be identical across different gpu devices.
+              </div></li><li><div>
+                 To flush out a possible race condition, run multiple times.
+              </div></li><li><div>
+                 Currently python API does not provide a method to get the number of gpu devices.
+ Waiting for PR #10354, which provides the method, to be merged.
+ As a temporal workaround, try first and catch the exception caused by the absence of the device with `dev_id`.
+              </div></li><li><div>
+                 Check imperative. `multinomial` uses non-parallel rng.
+              </div></li><li><div>
+                 Check symbolic. `uniform` uses parallel rng.
+              </div></li><li><div>
+                 Collect random number samples from the generators of all devices, each seeded with the same number.
+              </div></li><li><div>
+                 Tests that seed setting of std (non-parallel) rng for specific context is synchronous w.r.t. rng use before and after.
+              </div></li><li><div>
+                 Check symbolic. `multinomial` uses non-parallel rng.
+              </div></li><li><div>
+                 Set seed for the context variously based on `start_seed` and `num_init_seeds`, then set seed finally to `final_seed`
+              </div></li><li><div>
+                 Check imperative. `uniform` uses parallel rng.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context (#10367)
+                </div><div><b>message:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context (#10367)
+
+* Implement mx.random.seed_context
+
+`mx.random.seed_context` is to seed the random number generator of a specific device context.
+The random number sequence on the deivce is completly determined by the given seed and is independent of the device id.
+This is in contrast to `mx.random.seed` which seeds all generators using the device id implicitly.
+
+* Fix lint
+
+* Adding ctx argument to random.seed instead of new function random.seed_context
+
+* Doc fix
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context
+                </div><div><b>body:</b> This PR is modified to add an optional argument `ctx` to `mx.random.seed` instead of introducing a new function `seed_context`. Seeding with `ctx` option produces random number sequence independent of device id. The below is the original description before the modification.
+
+---
+
+## Description ##
+
+This PR introduces a function `mx.random.seed_context` to seed random number generators of a specific device context. `mx.random.seed_context(seed, ctx)` seeds the parallel and non-parallel generators of `ctx` where `ctx` is optional and the default is the current context. The random number sequence generated on the device is completely determined by `seed`, differently from existing `mx.random.seed` which implicitly uses the device id of each context together with the given seed. Using device id is reasonable to seed all generators at once with a given seed, but to reproduce the same random number sequence we need to set the running context besides seeding with the same number. Sometimes setting a context would be inconvenient or the running context could be not deterministic. `mx.random.seed_context` would be helpful in such cases. 
+
+The implementation is simple. It just hands over the given seed to the underlying generators. The unit tests are an adaptation of the existing tests for `mx.random.seed`.
+
+Here is an example.
+```python
+# Seeding with `mx.random.seed`. Different results on gpu(0) and gpu(1).
+&gt;&gt;&gt; with mx.Context(mx.gpu(0)):
+...     mx.random.seed(99)
+...     print(mx.nd.random.uniform(0, 1, 3))
+[0.29560053 0.07938761 0.29997164]
+&lt;NDArray 3 @gpu(0)&gt;
+&gt;&gt;&gt; with mx.Context(mx.gpu(1)):
+...     mx.random.seed(99)
+...     print(mx.nd.random.uniform(0, 1, 3))
+[0.8797334 0.8857584 0.3797555]
+&lt;NDArray 3 @gpu(1)&gt;
+
+# Seeding with `mx.random.seed_context`. Identical results on gpu(0) and gpu(1).
+# This seeds the generator of the current context. Other generators are not touched.
+# To seed a specific device context, set the optional argument `ctx`.
+&gt;&gt;&gt; with mx.Context(mx.gpu(0)):
+...     mx.random.seed_context(99)
+...     print(mx.nd.random.uniform(0, 1, 3))
+[0.29560053 0.07938761 0.29997164]
+&lt;NDArray 3 @gpu(0)&gt;
+&gt;&gt;&gt; with mx.Context(mx.gpu(1)):
+...     mx.random.seed_context(99)
+...     print(mx.nd.random.uniform(0, 1, 3))
+[0.29560053 0.07938761 0.29997164]
+&lt;NDArray 3 @gpu(1)&gt;
+```
+
+## Checklist ##
+### Essentials ###
+Please feel free to remove inapplicable items for your PR.
+- [x] The PR title starts with [MXNET-$JIRA_ID], where $JIRA_ID refers to the relevant [JIRA issue](https://issues.apache.org/jira/projects/MXNET/issues) created (except PRs with tiny changes)
+- [x] Changes are complete (i.e. I finished coding on this PR)
+- [x] All changes have test coverage:
+- Unit tests are added for small changes to verify correctness (e.g. adding a new operator)
+- Nightly tests are added for complicated/long-running ones (e.g. changing distributed kvstore)
+- Build tests will be added for build configuration changes (e.g. adding a new build option with NCCL)
+- [x] Code is well-documented: 
+- For user-facing API changes, API doc string has been updated. 
+- For new C++ functions in header files, their functionalities and arguments are documented. 
+- For new examples, README.md is added to explain the what the example does, the source of the dataset, expected performance on test set and reference to the original paper if applicable
+- Check the API doc at http://mxnet-ci-doc.s3-accelerate.dualstack.amazonaws.com/PR-$PR_ID/$BUILD_ID/index.html
+- [x] To the my best knowledge, examples are either not affected by this change, or have been fixed to be compatible with this change
+
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                I would add a `ctx=None` argument to seed instead
+              </div></li><li><div>
+                @piiswrong Omitting `ctx` argument usually means that it is the current context. So I think that adding `ctx=None` to `seed` could be potentially confusing.
+              </div></li><li><div>
+                I still think its better than adding an API. `seed_context` looks ugly
+              </div></li><li><div>
+                maybe you can make it defaults to 'all'
+              </div></li><li><div>
+                I removed `seed_context` and added `ctx="all"` argument to `seed`.
+              </div></li><li><div>
+                @piiswrong can this be merged. will add this to api changes in release notes.
+              </div></li><li><div>
+                Thanks a lot for this change, this really something we've been looking for!
+
+@asmushetzel @KellenSunderland 
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Implement mx.random.seed_context to seed random number generators of a specific device context
+                </div><div><b>description:</b> This PR introduces a function `mx.random.seed_context` to seed random number generators of a specific device context. `mx.random.seed_context(seed, ctx)` seeds the parallel and non-parallel generators of `ctx` where `ctx` is optional and the default is the current context. The random number sequence generated on the device is completely determined by the seed, differently from existing `mx.random.seed` which implicitly uses the device id of each context together with the given seed. Using device id is reasonable to seed all generators at once with a given seed, but to reproduce the same random number sequence we need to set the running context besides seeding with the same number. Sometimes setting a context would be inconvenient or the running context could be not deterministic. `mx.random.seed_context` would be helpful in such cases.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 185
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Version below which we should turn off essential column family.
+              </div></li><li><div>
+                * Version below which we fall back on the generic KeyValueBuilder 
+              </div></li><li><div>
+                 Version below which we should disallow usage of mutable secondary indexing.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
+                </div><div><b>message:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> During restart RS that hosts SYSTEM.CATALOG table may get stuck
+                </div><div><b>description:</b> Sometimes when a cluster has restarted the regions that belong to SYSTEM.CATALOG and other system tables on the same RS may be stuck in RiT. 
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                That's well reproduced on 5.x branch, but may (should) affect master branch under certain circumstances. The SYSTEM.CATALOG region get stuck during open operation because there are 2 concurrent open region threads that are trying to load system tables. 
+Loading sequence:
+Thread 1:
+MetaDataEndpointImpl -&gt; PhoenixDatabaseMetaData -- (trying to load QueryConstants)
+Thread 2:
+MetaDataRegionObserver -&gt; QueryConstants -&gt; TableProperty -&gt; SQLExceptionCode -&gt; (trying to load PhoenixDatabaseMetaData)
+Since only one thread is capable to load class and second thread is already loading QueryConstants and first thread is loading PhoenixDatabaseMetaData , we have a dead lock. 
+We can break this by removing the dependency between SQLExceptionCode and PhoenixDatabaseMetaData.
+
+
+              </div></li><li><div>
+                [~rajeshbabu], [~elserj] the fix is even simpler than I expected.
+[~jamestaylor] can you please take a look. Actually, I think that we even may replace all those calls for MetaDataUtil.decodeHBaseVersionAsString(VersionUtil.encodeVersion(...)) with the string constants to eliminate calls of other classes and reduce dependencies between classes that have static initializers. 
+              </div></li><li><div>
+                Thanks, [~sergey.soldatov]. I'd rather stick with the constants (as it ensures consistency - these are used in multiple places - and makes the code easier to read). But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
+              </div></li><li><div>
+                {quote}But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
+{quote}
+That sounds like a good idea. No strong feelings from me where they get put :)
+              </div></li><li><div>
+                Great find, [~sergey.soldatov]. Let's move all these version constants to MetaDataProtocol since that's where other version info is (and it won't have outside dependencies). Will you be working up a patch?
+              </div></li><li><div>
+                [~jamestaylor] sounds reasonable. Will do it shortly. 
+              </div></li><li><div>
+                +1. Thanks, [~sergey.soldatov]!
+              </div></li><li><div>
+                [~jamestaylor] Thanks! Committed to 4.x, 5x. branches.
+              </div></li><li><div>
+                SUCCESS: Integrated in Jenkins build Phoenix-4.x-HBase-1.3 #147 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-1.3/147/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 24af1040591e088a9b4722ae825762d331d102c2)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+
+              </div></li><li><div>
+                ABORTED: Integrated in Jenkins build Phoenix-4.x-HBase-0.98 #1908 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-0.98/1908/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev e6f9ce0352dbf4f5b1a2d086c1c6068426afc1ac)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1892 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1892/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 614c57d91ba11bd8109dac769860e0186c8752bf)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1930 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1930/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev d79c30023af47f32e2dac9d871aa75265cebc34f)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+
+              </div></li></ol></div></div></html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 325
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                
+            node metrics
+          
+              </div></li><li><div>
+                
+            overseer metrics
+          
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-14965: add overseer queue size metrics (#2040)
+                </div><div><b>message:</b> SOLR-14965: add overseer queue size metrics (#2040)
+
+Adds two metrics to the SolrCloud Overseer: solr_metrics_overseer_stateUpdateQueueSize and solr_metrics_overseer_collectionWorkQueueSize with corresponding entries in the the Prometheus exporter's default/stock configuration.
+
+Co-authored-by: Saatchi Bhalla &lt;s.bhalla@salesforce.com&gt;
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> SOLR-14965 add overseer queue size metrics
+                </div><div><b>body:</b> &lt;!--
+_(If you are a project committer then you may remove some/all of the following template.)_
+
+Before creating a pull request, please file an issue in the ASF Jira system for Lucene or Solr:
+
+* https://issues.apache.org/jira/projects/LUCENE
+* https://issues.apache.org/jira/projects/SOLR
+
+You will need to create an account in Jira in order to create an issue.
+
+The title of the PR should reference the Jira issue number in the form:
+
+* LUCENE-####: &lt;short description of problem or changes&gt;
+* SOLR-####: &lt;short description of problem or changes&gt;
+
+LUCENE and SOLR must be fully capitalized. A short description helps people scanning pull requests for items they can work on.
+
+Properly referencing the issue in the title ensures that Jira is correctly updated with code review comments and commits. --&gt;
+
+
+# Description
+
+Please provide a short description of the changes you're making with this pull request.
+
+The Overseer work queues stored in ZK and abstracted by the Overseer can give us a good indication of the health of the cluster - if messages are taking too long to dequeue or the queue is growing too large, we know that the Overseer is overloaded and we are going to overwhelm the cluster.
+
+This work adds metrics to track the size of the Overseer queues (ClusterStateUpdate queue and Collections Work Queue).  
+
+# Solution
+
+Please provide a short description of the approach taken to implement your solution.
+
+Registered these two size metrics in a shared metrics registry for the Overseer. The Overseer shared metrics registry is only initialized upon reference so this shouldn't have any impact on metrics when run in non-cloud mode. Also updated the local solr-exporter-config.xml so that these metrics are exported and can be viewed locally in Grafana. 
+
+# Tests
+
+Please describe the tests you've developed or run to confirm this patch implements the feature or solves the problem.
+
+Local testing was accomplished by sending CreateCollection load and monitoring a local grafana dashboard which accessed the metrics through prometheus-exporter. As the size of these queues change extremely quickly, it was difficult to see changes in these metrics quickly enough--and if the requests were sent too quickly we'd see local solr hosts OOMing. However, I was able to verify that the metrics are updating as the size of the queues change, and in a real environment with more sustained load we should see these metrics more accurately represent the state of the Overseer.
+
+Testing confirmed that we don't see the Overseer metrics registry in non-cloud mode.
+
+**/admin/metrics response containing added metrics**
+&lt;img width="298" alt="Screen Shot 2020-10-27 at 5 56 48 PM" src="https://user-images.githubusercontent.com/16807693/97367278-32600980-187f-11eb-98b5-98a321c0f5c9.png"&gt;
+
+**local testing sending CreateCollection request load and seeing metrics update in real time**
+![image](https://user-images.githubusercontent.com/16807693/97367388-5d4a5d80-187f-11eb-8c45-58abb0b0e0cc.png)
+
+
+
+# Checklist
+
+Please review the following and check all that apply:
+
+- [x] I have reviewed the guidelines for [How to Contribute](https://wiki.apache.org/solr/HowToContribute) and my code conforms to the standards described there to the best of my ability.
+- [x] I have created a Jira issue and added the issue ID to my pull request title.
+- [x] I have given Solr maintainers [access](https://help.github.com/en/articles/allowing-changes-to-a-pull-request-branch-created-from-a-fork) to contribute to my PR branch. (optional but recommended)
+- [x] I have developed this patch against the `master` branch.
+- [x] I have run `./gradlew check`.
+- [ ] I have added tests for my changes.
+- [x] I have added documentation for the [Ref Guide](https://github.com/apache/lucene-solr/tree/master/solr/solr-ref-guide) (for Solr changes only).
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @sigram Would you mind taking another look at this PR whenever you have a chance? 
+              </div></li><li><div>
+                &gt; Saatchi; could you please comment here what this change in the config is about? Did you blend two metrics into one, and if so why? Maybe could you share a snippet of the prometheus exporter's output so we know clearly what the output of this "looks like"
+
+Hey David, sorry for the delay in getting back to you. I looked at this again, and decided that the two overseer queue metrics should be exported as separate metrics (rather than grouping them together under a single exported metric). Each of these queues represent separate responsibilities of the Overseer, and this allows for more flexibility in the future to add more metrics for each queue and group those together per queue. 
+
+Based on the current status of solr-exporter.xml this is how the exported metrics will look:
+{
+  "name": "solr_metrics_overseer_stateUpdateQueueSize",
+  "type": "GAUGE",
+  "help": "See following URL: https://lucene.apache.org/solr/guide/metrics-reporting.html",
+  "label_names": [],
+  "label_values": [],
+  "value": 0
+}
+{
+  "name": "solr_metrics_overseer_collectionWorkQueueSize",
+  "type": "GAUGE",
+  "help": "See following URL: https://lucene.apache.org/solr/guide/metrics-reporting.html",
+  "label_names": [],
+  "label_values": [],
+  "value": 0
+}
+              </div></li><li><div>
+                Looks good now Saatchi!  I'll merge tomorrow with the following CHANGES.txt note under "Improvements":
+
+    SOLR-14965: metrics: Adds two metrics to the SolrCloud Overseer: solr_metrics_overseer_stateUpdateQueueSize
+    and solr_metrics_overseer_collectionWorkQueueSize with corresponding entries in the the Prometheus exporter's
+    default/stock configuration.  (Saatchi Bhalla, Megan Carey, Andrzej Białecki, David Smiley)
+
+@sigram if you prefer to or if you have lingering concerns, let me know.
+              </div></li><li><div>
+                Thanks @dsmiley! Looks good to me.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                You should never create instances of SolrMetricManager in your components. Always use the single instance constructed in `CoreContainer.getMetricManager()`.
+
+The only reason it kind of worked for you was that you made it a shared registry, which is created once per JVM - but as I explain below in this case a shared registry is incorrect and should not be used.
+              </div></li><li><div>
+                You should create a `SolrMetricsContext` in Overseer, and create a child context here, and then pass it as the first argument to `registerGauge`. This helps to properly unregister old gauges from the registry (because a new instance of `ClusterStateUpdater` is created each time this Overseer instance becomes the leader, and then it registers a new instance of gauge with the same name). Using a static string "overseer" defeats this mechanism, because it falsely indicates that the life-cycle of `ClusterStateUpdater` is the same as its parent object Overseer.
+
+Then in the `ClusterStateUpdater.close()` method you should unregister this gauge using the value of `solrMetricsContext.getTag()`. This prevents obscure reference leaks in the metrics registry.
+              </div></li><li><div>
+                Please use the context tag value here.
+              </div></li><li><div>
+                See above - this should never be done.
+              </div></li><li><div>
+                See above comments - you should create a child context here (from the one created in Overseer) and use it in this call, and then unregister this gauge using this context's tag value.
+              </div></li><li><div>
+                See above - use the tag value from the context.
+              </div></li><li><div>
+                Overseer registry CANNOT be a shared registry because it's possible to have multiple Overseers in a single JVM, especially in unit tests. This should be a regular per-CoreContainer registry, which is created within the scope of the instance available from CC.getMetricManager().
+              </div></li><li><div>
+                See above - this can't be a shared registry.
+              </div></li><li><div>
+                Thanks for the feedback, will update accordingly. 
+              </div></li><li><div>
+                @sigram Thanks for the feedback! Is there documentation around adding metrics that covers things like this? 
+              </div></li><li><div>
+                @sigram Updated the PR with those proposed changes. Whenever you're free to take another look I'd appreciate it! 
+              </div></li><li><div>
+                Are there any tests that instantiate OverseerCollectionConfigSetProcessor? (Just want to make sure this is the only time this method is used, since we changed the signature)
+              </div></li><li><div>
+                Same question here - would be good to double-check that this is the only place we instantiate OverseerTaskProcessor
+              </div></li><li><div>
+                We can update this doc comment now, since we are using the CoreContainer registry
+              </div></li><li><div>
+                chose to leave it this way - although we're using MetricManager from CoreContainer i'm still registering these metrics under "solr.overseer." 
+              </div></li><li><div>
+                Updated the one test that calls this thanks for the catch!
+              </div></li><li><div>
+                @megancarey unfortunately, there's not much documentation apart from the javadocs and user-level info in the RefGuide. We should create a doc in solr/dev-docs/metrics.
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

@@ -1,0 +1,742 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 178
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 If we tried 5 times and are unable to clear memory, abort
+ so we do not lose data
+              </div></li><li><div>
+                 Have to throw to upper layers.  I can't abort server from here.
+              </div></li><li><div>
+                 Failed to flush the region. Keep going.
+              </div></li><li><div>
+                 TODO: Why is this in here?  The flushsize of the region rather than the store?  St.Ack
+              </div></li><li><div>
+                *
+   * On flush, how much memory we will clear.
+   * Flush will first clear out the data in snapshot if any (It will take a second flush
+   * invocation to clear the current Cell set). If snapshot is empty, current
+   * Cell set will be flushed.
+   *
+   * @return size of data that is going to be flushed
+   
+              </div></li><li><div>
+                *
+   * @return The amount of memory we could flush from this memstore; usually this is equal to
+   * {@link #getMemStoreSize()} unless we are carrying snapshots and then it will be the size of
+   * outstanding snapshots.
+   
+              </div></li><li><div>
+                 TODO: Why is this in here?  It should be in Store and it should return the Store flush size,
+ not the Regions.  St.Ack
+              </div></li><li><div>
+                 First put something in current memstore, which will be in snapshot after flusher.prepare()
+              </div></li><li><div>
+                 Make sure it worked (above is sensitive to caching details in hadoop core)
+              </div></li><li><div>
+                 Check sizes.  Should still be the one entry.
+              </div></li><li><div>
+                 Only retry once.
+              </div></li><li><div>
+                *
+   * Test for Bug 2 of HBASE-10466.
+   * "Bug 2: Conditions for the first flush of region close (so-called pre-flush) If memstoreSize
+   * is smaller than a certain value, or when region close starts a flush is ongoing, the first
+   * flush is skipped and only the second flush takes place. However, two flushes are required in
+   * case previous flush fails and leaves some data in snapshot. The bug could cause loss of data
+   * in current memstore. The fix is removing all conditions except abort check so we ensure 2
+   * flushes for region close."
+   * @throws IOException 
+   
+              </div></li><li><div>
+                 Make a random put against our cf.
+              </div></li><li><div>
+                 Inject our faulty LocalFileSystem
+              </div></li><li><div>
+                 Do not run unit tests in parallel (? Why not?  It don't work?  Why not?  St.Ack)
+              </div></li><li><div>
+                 Second put something in current memstore
+              </div></li><li><div>
+                 Now add two entries so that on this next flush that fails, we can see if we
+ subtract the right amount, the snapshot size only.
+              </div></li><li><div>
+                 Fail a flush which means the current memstore will hang out as memstore 'snapshot'.
+              </div></li><li><div>
+                *
+   * Test we do not lose data if we fail a flush and then close.
+   * Part of HBase-10466.  Tests the following from the issue description:
+   * "Bug 1: Wrong calculation of HRegion.memstoreSize: When a flush fails, data to be flushed is
+   * kept in each MemStore's snapshot and wait for next flush attempt to continue on it. But when
+   * the next flush succeeds, the counter of total memstore size in HRegion is always deduced by
+   * the sum of current memstore sizes instead of snapshots left from previous failed flush. This
+   * calculation is problematic that almost every time there is failed flush, HRegion.memstoreSize
+   * gets reduced by a wrong value. If region flush could not proceed for a couple cycles, the size
+   * in current memstore could be much larger than the snapshot. It's likely to drift memstoreSize
+   * much smaller than expected. In extreme case, if the error accumulates to even bigger than
+   * HRegion's memstore size limit, any further flush is skipped because flush does not do anything
+   * if memstoreSize is not larger than 0."
+   * @throws Exception
+   
+              </div></li><li><div>
+                 What we are expecting
+              </div></li><li><div>
+                 Now add two entries to the foreground memstore.
+              </div></li><li><div>
+                 Put one item into memstore.  Measure the size of one item in memstore.
+              </div></li><li><div>
+                 Expected
+              </div></li><li><div>
+                 Initialize region
+              </div></li><li><div>
+                 Manufacture an outstanding snapshot -- fake a failed flush by doing prepare step only.
+              </div></li><li><div>
+                 Get some random bytes.
+              </div></li><li><div>
+                 Make it so all writes succeed from here on out
+              </div></li><li><div>
+                 Do a successful flush.  It will clear the snapshot only.  Thats how flushes work.
+ If already a snapshot, we clear it else we move the memstore to be snapshot and flush
+ it
+              </div></li><li><div>
+                 Make sure our memory accounting is right.
+              </div></li><li><div>
+                 Close with something in memstore and something in the snapshot.  Make sure all is cleared.
+              </div></li><li><div>
+                 Make it so all writes succeed from here on out so can close clean
+              </div></li><li><div>
+                 Now try close on top of a failing flush.
+              </div></li><li><div>
+                 Inject our faulty LocalFileSystem
+              </div></li><li><div>
+                 Even though we add a new kv, we expect the flushable size to be 'same' since we have
+ not yet cleared the snapshot -- the above flush failed.
+              </div></li><li><div>
+                 Size should be the foreground kv size.
+              </div></li><li><div>
+                *
+   * Test we do not lose data if we fail a flush and then close.
+   * Part of HBase-10466
+   * @throws Exception
+   
+              </div></li><li><div>
+                 Make sure it worked (above is sensitive to caching details in hadoop core)
+              </div></li><li><div>
+                 Initialize region
+              </div></li><li><div>
+                *
+   * Faulty file system that will fail if you write past its fault position the FIRST TIME
+   * only; thereafter it will succeed.  Used by {@link TestHRegion} too.
+   
+              </div></li><li><div>
+                 Only retry once.
+              </div></li><li><div>
+                 Flush.  Bug #1 from HBASE-10466.  Make sure size calculation on failed flush is right.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes
+                </div><div><b>message:</b> HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes
+
+git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1577353 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Forward port HBASE-10466, possible data loss when failed flushes
+                </div><div><b>description:</b> Critical data loss issues that we need to ensure are not in branches beyond 0.89fb.  Assigning myself.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                10464 and ... ?
+              </div></li><li><div>
+                oops.  fixed.
+              </div></li><li><div>
+                Making blocker on 0.96.2 which I'm trying to do now.
+              </div></li><li><div>
+                These should go into 0.98.0 then too? No sense releasing something with available fixes for data loss bugs. 
+              </div></li><li><div>
+                Whoa. Not good. Needs to be in 0.94 for sure.
+              </div></li><li><div>
+                Looks like we cover HBASE-10464 already (checked 0.94). HRegionServer.openRegion(...) calls checkOpen() first, which checks this.stopped || this.abortRequested. If anything we might need to add a check for {{stopping}} there.
+
+I am not sure I follow HBASE-10466 completely.
+
+              </div></li><li><div>
+                Is HBASE-10466 someway related to HBASE-5568?
+              </div></li><li><div>
+                Looks similar indeed. I was having a quick look at the code in 0.94 and couldn't make out anything wrong with it, offhand (didn't post that before, because I did not want to look like idiot if I was wrong - and I might yet be wrong :) )
+
+              </div></li><li><div>
+                We do not need HBASE-10464.  I took a look.  We spawn a thread to open regions.  The open handler already has this check for stopping or stopped regionserver host before we add region to online regions list.  We should be good.
+              </div></li><li><div>
+                Lemme change the blocker status. I don't think this is a block for 0.94.17.
+              </div></li><li><div>
+                I missed your comments lads.  Yeah, don't need hbase-10464.  I'm at 10466 now.  Will report back.  Had it as blocker for 0.96.2 only so I'd look at it.
+              </div></li><li><div>
+                HBASE-10466 is different to HBASE-5568.  As I read it, we could be carrying an extra snapshot if failed flush.  It does not look like it gets cleared flushed out on subsequent flush calls.  Instead we see:
+
+{code}
+    if (!this.snapshot.isEmpty()) {
+      LOG.warn("Snapshot called again without clearing previous. " +
+          "Doing nothing. Another ongoing flush or did we fail last attempt?");
+{code}
+
+Will report back.
+              </div></li><li><div>
+                &lt;ping&gt; :)
+              </div></li><li><div>
+                Thanks [~lhofhansl] Pinging myself now.
+              </div></li><li><div>
+                Writing tests to demo the "Bugs" listed at head of HBASE-10466.  We are messing up the heap calculation sizes on failed flush for sure.
+              </div></li><li><div>
+                Patch is forward-port of the core of HBASE-10466 with added unit tests around memory accounting in face of flush failures in TestHRegion but also in TestStore.  Has a bit of cleanup of TestStore making it junit4 while was in here.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12633410/10514.txt
+  against trunk revision .
+  ATTACHMENT ID: 12633410
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 7 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop1.1{color}.  The patch compiles against the hadoop 1.1 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.io.TestHeapSize
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-thrift.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8925//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Unit test fix.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12633446/10514v2.txt
+  against trunk revision .
+  ATTACHMENT ID: 12633446
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 7 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop1.1{color}.  The patch compiles against the hadoop 1.1 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.client.TestMultiParallel
+                  org.apache.hadoop.hbase.regionserver.wal.TestWALReplayCompressed
+                  org.apache.hadoop.hbase.regionserver.wal.TestWALReplay
+                  org.apache.hadoop.hbase.regionserver.wal.TestSecureWALReplay
+                  org.apache.hadoop.hbase.regionserver.TestParallelPut
+
+     {color:red}-1 core zombie tests{color}.  There are 2 zombie test(s): 	at org.apache.hadoop.hbase.security.visibility.TestVisibilityLabels.testVisibilityLabelsOnKillingOfRSContainingLabelsTable(TestVisibilityLabels.java:315)
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-thrift.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8927//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Fix assert that shouldn't be asserting on server abort.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12633477/10514v3.txt
+  against trunk revision .
+  ATTACHMENT ID: 12633477
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 7 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop1.1{color}.  The patch compiles against the hadoop 1.1 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     
+
+     {color:red}-1 core zombie tests{color}.  There are 3 zombie test(s): 	at org.apache.maven.surefire.junitcore.ConcurrentReporterManager.testSetCompleted(ConcurrentReporterManager.java:78)
+	at org.apache.maven.surefire.junitcore.JUnitCoreRunListener.testRunFinished(JUnitCoreRunListener.java:61)
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-thrift.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8928//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Retry.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12633507/10514v3.txt
+  against trunk revision .
+  ATTACHMENT ID: 12633507
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 7 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop1.1{color}.  The patch compiles against the hadoop 1.1 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     
+
+     {color:red}-1 core zombie tests{color}.  There are 2 zombie test(s): 	at org.apache.maven.surefire.junitcore.ConcurrentReporterManager.testSetCompleted(ConcurrentReporterManager.java:78)
+	at org.apache.maven.surefire.junitcore.JUnitCoreRunListener.testRunFinished(JUnitCoreRunListener.java:61)
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-thrift.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8930//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                My added tests are not closing the WAL (and making zombies).  Even fixing that, there are some stragglers still.  Looking.
+              </div></li><li><div>
+                Try now.  I wasn't closing the WAL that was being created when a region was created.
+
+TestHRegion is a little fragile.  testDurability was failing on mac os x for me when doing fsync call.  Would just hang.  Passes on linux.  Lets see how this does up against hadoopqa.
+              </div></li><li><div>
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12634093/10514v4.txt
+  against trunk revision .
+  ATTACHMENT ID: 12634093
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 10 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop1.1{color}.  The patch compiles against the hadoop 1.1 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in .
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-thrift.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8955//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                {code}
+-    long flushsize = this.memstoreSize.get();
++    long totalFlushableSize = 0;
+     status.setStatus("Preparing to flush by snapshotting stores");
+     List&lt;StoreFlushContext&gt; storeFlushCtxs = new ArrayList&lt;StoreFlushContext&gt;(stores.size());
+     long flushSeqId = -1L;
+@@ -1630,6 +1649,7 @@ public class HRegion implements HeapSize { // , Writable{
+       }
+ 
+       for (Store s : stores.values()) {
++        totalFlushableSize += s.getFlushableSize();
+
+...
+
+-      this.addAndGetGlobalMemstoreSize(-flushsize);
++      this.addAndGetGlobalMemstoreSize(-totalFlushableSize);
+
+{code}
+So when one snapshot was already in place in MemStore and we again undergo a flush request, now we dont decrease by the begin time memstoreSize. But we check with all MemStores.
+
+Now the MemStore returns the previous snapshot's size when one was in place.  The snapshot() to MemStore won't take new snaphot when already a snapshot is in place.
+
+This can make we decrease the memstore's snapshot size 2 times from this global memstore size? (When a flush requested while another was in progress)
+              </div></li><li><div>
+                Thanks for the review [~anoop.hbase]
+
+bq. So when one snapshot was already in place in MemStore and we again undergo a flush request, now we dont decrease by the begin time memstoreSize. But we check with all MemStores.
+
+Sorry.  Having trouble parsing the above.  Are you asking a question.  Yes, if a snapshot is in place already, and we call flush -- we flush the existing snapshot only... that is how this stuff has always worked but our memory accounting did not reflect this... it would subtrace memstore size even though memstore was in place still post flush when existing snapshot.
+
+bq. Now the MemStore returns the previous snapshot's size when one was in place. The snapshot() to MemStore won't take new snaphot when already a snapshot is in place.
+
+Yes.  This is how it works.  This patch does not change that.  This patch just makes our memory accounting align w/ how snapshotting/flush actually works.
+
+bq. ....When a flush requested while another was in progress....
+
+Again pardon me for not following....  Only one flush can be going on at a time (you can make a request any time).  I am not seeing how we can decrement twice the flush size.
+
+I can add new tests no problem if you can come up with a scenario.
+              </div></li><li><div>
+                Could this make a 0.98.1 RC this week?
+              </div></li><li><div>
+                [~apurtell] Just need review.
+              </div></li><li><div>
+                bq. Just need review.
+
+Jetlagged, back tomorrow.
+              </div></li><li><div>
+                bq.Only one flush can be going on at a time (you can make a request any time). 
+This created doubt for me
+{code}
+-    if (!abort &amp;&amp; !wasFlushing &amp;&amp; worthPreFlushing()) {
++    if (!abort &amp;&amp; worthPreFlushing()) {
+{code}
+
+Checking more closely now Stack.
+              </div></li><li><div>
+                Oh..  whatever doubt was there in my mind seems not an issue..  Reading these lines
+{code}
+synchronized (writestate) {
+      // Disable compacting and flushing by background threads for this
+      // region.
+      writestate.writesEnabled = false;
+      LOG.debug("Closing " + this + ": disabling compactions &amp; flushes");
+      waitForFlushesAndCompactions();
+    }
+    // If we were not just flushing, is it worth doing a preflush...one
+    // that will clear out of the bulk of the memstore before we put up
+    // the close flag?
+    if (!abort &amp;&amp; worthPreFlushing()) {
+{code}
+              </div></li><li><div>
+                lgtm
+
+This is a bit scary:
+{code}
++        int flushCount = 0;
++        while (this.getMemstoreSize().get() &gt; 0) {
++          try {
++            if (flushCount++ &gt; 0) {
++              LOG.info("Running extra flush (carrying snapshot?) " + this);
++            }
++            internalFlushcache(status);
++          } catch (IOException ioe) {
++            status.setStatus("Failed flush " + this + ", putting online again");
++            synchronized (writestate) {
++              writestate.writesEnabled = true;
++            }
++            // Have to throw to upper layers.  I can't abort server from here.
++            throw ioe;
++          }
++        }
+{code}
+We better be sure we never get the accounting wrong, or we'll see an endless loop. Will the loop ever have more than two iterations? 
+If not, we might want to limit the number of iterations to two
+{{for (int flushCount = 0; flushCount &lt; 2 &amp;&amp; this.getMemstoreSize().get() &gt; 0; flushCount++)}}
+or something like that...?
+              </div></li><li><div>
+                Ok.  Let me do that and abort the server if we cycle more than 3 times....  Thanks [~anoop.hbase] and [~lhofhansl]
+              </div></li><li><div>
+                What I am going to commit.
+              </div></li><li><div>
+                v5 lgtm. Like the new tests.
+              </div></li><li><div>
+                What I committed to 0.98 and to 0.96... small diffs.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12634589/10154v4.096.txt
+  against trunk revision .
+  ATTACHMENT ID: 12634589
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 10 new or modified tests.
+
+    {color:red}-1 patch{color}.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8981//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                FAILURE: Integrated in hbase-0.96-hadoop2 #237 (See [https://builds.apache.org/job/hbase-0.96-hadoop2/237/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577386)
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-TRUNK #5007 (See [https://builds.apache.org/job/HBase-TRUNK/5007/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577353)
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                SUCCESS: Integrated in HBase-0.98 #227 (See [https://builds.apache.org/job/HBase-0.98/227/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577371)
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                Want a 0.94 patch [~lhofhansl] ?
+              </div></li><li><div>
+                Yes sir.
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.98-on-Hadoop-1.1 #213 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/213/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577371)
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/branches/0.98/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                Patch for 0.94. Does not include tests.
+              </div></li><li><div>
+                Hmm.. Something wrong w/ TestHRegion?  If I do below...
+
+MAVEN_OPTS=" -Xmx3g" ~/bin/mvn/bin/mvn  test -Dtest=TestHRegion
+
+It just complains nothing to run, with or without my patch.
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12634644/10154v94.txt
+  against trunk revision .
+  ATTACHMENT ID: 12634644
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:red}-1 patch{color}.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/8985//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                SUCCESS: Integrated in hbase-0.96 #346 (See [https://builds.apache.org/job/hbase-0.96/346/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577386)
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/branches/0.96/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                Hi [~stack],
+
+{quote}
+Patch for 0.94. Does not include tests
+{quote}
+Will the v94 patch be integrated into 0.94 branch w/o tests? Or you're still working on it? 
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-TRUNK-on-Hadoop-1.1 #117 (See [https://builds.apache.org/job/HBase-TRUNK-on-Hadoop-1.1/117/])
+HBASE-10514 Forward port HBASE-10466, possible data loss when failed flushes (stack: rev 1577353)
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/HStore.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/MemStore.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/StoreConfigInformation.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegionBusyWait.java
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java
+
+              </div></li><li><div>
+                [~carp84] Applying to 0.94 w/o backporting the tests.
+
+I tested the patch by running test suite.  I could not figure how to make just TestHRegion work.  Patch seems to work.  Let me commit.
+
+              </div></li><li><div>
+                Resolving.  Committed to all branches 0.94-0.99.
+              </div></li><li><div>
+                bq. I tested the patch by running test suite.  I could not figure how to make just TestHRegion work. 
+
+Maybe 'mvn test -PlocalTests -Dtest=TestHRegion'
+              </div></li><li><div>
+                FAILURE: Integrated in hbase-0.96-hadoop2 #239 (See [https://builds.apache.org/job/hbase-0.96-hadoop2/239/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577667)
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in hbase-0.96 #349 (See [https://builds.apache.org/job/hbase-0.96/349/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577667)
+* /hbase/branches/0.96/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.98 #232 (See [https://builds.apache.org/job/HBase-0.98/232/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577666)
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-TRUNK #5012 (See [https://builds.apache.org/job/HBase-TRUNK/5012/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577664)
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.98-on-Hadoop-1.1 #217 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/217/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577666)
+* /hbase/branches/0.98/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-TRUNK-on-Hadoop-1.1 #118 (See [https://builds.apache.org/job/HBase-TRUNK-on-Hadoop-1.1/118/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577664)
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                {code}
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /home/jenkins/jenkins-slave/workspace/HBase-0.94/trunk/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java:[3265,15] cannot find symbol
+symbol  : class DroppedSnapshotException
+location: class org.apache.hadoop.hbase.regionserver.TestHRegion
+{code}
+
+Probably from this. Will create an addendum shortly.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                SUCCESS: Integrated in HBase-0.94.18-security #7 (See [https://builds.apache.org/job/HBase-0.94.18-security/7/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.94-security #447 (See [https://builds.apache.org/job/HBase-0.94-security/447/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                SUCCESS: Integrated in HBase-0.94.18 #17 (See [https://builds.apache.org/job/HBase-0.94.18/17/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.94 #1328 (See [https://builds.apache.org/job/HBase-0.94/1328/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.94-on-Hadoop-2 #57 (See [https://builds.apache.org/job/HBase-0.94-on-Hadoop-2/57/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.94-JDK7 #91 (See [https://builds.apache.org/job/HBase-0.94-JDK7/91/])
+HBASE-10751 TestHRegion testWritesWhileScanning occasional fail since HBASE-10514 went in (stack: rev 1577784)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+HBASE-10514 Addendum; fixing missing import (larsh: rev 1577782)
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/regionserver/TestHRegion.java
+
+              </div></li></ol></div></div></html>

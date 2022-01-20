@@ -1,0 +1,89 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 23
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files (Raj Kumar Singh, reviewed by Karen Coppage)
+                </div><div><b>message:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files (Raj Kumar Singh, reviewed by Karen Coppage)
+
+Closes (#1085)
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files
+                </div><div><b>body:</b> Creating the PR to fix the multi base-files seems in the table directory after Insert overwrite operations. As a fix, I will be checking doing changes in the initiator thread where it will check for the compaction eligibility.
+1. Initiator thread will check for the if there are no delta and obsolete files containing the base then it will put the table in compaction queue. 
+2. TxnStore will be having one more method to request cleanup.
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @klcopp I have created the test case, pushing the table/part into the compaction queue will help Worker#isEnoughToCompact to mark it clean
+              </div></li><li><div>
+                @rajkrrsingh Thanks for creating the test case!
+
+[the isEnoughToCompact check will not mark it clean if there are obsolete directories. markCompacted puts it into "ready for cleaning" state](https://github.com/apache/hive/blob/master/ql/src/java/org/apache/hadoop/hive/ql/txn/compactor/Worker.java#L501-L507)
+I think taking this route is much simpler and less error-prone than expanding the TxnHandler API.
+If you take it, you'll need to add startWorker() to the test.
+              </div></li><li><div>
+                @rajkrrsingh  TestPigHBaseStorageHandler is causing issues on every test rerun, even though the changes that broke it were reverted. I guess the tests don't check out a fresh master branch every time? Anyway, if you close and reopen this PR the tests should pass.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Why do we need this?
+              </div></li><li><div>
+                Maybe use findAny() instead of count()?
+              </div></li><li><div>
+                Unnecessary parenthesis and also I think dir.getObsolete().size() check is not needed, since multiBase is true
+              </div></li><li><div>
+                Meybe we should move this select out to a different method, since this is the copy of the one used in compact().
+Also I would add state cleaning as well. We do not want 2 cleaners running parallel
+              </div></li><li><div>
+                I think, we really want to ignore this, so we would like to return here.
+              </div></li><li><div>
+                Could we do this in a try with resource construct?
+              </div></li><li><div>
+                Again this is very similar that we have in compact(), we might to create a new method for it and reuse.
+              </div></li><li><div>
+                Also using a prepared statement would be nice, I think
+              </div></li><li><div>
+                Can we use preparedstatement here as well?
+              </div></li><li><div>
+                try with resource would be nice here too
+              </div></li><li><div>
+                If there is some exception before in the finally, this unlockInternal will not be called. Isn't this a problem?
+              </div></li><li><div>
+                Further clarified thoughts:
+- It would be good to have a single method inserting to the COMPACTION_QUEUE table
+- We should use a preparedstatement for this so JDBC execution could be faster
+- TxnHandler.compact() should check for only INITIATED/WORKING status - it might still worth tho start a new compaction, even if the cleanup not finished yet
+- TxnHandler.requestCleanup() should check for INITIATED/WORKING/READY_TO_CLEAN status (the first 2 should not be there anyway), so we do not queue multiple compactions for the same table/partition
+
+Thanks,
+Peter
+              </div></li><li><div>
+                without setting explicitly here, insert query find it null and skip the [here](https://github.com/rajkrrsingh/hive/blob/3d12959339b22becee0aa986852049b46867f016/standalone-metastore/metastore-server/src/main/java/org/apache/hadoop/hive/metastore/txn/TxnHandler.java#L5288)
+              </div></li><li><div>
+                incorporated the suggested change.
+              </div></li><li><div>
+                incorporated the suggested change.
+
+
+              </div></li><li><div>
+                incorporated the suggested change.
+
+
+              </div></li><li><div>
+                moved this logline to debug and return from here.
+              </div></li><li><div>
+                incorporated the suggested change.
+
+
+              </div></li><li><div>
+                incorporated the suggested change.
+
+
+              </div></li><li><div>
+                incorporated the suggested change for stmt and pst. try-resource with dbConn make code clumsy with so many nested try-catch so I skipped it.
+
+
+              </div></li><li><div>
+                unlockInternal is mostly applicable for derby so I think it should not create the problem.
+              </div></li><li><div>
+                Nit: I think this is misleading, and unnecessary since we have already logged the values of deltaSize and multiBase.
+              </div></li><li><div>
+                opportunity: add:
+startWorker();
+Assert.assertEquals("ready for cleaning",rsp.getCompacts().get(0).getState());
+              </div></li><li><div>
+                nit: no newline at end of file
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

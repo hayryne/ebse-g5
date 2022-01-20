@@ -1,0 +1,113 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 35
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Added TS-3392 to CHANGES.
+                </div><div><b>message:</b> Added TS-3392 to CHANGES.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Static initialization order fiasco
+                </div><div><b>description:</b> There is a static initialization order bug in ATS core on Mac OS X when it is configured with --enable-reclaimable-freelist. The static variable declared in file Arena.cc 
+static Allocator defaultSizeArenaBlock("ArenaBlock", DEFAULT_ALLOC_SIZE);
+uses another static variable x_pthread_mutexattr_t _g_mattr declared in file ink_mutex.cc, which have not been initialized. It causes ATS to abort early.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                The variable SVC_PROP_FLAGS in file WccpConfig.cc is never used. Thus it should be removed.
+              </div></li><li><div>
+                Hmmm, couple of things:
+
+1) Does this not introduce a new potential race condition around the initialization? Typically, people use pthread_once() to assure initialization happens once, and exclusively (which has the downside of typically a lock around the initialization code, which might be undesirable here).
+
+2) I don't understand the reclaimable freelist code, but can we not rearrange the dependencies in some way that the global g_mattr is initialized properly once and for all? Can we change it such that it's initialized before (together) with the other dependencies? There gotta be something better to do here?
+
+3) IF we're to rewrite this, such that g_mattr is now a function, we should drop the g_ naming convention (it's indicative of a global variable).
+
+
+              </div></li><li><div>
+                1) Good point.  _g_mattr is only used once by ink_mutex_init. The only possibility for a race condition is that ink_mutex_init is called concurrently after threads are started and in C+++03 or before. In C+++11, there is guarantee that static variables are constructed only once. See: http://stackoverflow.com/questions/8102125/is-local-static-variable-initialization-thread-safe-in-c11. In the enable_reclaimable_freelist situation, it is called before threads are initialized and even before main is called. 
+
+2) Another way to go is to move the definition of _g_mattr to Arena.cc before the definition of defaultSizeArenaBlock. C++ standard guarantees that static variables in the same translation unit are initialized in the order they are defined. 
+
+3) It seems that 2) is a better solution for this because it does not introduce any risk for race conditions although the possibility for a race condition is extremely low. I will knock up a patch.
+              </div></li><li><div>
+                Updated the patch according to the comments by Leif.
+              </div></li><li><div>
+                Cool, option #2 sounds good to me too, +1.
+              </div></li><li><div>
+                Since we are eliminating the reclaimable freelist (see TS-3542), do we still need this? Do we need a different patch ?
+              </div></li><li><div>
+                I will look into this to see whether it still causes any problem. If it still does, a new patch will arrive shortly.
+
+              </div></li><li><div>
+                GitHub user zeb209 opened a pull request:
+
+    https://github.com/apache/trafficserver/pull/197
+
+    Fix for  the static init fiasco bug TS-3392
+
+    This fix is rebased for the bug TS-3392.
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/zeb209/trafficserver static_init_fiasco
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/trafficserver/pull/197.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #197
+    
+----
+commit bcb692f33fdc8bfdd75c89f700d4ac3f90f90913
+Author: Bin Zeng &lt;bzeng@linkedin.com&gt;
+Date:   2015-04-23T18:22:20Z
+
+    Fix the header file missing error for out-of-tree build for cppapi.
+
+commit 28fe444a1ce1a950291e299ae56605f36d670acd
+Author: zeb209 &lt;ezengbin@gmail.com&gt;
+Date:   2015-05-01T20:42:08Z
+
+    Merge branch 'master' of git://git.apache.org/trafficserver into cppapi-out-of-tree-build
+
+commit b6bfdf3d77e8365d04bb0082ed4abb55421c81d8
+Author: zeb209 &lt;ezengbin@gmail.com&gt;
+Date:   2015-05-01T22:13:54Z
+
+    Fix the static initialization fiasco bug TS-3392.
+
+----
+
+              </div></li><li><div>
+                The bug still exists. The fix has been updated. It should be able to be applied cleanly.  You can also merge it on github with pull request #197.
+              </div></li><li><div>
+                Commit 303010e92627fe9561de780c1efbd8f01e3bdf44 in trafficserver's branch refs/heads/master from [~bzeng]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=303010e ]
+
+TS-3392 Fix static initialization order, for OSX
+
+              </div></li><li><div>
+                Commit 566194cc9a418c5f3d0a29e74e251e117e9d10a4 in trafficserver's branch refs/heads/master from [~zwoop]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=566194c ]
+
+Added TS-3392 to CHANGES.
+
+              </div></li><li><div>
+                Github user zwoop commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/197#issuecomment-98299598
+  
+    I've committed, this, didn't realize there as a github pull request as well. You can close this.
+
+              </div></li><li><div>
+                Github user zeb209 commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/197#issuecomment-98300852
+  
+    Thanks. I will close it.
+
+              </div></li><li><div>
+                Github user zeb209 closed the pull request at:
+
+    https://github.com/apache/trafficserver/pull/197
+
+              </div></li></ol></div></div></html>

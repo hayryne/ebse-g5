@@ -1,0 +1,100 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 333
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+   * &lt;p&gt;
+   * When using a custom merge policy that allows triggering synchronous merges on commit
+   * (see {@link MergePolicy#findFullFlushMerges(org.apache.lucene.index.MergeTrigger, org.apache.lucene.index.SegmentInfos, org.apache.lucene.index.MergePolicy.MergeContext)}),
+   * a timeout (in milliseconds) can be set for those merges to finish. Use {@code &lt;maxCommitMergeWaitTime&gt;1000&lt;/maxCommitMergeWaitTime&gt;} in the {@code &lt;indexConfig&gt;} section.
+   * See {@link IndexWriterConfig#setMaxCommitMergeWaitMillis(long)}.
+   * &lt;/p&gt;
+   * &lt;p&gt;
+   * Note that as of Solr 8.6, no {@code MergePolicy} shipped with Lucene/Solr make use of
+   * {@code MergePolicy.findFullFlushMerges}, which means this setting has no effect unless a custom {@code MergePolicy} is used.
+   * &lt;/p&gt; 
+   
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-14582: Expose IWC.setMaxCommitMergeWaitMillis in Solr's index config (#1602)
+                </div><div><b>message:</b> SOLR-14582: Expose IWC.setMaxCommitMergeWaitMillis in Solr's index config (#1602)
+
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> SOLR-14582: Expose IWC.setMaxCommitMergeWaitMillis in Solr's index config
+                </div><div><b>body:</b> LUCENE-8962 added the ability to merge segments synchronously on commit. This isn't done by default and the default MergePolicy won't do it, but custom merge policies can take advantage of this. Solr allows plugging in custom merge policies, so if someone wants to make use of this feature they could, however, they need to set IndexWriterConfig.maxCommitMergeWaitSeconds to something greater than 0.
+Since this is an expert feature, I plan to document it only in javadoc and not the ref guide.
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @dsmiley, looks good? should I merge?
+              </div></li><li><div>
+                I think this breaks the build... I'm seeing a failure in org.apache.solr.core.TestConfig#testDefaults which doesn't seem to account for maxCommitMergeWaitTime also lots of failures on http://fucit.org/solr-jenkins-reports/failure-report.html in last 24h for this test
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                I don't think we need to clear this, the test runner takes care of it and will reset it to whatever it was previously if it had been set?
+              </div></li><li><div>
+                Lets use `org.apache.lucene.index.IndexWriterConfig#DEFAULT_MAX_COMMIT_MERGE_WAIT_MILLIS`.  In the future, this constant might change, and that's good.
+              </div></li><li><div>
+                I appreciate documentation but _redundant_ documentation -- not so much.  Can't you do a @see or @link to one place -- `org.apache.lucene.index.IndexWriterConfig#setMaxCommitMergeWaitMillis`
+              </div></li><li><div>
+                I noticed you omitted a "Millis" setting.  I think either you should add this for clarity, or for consistency with some other times I see in solrconfig (e.g. maxTime), use suffix "Time".
+              </div></li><li><div>
+                I don't think that's a good idea. "-1" from the Solr perspective means "don't set the value".  If someone has a custom merge policy where they have a different value set by code, we would be changing it to `org.apache.lucene.index.IndexWriterConfig#DEFAULT_MAX_COMMIT_MERGE_WAIT_MILLIS` without them having set anything on `solrconfig.xml`. 
+&gt; In the future, this constant might change, and that's good.
+
+That's fine, since we aren't calling `iwc.setMaxCommitMergeWaitMillis(...)` in the default case, we'll be taking the new default for all cores where no alternative configuration has been provided.
+              </div></li><li><div>
+                I had it with `MIllis` and I removed that because I didn't see anything else in the solrconfig that included the unit for time (it's always milliseconds). You are suggesting `maxCommitMergeWaitMillis` or `maxCommitMergeTime`?
+              </div></li><li><div>
+                The "Wait" part is important too too.  "maxCommitMergeWaitTime" is my preference
+              </div></li><li><div>
+                Please verify if this is so before removing.  Perhaps there may be a difference in behavior between gradle &amp; IntelliJ; so try both.  I thought clearing wasn't necessary as well but I recall hearing from someone (@dweiss ?) that the auto-clearing wasn't working.
+              </div></li><li><div>
+                Yes, I checked. I believe the cleanup is after the class. I discussed with @madrob, and I'll move the cleanup to a `tearDown()` method
+              </div></li><li><div>
+                I didn't want to drop the link/see by itself, so I added a single line introducing the functionality. After that I added specifics about Solr (solrconfig configuration and the warning setting). I honestly don't see the problem here.
+              </div></li><li><div>
+                ok, good point.
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Expose IWC.setMaxCommitMergeWaitMillis as an expert feature in Solr's index config
+                </div><div><b>description:</b> LUCENE-8962 added the ability to merge segments synchronously on commit. This isn't done by default and the default {{MergePolicy}} won't do it, but custom merge policies can take advantage of this. Solr allows plugging in custom merge policies, so if someone wants to make use of this feature they could, however, they need to set {{IndexWriterConfig.maxCommitMergeWaitSeconds}} to something greater than 0.
+Since this is an expert feature, I plan to document it only in javadoc and not the ref guide.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Should we have a warning if somebody tries to use this with the default MergePolicy to indicate that there will be no effect?
+              </div></li><li><div>
+                You mean, make the code check for the MP? maybe this would bite us if the MP is updated to do support this? Do you think a warning in the docs is enough?
+              </div></li><li><div>
+                David, there is a PR for this that I forgot to merge(don’t know why it’s not linked here): https://github.com/apache/lucene-solr/pull/1602
+              </div></li><li><div>
+                Commit e6275d9970702c250b69792b5491ef9d94b08638 in lucene-solr's branch refs/heads/master from Tomas Eduardo Fernandez Lobbe
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=e6275d9 ]
+
+SOLR-14582: Expose IWC.setMaxCommitMergeWaitMillis in Solr's index config (#1602)
+
+
+              </div></li><li><div>
+                Commit 1b4a905115783d53288d43faf5867a2aa945dfd9 in lucene-solr's branch refs/heads/branch_8x from Tomas Eduardo Fernandez Lobbe
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=1b4a905 ]
+
+SOLR-14582: Expose IWC.setMaxCommitMergeWaitMillis in Solr's index config (#1602)
+
+
+              </div></li><li><div>
+                Broken test, AwaitsFix 
+              </div></li><li><div>
+                Thanks Gus, I'll take a look
+              </div></li><li><div>
+                Commit f827286a2c752e67f42d58f68ac0bccdf5e62e0b in lucene-solr's branch refs/heads/master from Gus Heck
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=f827286 ]
+
+SOLR-14582 - Broken test needs fix (#1727)
+
+AwaitsFix for ConfigTest#testDefaults()
+              </div></li><li><div>
+                Commit bd1dd6bdfb5b64bc4c332dc5d11aa4a9e300e0b8 in lucene-solr's branch refs/heads/master from Tomas Eduardo Fernandez Lobbe
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=bd1dd6b ]
+
+SOLR-14582: Fix TestConfig
+
+              </div></li><li><div>
+                Commit 0398ae1c1b1ddd16293752fcff59cf61bf7b9138 in lucene-solr's branch refs/heads/branch_8x from Tomas Eduardo Fernandez Lobbe
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=0398ae1 ]
+
+SOLR-14582: Fix TestConfig
+
+              </div></li><li><div>
+                Closing after the 8.7.0 release
+              </div></li></ol></div></div></html>

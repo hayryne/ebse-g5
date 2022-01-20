@@ -1,0 +1,243 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 34
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 coverity[ctor_dtor_leak]
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin
+                </div><div><b>message:</b> TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin
+Suppressing the error
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> CID 1328817:  Resource leaks  (CTOR_DTOR_LEAK) in multiplexer plugin
+                </div><div><b>description:</b> {code}
+** CID 1328817:  Resource leaks  (CTOR_DTOR_LEAK)
+/plugins/experimental/multiplexer/dispatch.cc: 39 in Request::Request(const std::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt;&gt;&amp;, tsapi_mbuffer *, tsapi_mloc *)()
+
+
+________________________________________________________________________________________________________
+*** CID 1328817:  Resource leaks  (CTOR_DTOR_LEAK)
+/plugins/experimental/multiplexer/dispatch.cc: 39 in Request::Request(const std::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt;&gt;&amp;, tsapi_mbuffer *, tsapi_mloc *)()
+33     
+34     extern Statistics statistics;
+35     
+36     extern size_t timeout;
+37     
+38     Request::Request(const std::string &amp;h, const TSMBuffer b, const TSMLoc l)
+   CID 1328817:  Resource leaks  (CTOR_DTOR_LEAK)
+   The constructor allocates field "io" of "Request" but there is no destructor.
+39       : host(h), length(TSHttpHdrLengthGet(b, l)), io(new ats::io::IO())
+40     {
+41       assert(!host.empty());
+42       assert(b != NULL);
+43       assert(l != NULL);
+44       assert(io != NULL);
+
+{code}
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Commit 5bb63b298755f6364cdeddce4c9a07b3136dae8c in trafficserver's branch refs/heads/master from [~bcall]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=5bb63b2 ]
+
+TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin
+
+              </div></li><li><div>
+                Hi, where this report comes from? is this a static analysis tool?
+              </div></li><li><div>
+                It is from coverity
+              </div></li><li><div>
+                Commit 9c83d811784b42273ed40666214dbe911ddc88cd in trafficserver's branch refs/heads/master from [~bcall]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=9c83d81 ]
+
+Revert "TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin"
+
+This reverts commit 5bb63b298755f6364cdeddce4c9a07b3136dae8c.
+
+This really isn't a leak it is deleted in another place.
+
+              </div></li><li><div>
+                Commit d478ae53f20f470dada60fa38b9c4e33b41bf1ac in trafficserver's branch refs/heads/master from [~bcall]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=d478ae5 ]
+
+TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin
+Suppressing the error
+
+              </div></li><li><div>
+                I'm fine with this for now, but we really ought to address this, If I understand, it copies the pointer out of the class, and then delete's the data elsewhere. That seems like a really bad anti-pattern, leading to incomprehensible code.
+              </div></li><li><div>
+                I think the best solution is to migrate to a smart point where the ownership is handled and abstracted by the class. I will work on a patch for that. Thanks for reporting the problem.
+              </div></li><li><div>
+                GitHub user dmorilha opened a pull request:
+
+    https://github.com/apache/trafficserver/pull/316
+
+    TS-3984: CID 1328817: multiplexer patch to use std::auto_ptr
+
+    @bcall @sc0ttbeardsley @zwoop a fix for multiplexer, I am not sure how coverity flags it... please let me know your thoughts...
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/dmorilha/trafficserver multiplexer-patch
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/trafficserver/pull/316.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #316
+    
+----
+commit 04c9f66e436ec489fe434f38715c5e3cf09a6987
+Author: Daniel Vitor Morilha &lt;dmorilha@yahoo-inc.com&gt;
+Date:   2015-10-30T01:42:31Z
+
+    TS-3984: CID 1328817: multiplexer patch to use std::auto_ptr
+
+----
+
+              </div></li><li><div>
+                Github user bryancall commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/316#issuecomment-153545093
+  
+    I got a bunch of errors applying this patch:
+    dispatch.cc:46:26: error: comparison between NULL and non-pointer ('std::auto_ptr&lt;ats::io::IO&gt;' and NULL) [-Werror,-Wnull-arithmetic]
+      (__builtin_expect(!(io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 46, "io != NULL") : (void)0);
+                          ~~ ^  ~~~~~~
+    dispatch.cc:46:26: error: invalid operands to binary expression ('std::auto_ptr&lt;ats::io::IO&gt;' and 'long')
+      (__builtin_expect(!(io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 46, "io != NULL") : (void)0);
+                          ~~ ^  ~~~~~~
+    dispatch.cc:221:38: error: comparison between NULL and non-pointer ('std::auto_ptr&lt;ats::io::IO&gt;' and NULL) [-Werror,-Wnull-arithmetic]
+        (__builtin_expect(!(iterator-&gt;io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 221, "iterator-&gt;io != NULL") : (void)0);
+                            ~~~~~~~~~~~~ ^  ~~~~~~
+    dispatch.cc:221:38: error: invalid operands to binary expression ('std::auto_ptr&lt;ats::io::IO&gt;' and 'long')
+        (__builtin_expect(!(iterator-&gt;io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 221, "iterator-&gt;io != NULL") : (void)0);
+                            ~~~~~~~~~~~~ ^  ~~~~~~
+    dispatch.cc:234:38: error: comparison between NULL and non-pointer ('std::auto_ptr&lt;ats::io::IO&gt;' and NULL) [-Werror,-Wnull-arithmetic]
+        (__builtin_expect(!(iterator-&gt;io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 234, "iterator-&gt;io != NULL") : (void)0);
+                            ~~~~~~~~~~~~ ^  ~~~~~~
+    dispatch.cc:234:38: error: invalid operands to binary expression ('std::auto_ptr&lt;ats::io::IO&gt;' and 'long')
+        (__builtin_expect(!(iterator-&gt;io != __null), 0) ? __assert_rtn(__func__, "dispatch.cc", 234, "iterator-&gt;io != NULL") : (void)0);
+                            ~~~~~~~~~~~~ ^  ~~~~~~
+    In file included from dispatch.cc:26:
+    In file included from ./dispatch.h:27:
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1/memory:1673:31: error: no matching constructor for initialization of 'Request'
+                ::new((void*)__p) _Up(std::__1::forward&lt;_Args&gt;(__args)...);
+                                  ^   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1/memory:1600:18: note: in instantiation of function template specialization 'std::__1::allocator&lt;Request&gt;::construct&lt;Request, Request&gt;' requested here
+                {__a.construct(__p, std::__1::forward&lt;_Args&gt;(__args)...);}
+                     ^
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1/memory:1453:14: note: in instantiation of function template specialization 'std::__1::allocator_traits&lt;std::__1::allocator&lt;Request&gt; &gt;::__construct&lt;Request, Request&gt;' requested here
+                {__construct(__has_construct&lt;allocator_type, _Tp*, _Args...&gt;(),
+                 ^
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1/vector:1609:25: note: in instantiation of function template specialization 'std::__1::allocator_traits&lt;std::__1::allocator&lt;Request&gt; &gt;::construct&lt;Request, Request&gt;' requested here
+            __alloc_traits::construct(this-&gt;__alloc(),
+                            ^
+    dispatch.cc:205:7: note: in instantiation of member function 'std::__1::vector&lt;Request, std::__1::allocator&lt;Request&gt; &gt;::push_back' requested here
+        r.push_back(Request(host, buffer, location));
+          ^
+    ./dispatch.h:51:8: note: candidate constructor (the implicit copy constructor) not viable: expects an l-value for 1st argument
+    struct Request {
+           ^
+    dispatch.cc:38:10: note: candidate constructor not viable: requires 3 arguments, but 1 was provided
+    Request::Request(const std::string &amp;h, const TSMBuffer b, const TSMLoc l)
+
+              </div></li><li><div>
+                Github user dmorilha commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/316#issuecomment-153567597
+  
+    In our internal version everything worked fine. I will check it tomorrow. Thanks for reporting. 
+
+              </div></li><li><div>
+                Github user bryancall commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/316#issuecomment-153580444
+  
+    Compile with -Werror or look at the warnings.
+
+              </div></li><li><div>
+                Github user dmorilha commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/316#issuecomment-154508604
+  
+    I think I got it all fixed now.
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/trafficserver/pull/316
+
+              </div></li><li><div>
+                [~dmorilha]
+I was able to remove the const_cast from Request &amp;Request::operator=(Request &amp;r) by removing the const in the incoming argument.  However, I get errors when trying to do the same with Request::Request(const Request &amp;r).
+
+I will commit as is, but if you have a suggestion on getting rid of the const_cast I think it would be cleaner code.  Here is the error I am getting:
+{code}
+In file included from dispatch.cc:26:0:
+dispatch.h:54:8: warning: 'template&lt;class&gt; class std::auto_ptr' is deprecated [-Wdeprecated-declarations]
+   std::auto_ptr&lt;ats::io::IO&gt; io;
+        ^
+In file included from /usr/include/c++/5.1.1/memory:81:0,
+                 from dispatch.h:27,
+                 from dispatch.cc:26:
+/usr/include/c++/5.1.1/bits/unique_ptr.h:49:28: note: declared here
+   template&lt;typename&gt; class auto_ptr;
+                            ^
+In file included from /usr/include/c++/5.1.1/x86_64-redhat-linux/bits/c++allocator.h:33:0,
+                 from /usr/include/c++/5.1.1/bits/allocator.h:46,
+                 from /usr/include/c++/5.1.1/memory:63,
+                 from dispatch.h:27,
+                 from dispatch.cc:26:
+/usr/include/c++/5.1.1/ext/new_allocator.h: In instantiation of 'void __gnu_cxx::new_allocator&lt;_Tp&gt;::construct(_Up*, _Args&amp;&amp; ...) [with _Up = Request; _Args = {Request}; _Tp = Request]':
+/usr/include/c++/5.1.1/bits/alloc_traits.h:256:4:   required from 'static std::_Require&lt;typename std::allocator_traits&lt;_Alloc&gt;::__construct_helper&lt;_Tp, _Args&gt;::type&gt; std::allocator_traits&lt;_Alloc&gt;::_S_construct(_Alloc&amp;, _Tp*, _Args&amp;&amp; ...) [with _Tp = Request; _Args = {Request}; _Alloc = std::allocator&lt;Request&gt;; std::_Require&lt;typename std::allocator_traits&lt;_Alloc&gt;::__construct_helper&lt;_Tp, _Args&gt;::type&gt; = void]'
+/usr/include/c++/5.1.1/bits/alloc_traits.h:402:16:   required from 'static decltype (_S_construct(__a, __p, (forward&lt;_Args&gt;)(std::allocator_traits::construct::__args)...)) std::allocator_traits&lt;_Alloc&gt;::construct(_Alloc&amp;, _Tp*, _Args&amp;&amp; ...) [with _Tp = Request; _Args = {Request}; _Alloc = std::allocator&lt;Request&gt;; decltype (_S_construct(__a, __p, (forward&lt;_Args&gt;)(std::allocator_traits::construct::__args)...)) = &lt;type error&gt;]'
+/usr/include/c++/5.1.1/bits/vector.tcc:96:30:   required from 'void std::vector&lt;_Tp, _Alloc&gt;::emplace_back(_Args&amp;&amp; ...) [with _Args = {Request}; _Tp = Request; _Alloc = std::allocator&lt;Request&gt;]'
+/usr/include/c++/5.1.1/bits/stl_vector.h:932:21:   required from 'void std::vector&lt;_Tp, _Alloc&gt;::push_back(std::vector&lt;_Tp, _Alloc&gt;::value_type&amp;&amp;) [with _Tp = Request; _Alloc = std::allocator&lt;Request&gt;; std::vector&lt;_Tp, _Alloc&gt;::value_type = Request]'
+dispatch.cc:223:48:   required from here
+/usr/include/c++/5.1.1/ext/new_allocator.h:120:4: error: invalid initialization of non-const reference of type 'Request&amp;' from an rvalue of type 'Request'
+  { ::new((void *)__p) _Up(std::forward&lt;_Args&gt;(__args)...); }
+    ^
+dispatch.cc:50:1: note:   initializing argument 1 of 'Request::Request(Request&amp;)'
+ Request::Request(Request &amp;r) : host(r.host), length(r.length), io(r.io)
+ ^
+In file included from /usr/include/c++/5.1.1/memory:64:0,
+                 from dispatch.h:27,
+                 from dispatch.cc:26:
+/usr/include/c++/5.1.1/bits/stl_construct.h: In instantiation of 'void std::_Construct(_T1*, _Args&amp;&amp; ...) [with _T1 = Request; _Args = {Request}]':
+/usr/include/c++/5.1.1/bits/stl_uninitialized.h:75:18:   required from 'static _ForwardIterator std::__uninitialized_copy&lt;_TrivialValueTypes&gt;::__uninit_copy(_InputIterator, _InputIterator, _ForwardIterator) [with _InputIterator = std::move_iterator&lt;Request*&gt;; _ForwardIterator = Request*; bool _TrivialValueTypes = false]'
+/usr/include/c++/5.1.1/bits/stl_uninitialized.h:126:15:   required from '_ForwardIterator std::uninitialized_copy(_InputIterator, _InputIterator, _ForwardIterator) [with _InputIterator = std::move_iterator&lt;Request*&gt;; _ForwardIterator = Request*]'
+/usr/include/c++/5.1.1/bits/stl_uninitialized.h:281:37:   required from '_ForwardIterator std::__uninitialized_copy_a(_InputIterator, _InputIterator, _ForwardIterator, std::allocator&lt;_Tp&gt;&amp;) [with _InputIterator = std::move_iterator&lt;Request*&gt;; _ForwardIterator = Request*; _Tp = Request]'
+/usr/include/c++/5.1.1/bits/stl_uninitialized.h:303:2:   required from '_ForwardIterator std::__uninitialized_move_if_noexcept_a(_InputIterator, _InputIterator, _ForwardIterator, _Allocator&amp;) [with _InputIterator = Request*; _ForwardIterator = Request*; _Allocator = std::allocator&lt;Request&gt;]'
+/usr/include/c++/5.1.1/bits/vector.tcc:422:8:   required from 'void std::vector&lt;_Tp, _Alloc&gt;::_M_emplace_back_aux(_Args&amp;&amp; ...) [with _Args = {Request}; _Tp = Request; _Alloc = std::allocator&lt;Request&gt;]'
+/usr/include/c++/5.1.1/bits/vector.tcc:101:23:   required from 'void std::vector&lt;_Tp, _Alloc&gt;::emplace_back(_Args&amp;&amp; ...) [with _Args = {Request}; _Tp = Request; _Alloc = std::allocator&lt;Request&gt;]'
+/usr/include/c++/5.1.1/bits/stl_vector.h:932:21:   required from 'void std::vector&lt;_Tp, _Alloc&gt;::push_back(std::vector&lt;_Tp, _Alloc&gt;::value_type&amp;&amp;) [with _Tp = Request; _Alloc = std::allocator&lt;Request&gt;; std::vector&lt;_Tp, _Alloc&gt;::value_type = Request]'
+dispatch.cc:223:48:   required from here
+/usr/include/c++/5.1.1/bits/stl_construct.h:75:7: error: invalid initialization of non-const reference of type 'Request&amp;' from an rvalue of type 'Request'
+     { ::new(static_cast&lt;void*&gt;(__p)) _T1(std::forward&lt;_Args&gt;(__args)...); }
+       ^
+dispatch.cc:50:1: note:   initializing argument 1 of 'Request::Request(Request&amp;)'
+ Request::Request(Request &amp;r) : host(r.host), length(r.length), io(r.io)
+ ^
+Makefile:738: recipe for target 'dispatch.lo' failed
+make[3]: *** [dispatch.lo] Error 1
+make[3]: Leaving directory '/home/bcall/dev/apache/trafficserver/plugins/experimental/multiplexer'
+Makefile:625: recipe for target 'all-recursive' failed
+make[2]: *** [all-recursive] Error 1
+make[2]: Leaving directory '/home/bcall/dev/apache/trafficserver/plugins/experimental'
+Makefile:615: recipe for target 'all-recursive' failed
+make[1]: *** [all-recursive] Error 1
+make[1]: Leaving directory '/home/bcall/dev/apache/trafficserver/plugins'
+Makefile:670: recipe for target 'all-recursive' failed
+make: *** [all-recursive] Error 1
+{code}
+
+
+              </div></li><li><div>
+                Commit 9f4d1d1e3d13ae3af59b3fb483a419c3ddb4a56d in trafficserver's branch refs/heads/master from [~bcall]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=9f4d1d1 ]
+
+TS-3984: CID 1328817: Resource leaks (CTOR_DTOR_LEAK) in multiplexer plugin
+Put back const for the assignment operator
+
+              </div></li><li><div>
+                Looks like I might have to add const back into the assignment operator because of ubuntu_12_04 and centos_6.  Building again and hopefully it will build successfully.
+              </div></li></ol></div></div></html>

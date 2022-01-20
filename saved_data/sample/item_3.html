@@ -1,0 +1,535 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 3
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-1872. QuorumPeer is not shutdown in few cases (Rakesh R via fpj)
+                </div><div><b>message:</b> ZOOKEEPER-1872. QuorumPeer is not shutdown in few cases (Rakesh R via fpj)
+
+
+
+git-svn-id: https://svn.apache.org/repos/asf/zookeeper/branches/branch-3.4@1566453 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> QuorumPeer is not shutdown in few cases
+                </div><div><b>description:</b> Few cases are leaving quorumpeer running after the test case execution. Needs proper teardown for these.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Attached patch where I'm shutting down the quorum peers.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12625958/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 6 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1900//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12625975/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 6 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1902//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1902//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1902//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                I've been noticing some strange intermittent behavior in some test cases on jenkins, and it is possible that something like this is the root cause. For example, testCorruption in one instance didn't even complete the setup.
+
+The changes you propose look good, the only small change I'd like to suggest is that since we are adding a try block, we might as well catch the exception and fail. What do you think, [~rakeshr]?
+              </div></li><li><div>
+                bq.The changes you propose look good, the only small change I'd like to suggest is that since we are adding a try block, we might as well catch the exception and fail. What do you think, Rakesh R?
+I think catching exception and explicitly failing will not make much difference, anyway these exceptions will thrown out and fail the test case. If requires am happy to rebase it.
+
+Ah in trunk some more places like LeaderSessionTrackerTest#testCreateEphemeral needs to close the quorum. I'll have a closer look once again.
+              </div></li><li><div>
+                Catching exceptions is not a big deal, it is fine if you prefer to leave like that. 
+
+Do you want to hold this patch while you're looking into the the other test case? It could be a separate jira, right?
+              </div></li><li><div>
+                Hi [~fpj], Thanks for the review and comments describing your thoughts. I've attached latest trunk patch including few more locations where it was missing quorum shutdown. Could you please go through the latest one. I'm interested to see the outcome of this patch in our jenkins build.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626117/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 18 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1903//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Will do, thanks [~rakeshr].
+              </div></li><li><div>
+                I'm not able to find the reason why patch is not applying:(
+              </div></li><li><div>
+                Resubmitting the same patch again to trigger the QA report.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626260/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 18 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1905//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Sorry for the late review, so feel free to ignore it if this ship has departed. Some issues:
+
+This looks weird:
+
+{noformat}
++        for (int i = 0; i &lt; numServers; i++) {
++            // checks to avoid unexpected cases
++            if (servers != null &amp;&amp; servers.mt != null) {
++                if (i &lt; servers.mt.length) {
++                    servers.mt[i].shutdown();
++                }
++            }
++        }
+{noformat}
+
+can servers really become null while you are looping? Looks like the check should be enough before the loop or otherwise we should synchronize around it?
+
+Nit:
+
+{noformat}
++                LOG.info("Starting peer " + peer.getId());
+{noformat}
+
+string extrapolation over concatenation (ditto for other calls to LOG.info &amp; friends).
+
+In:
+
+{noformat}
++            String failure = verifyThreadCount(peerList, 4);
++            if (failure != null) {
++                Assert.fail(failure);
++            }
+{noformat}
+
+simplify with:
+
+{noformat}
++            String failure = verifyThreadCount(peerList, 4);
++            Assert.assertEquals(failure, failure, null);
+{noformat}
+
+ditto for the other recurrences of this construct. 
+
+
+
+              </div></li><li><div>
+                Thanks [~rgs] for the comments. 
+Following is shown in the change list, because I've added a try/catch block. Anyway your point is correct and I will take care.
+{code}
++            String failure = verifyThreadCount(peerList, 4);
++            if (failure != null) {
++                Assert.fail(failure);
++            }
+{code}
+
+Presently I'm still checking the reason for not applying the patch, 
+'-1 patch. The patch command could not apply the patch.'
+              </div></li><li><div>
+                Hello Rakesh,
+
+it fails because of line endings. ReconfigTest.java in the repository has dos format and the patch has unix format.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626301/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 18 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1906//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Thanks German for the hint, let me try it.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626329/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 18 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1907//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Ah something strange with the ReConfigTest.java, German could you please have a look at the latest patch and do a try in your env.
+              </div></li><li><div>
+                thanks for the update [~rakeshr]. two last points with regard to the not null check in tearDown():
+
+{noformat}
++        for (int i = 0; i &lt; numServers; i++) {
++            // checks to avoid unexpected cases
++            if (servers.mt != null) {
++                if (i &lt; servers.mt.length) {
++                    servers.mt[i].shutdown();
++                }
++            }
++        }
+{noformat}
+
+why can't servers.mt be checked before looping as well? Can it really change while we loop? It also sounds like using &lt; servers.mt.length as the loop's ending condition would make things simpler. 
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626410/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 18 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1908//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Thanks [~rgs] for the comments. 'servers' will not be changed while executing teardown() and we can safely move the null checks outside for loop. Attached latest patch, here I've moved the null checks before looping.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626484/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 22 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1910//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626505/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1911//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1911//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1911//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                I've created separate jira ZOOKEEPER-1874 to do cleanups of ReconfigTest independently .
+
+Hi Flavio, could you please have a look at the latest patch.
+              </div></li><li><div>
+                Attaching branch 3.4 patch also
+              </div></li><li><div>
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12626510/ZOOKEEPER-1872.patch
+  against trunk revision 1561672.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1912//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1912//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1912//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                The 3.4 patch works fine for me, but the trunk patch fails on two test classes that are being changed with a timeout:
+
+{noformat}
+    [junit] Running org.apache.zookeeper.test.LeaderSessionTrackerTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.LeaderSessionTrackerTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.QuorumTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.QuorumTest FAILED (timeout)
+{noformat}
+
+I ran this on windows.
+              </div></li><li><div>
+                Looks like in my env it is passing always.
+[~fpj] can you share the logs (if any) and which test case has failed. Also, is it failing consistently in your env ?
+              </div></li><li><div>
+                LeaderSessionTracker logs, this is the same one attached to ZOOKEEPER-1833.
+              </div></li><li><div>
+                Here is the list of tests that fail for me:
+
+{noformat}
+    [junit] Running org.apache.zookeeper.server.ZxidRolloverTest
+    [junit] Running org.apache.zookeeper.server.ZxidRolloverTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.server.ZxidRolloverTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.server.util.DynamicConfigBCTest
+    [junit] Tests run: 1, Failures: 1, Errors: 0, Time elapsed: 0.089 sec
+    [junit] Test org.apache.zookeeper.server.util.DynamicConfigBCTest FAILED
+
+    [junit] Running org.apache.zookeeper.test.FollowerResyncConcurrencyTest
+    [junit] Running org.apache.zookeeper.test.FollowerResyncConcurrencyTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.FollowerResyncConcurrencyTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.LeaderSessionTrackerTest
+    [junit] Running org.apache.zookeeper.test.LeaderSessionTrackerTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.LeaderSessionTrackerTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.QuorumTest
+    [junit] Running org.apache.zookeeper.test.QuorumTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.QuorumTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.ReadOnlyModeTest
+    [junit] Running org.apache.zookeeper.test.ReadOnlyModeTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.ReadOnlyModeTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.ReconfigTest
+    [junit] Running org.apache.zookeeper.test.ReconfigTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 0 sec
+    [junit] Test org.apache.zookeeper.test.ReconfigTest FAILED (timeout)
+
+    [junit] Running org.apache.zookeeper.test.ServerCnxnTest
+    [junit] Tests run: 1, Failures: 0, Errors: 1, Time elapsed: 4.276 sec
+    [junit] Test org.apache.zookeeper.test.ServerCnxnTest FAILED
+
+    [junit] Running org.apache.zookeeper.test.TruncateTest
+    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 11.921 sec
+    [junit] Test org.apache.zookeeper.test.TruncateTest FAILED
+{noformat}
+              </div></li><li><div>
+                Thanks Flavio for the details. Something strange, its showing 'elapsed: 0 sec' for all the failed tests. Have you seen the test cases are passing without this patch ?.
+              </div></li><li><div>
+                Small correction to my previous comments. 'elapsed: 0 sec' showing for few failed tests. 
+
+Also, is it possible to get threaddumps, [see the comments on 1833 | https://issues.apache.org/jira/browse/ZOOKEEPER-1833?focusedCommentId=13892961&amp;page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13892961]
+              </div></li><li><div>
+                I think the failed tests say failed because they have timed out. I can't run them right now, but I believe those were failing even without the patch. I still owe you a stack trace.
+              </div></li><li><div>
+                Here is the stack trace, [~rakeshr]. 
+              </div></li><li><div>
+                Given that we can't figure out what's going with trunk for this issue, I was thinking about checking in the 3.4 version of the patch and leave the trunk patch for later, just so that we don't delay the 3.4.6 release. Does it work?
+              </div></li><li><div>
+                Yes I agree. +1 for 3.4 fixing and will do trunk failure analysis separately.
+
+In trunk, probably some more places it needs cleanup of the server. In normal run it should get IOException when establishing connection and would fail. Just to confirm my understanding can you please run the test alone and see its passing?
+              </div></li><li><div>
+                I have run LeaderSessionTrackerTest in isolation and it fails the same way. This is on Windows 8.1.
+              </div></li><li><div>
+                hm. I've an env with windows 7 and java version "1.6.0_23", here its always passing.
+              </div></li><li><div>
+                Branch 3.4: Committed revision 1566453.
+              </div></li><li><div>
+                Perhaps create a new jira specifically to address this on trunk? That way you can close this (easier accounting). I'd suggest fixing it on trunk asap though, before we lose track of it.
+              </div></li><li><div>
+                Hi Flavio, 
+I have observed the [win3.4 jenkins reports|https://builds.apache.org/job/ZooKeeper-3.4-WinVS2008_java] 433, 434, 435. In 433 and 435 it shows good improvement, earlier it was failing very frequently. But 434 shows sign of dirty quorumpeers, I feel still some more corner case has to be addressed to make it stable.
+
+bq.I have run LeaderSessionTrackerTest in isolation and it fails the same way
+Yeah, today I have used windows + java7 in trunk. The test case is hanging like the way you had mentioned. I'm doubting any behavioral change in socket channels in java6 and java7
+
+[~phunt] yeah should tackle trunk too
+              </div></li><li><div>
+                [~rakeshr] what's the status of this issue?
+              </div></li><li><div>
+                [~fpj], [~rakeshr]: ping (for 3.5.0) 
+              </div></li><li><div>
+                [~fpj], [~rakeshr]: ping ping :-)
+              </div></li><li><div>
+                The current status of the issue is:
+
+- The proposed patch is committed in branch-3.4. Now, trunk and 3.5.2 branches are pending.
+
+- {{LeaderSessionTrackerTest}} test case is failing in trunk. Unfortunately couldn't identify the root cause. I agree with [~phunt]'s comment to raise a separate issue if this test case is still failing. On the other side will push the changes suggested by this jira, OK ?. Attached another patch for the trunk, please review!
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12765142/ZOOKEEPER-1872.patch
+  against trunk revision 1706631.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    -1 core tests.  The patch failed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2907//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2907//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2907//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1 I'll re-trigger the build.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12765142/ZOOKEEPER-1872.patch
+  against trunk revision 1711694.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    -1 core tests.  The patch failed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2940//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2940//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2940//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12765142/ZOOKEEPER-1872.patch
+  against trunk revision 1711694.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    -1 core tests.  The patch failed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2941//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2941//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2941//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12765142/ZOOKEEPER-1872.patch
+  against trunk revision 1711694.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 15 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2942//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2942//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/2942//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Thanks [~michim]. This time we have got a clean build report.
+              </div></li><li><div>
+                Merged:
+
+trunk - https://github.com/apache/zookeeper/commit/696f0315cc135167d3aa7019a2c2e037651abb74
+3.5 - https://github.com/apache/zookeeper/commit/53b107905ca4fd890ad2d6f09f006b03b1d1c1cb
+
+Thanks [~rakeshr]!
+              </div></li><li><div>
+                SUCCESS: Integrated in ZooKeeper-trunk #2810 (See [https://builds.apache.org/job/ZooKeeper-trunk/2810/])
+ZOOKEEPER-1872: QuorumPeer is not shutdown in few cases
+(Rakesh R. via rgs) (rgs: [http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1712218])
+* trunk/CHANGES.txt
+* trunk/src/java/test/org/apache/zookeeper/server/quorum/QuorumPeerMainTest.java
+* trunk/src/java/test/org/apache/zookeeper/test/CnxManagerTest.java
+* trunk/src/java/test/org/apache/zookeeper/test/JMXEnv.java
+* trunk/src/java/test/org/apache/zookeeper/test/LeaderSessionTrackerTest.java
+* trunk/src/java/test/org/apache/zookeeper/test/QuorumTest.java
+
+              </div></li></ol></div></div></html>

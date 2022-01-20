@@ -1,0 +1,115 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 115
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-15313][SQL] EmbedSerializerInFilter rule should keep exprIds of output of surrounded SerializeFromObject.
+                </div><div><b>message:</b> [SPARK-15313][SQL] EmbedSerializerInFilter rule should keep exprIds of output of surrounded SerializeFromObject.
+
+## What changes were proposed in this pull request?
+
+The following code:
+
+```
+val ds = Seq(("a", 1), ("b", 2), ("c", 3)).toDS()
+ds.filter(_._1 == "b").select(expr("_1").as[String]).foreach(println(_))
+```
+
+throws an Exception:
+
+```
+org.apache.spark.sql.catalyst.errors.package$TreeNodeException: Binding attribute, tree: _1#420
+ at org.apache.spark.sql.catalyst.errors.package$.attachTree(package.scala:50)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1.applyOrElse(BoundAttribute.scala:88)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1.applyOrElse(BoundAttribute.scala:87)
+
+...
+ Cause: java.lang.RuntimeException: Couldn't find _1#420 in [_1#416,_2#417]
+ at scala.sys.package$.error(package.scala:27)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1$$anonfun$applyOrElse$1.apply(BoundAttribute.scala:94)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1$$anonfun$applyOrElse$1.apply(BoundAttribute.scala:88)
+ at org.apache.spark.sql.catalyst.errors.package$.attachTree(package.scala:49)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1.applyOrElse(BoundAttribute.scala:88)
+ at org.apache.spark.sql.catalyst.expressions.BindReferences$$anonfun$bindReference$1.applyOrElse(BoundAttribute.scala:87)
+...
+```
+
+This is because `EmbedSerializerInFilter` rule drops the `exprId`s of output of surrounded `SerializeFromObject`.
+
+The analyzed and optimized plans of the above example are as follows:
+
+```
+== Analyzed Logical Plan ==
+_1: string
+Project [_1#420]
++- SerializeFromObject [staticinvoke(class org.apache.spark.unsafe.types.UTF8String, StringType, fromString, input[0, scala.Tuple2]._1, true) AS _1#420,input[0, scala.Tuple2]._2 AS _2#421]
+   +- Filter &lt;function1&gt;.apply
+      +- DeserializeToObject newInstance(class scala.Tuple2), obj#419: scala.Tuple2
+         +- LocalRelation [_1#416,_2#417], [[0,1800000001,1,61],[0,1800000001,2,62],[0,1800000001,3,63]]
+
+== Optimized Logical Plan ==
+!Project [_1#420]
++- Filter &lt;function1&gt;.apply
+   +- LocalRelation [_1#416,_2#417], [[0,1800000001,1,61],[0,1800000001,2,62],[0,1800000001,3,63]]
+```
+
+This PR fixes `EmbedSerializerInFilter` rule to keep `exprId`s of output of surrounded `SerializeFromObject`.
+
+The plans after this patch are as follows:
+
+```
+== Analyzed Logical Plan ==
+_1: string
+Project [_1#420]
++- SerializeFromObject [staticinvoke(class org.apache.spark.unsafe.types.UTF8String, StringType, fromString, input[0, scala.Tuple2]._1, true) AS _1#420,input[0, scala.Tuple2]._2 AS _2#421]
+   +- Filter &lt;function1&gt;.apply
+      +- DeserializeToObject newInstance(class scala.Tuple2), obj#419: scala.Tuple2
+         +- LocalRelation [_1#416,_2#417], [[0,1800000001,1,61],[0,1800000001,2,62],[0,1800000001,3,63]]
+
+== Optimized Logical Plan ==
+Project [_1#416]
++- Filter &lt;function1&gt;.apply
+   +- LocalRelation [_1#416,_2#417], [[0,1800000001,1,61],[0,1800000001,2,62],[0,1800000001,3,63]]
+```
+
+## How was this patch tested?
+
+Existing tests and I added a test to check if `filter and then select` works.
+
+Author: Takuya UESHIN &lt;ueshin@happy-camper.st&gt;
+
+Closes #13096 from ueshin/issues/SPARK-15313.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> SPARK-1455: Better isolation for unit tests.
+                </div><div><b>body:</b> This is a simple first step towards avoiding running the Hive tests
+whenever possible.
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                 Merged build triggered. 
+
+              </div></li><li><div>
+                Merged build started. 
+
+              </div></li><li><div>
+                Merged build finished. 
+
+              </div></li><li><div>
+                Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/14160/
+
+              </div></li><li><div>
+                I killed this test on purpose to trigger a re-test. Jenkins, test this please.
+
+              </div></li><li><div>
+                Jenkins, retest this please.
+
+              </div></li><li><div>
+                 Merged build triggered. 
+
+              </div></li><li><div>
+                Merged build started. 
+
+              </div></li><li><div>
+                Merged build finished. All automated tests passed.
+
+              </div></li><li><div>
+                All automated tests passed.
+Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/14161/
+
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

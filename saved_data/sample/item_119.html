@@ -1,0 +1,204 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 119
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-22829] Add new built-in function date_trunc()
+                </div><div><b>message:</b> [SPARK-22829] Add new built-in function date_trunc()
+
+## What changes were proposed in this pull request?
+
+Adding date_trunc() as a built-in function.
+`date_trunc` is common in other databases, but Spark or Hive does not have support for this. `date_trunc` is commonly used by data scientists and business intelligence application such as Superset (https://github.com/apache/incubator-superset).
+We do have `trunc` but this only works with 'MONTH' and 'YEAR' level on the DateType input.
+
+date_trunc() in other databases:
+AWS Redshift: http://docs.aws.amazon.com/redshift/latest/dg/r_DATE_TRUNC.html
+PostgreSQL: https://www.postgresql.org/docs/9.1/static/functions-datetime.html
+Presto: https://prestodb.io/docs/current/functions/datetime.html
+
+## How was this patch tested?
+
+Unit tests
+
+(Please explain how this patch was tested. E.g. unit tests, integration tests, manual tests)
+(If this patch involves UI changes, please attach a screenshot; otherwise, remove this)
+
+Please review http://spark.apache.org/contributing.html before opening a pull request.
+
+Author: Youngbin Kim &lt;ykim828@hotmail.com&gt;
+
+Closes #20015 from youngbink/date_trunc.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-22829] Add new built-in function date_trunc()
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+Adding date_trunc() as a built-in function.
+`date_trunc` is common in other databases, but Spark or Hive does not have support for this. `date_trunc` is commonly used by data scientists and business intelligence application such as Superset (https://github.com/apache/incubator-superset).
+We do have `trunc` but this only works with 'MONTH' and 'YEAR' level on the DateType input.
+
+date_trunc() in other databases:
+AWS Redshift: http://docs.aws.amazon.com/redshift/latest/dg/r_DATE_TRUNC.html
+PostgreSQL: https://www.postgresql.org/docs/9.1/static/functions-datetime.html
+Presto: https://prestodb.io/docs/current/functions/datetime.html
+
+
+## How was this patch tested?
+
+Unit tests
+
+(Please explain how this patch was tested. E.g. unit tests, integration tests, manual tests)
+(If this patch involves UI changes, please attach a screenshot; otherwise, remove this)
+
+Please review http://spark.apache.org/contributing.html before opening a pull request.
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @gatorsmile @cloud-fan 
+              </div></li><li><div>
+                ok to test
+              </div></li><li><div>
+                we need to create a JIRA ticket
+              </div></li><li><div>
+                @cloud-fan and @youngbink how about reviving https://github.com/apache/spark/pull/14788 with a configuration to control this?
+
+AWS Redshift seems having `TRUNC` which just converts a timestamp to a date whereas we have Spark's `trunc` which supports date formats. This is not quite equivalent. I think Spark's `trunc` is more like Redshift's `DATE_TRUNC`.
+
+PostgreSQL does not have `trunc` but has `date_trunc` where we can specify the format and returns a timestamp always.
+
+Presto also looks not having a duplicated functionality.
+
+I think we can simply introduce an alias for `trunc` after resolving https://github.com/apache/spark/pull/14788 if the naming matters.
+
+Did I maybe miss something?
+              </div></li><li><div>
+                @HyukjinKwon  Just took a look at this PR #14788. 
+
+My point of mentioning those databases was just to give examples of the function that Spark doesn't support but other databases commonly do. (They all have this `date_trunc` which takes `timestamp` and output `timestamp`)
+As you said, we could extend `trunc` and simply create an alias `date_trunc`, but it's actually not as simple. For e.g, PR #14788 won't be able to handle the following command collectly on PySpark:
+```
+df = spark.createDataFrame([('1997-02-28 05:02:11',)], ['d'])
+df.select(functions.trunc(df.d, 'year').alias('year')).collect()  
+df.select(functions.trunc(df.d, 'SS').alias('SS')).collect() 
+```
+This is because `trunc(string, string)` isn't correctly handled. We could find a way around this and get it working, but after having a discussion with @cloud-fan, @gatorsmile, @rednaxelafx and Reynold, we thought adding `date_trunc` is the simplest way for now. 
+
+
+
+
+
+              </div></li><li><div>
+                &gt; after having a discussion with @cloud-fan, @gatorsmile, @rednaxelafx and Reynold
+
+Where did the discussion happen? Was this offline discussion? I also want to actively join in the discussion. Many implementations of the trunc works differently and I think we decide the "right" behaviour after sufficient discussion.
+
+If we don't fix the stuff about #14788 in 2.3.0 timeline, it could be even more difficult because we need to keep the previous behaviour.
+              </div></li><li><div>
+                **[Test build #85083 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85083/testReport)** for PR 20015 at commit [`f94f401`](https://github.com/apache/spark/commit/f94f401bcfd765b21c3fb466041b42a605d6a814).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds no public classes.
+              </div></li><li><div>
+                OK. I am fine if you all guys strongly feel about this.
+              </div></li><li><div>
+                Yeah keep any substantive discussion on the public lists. Sometimes a side conversation happens; summarize the points here.
+
+We've rejected a lot of other functions that other DBs, but not Hive, support. Spark mostly follows Hive, and for everything else, there are UDFs. I'm not against this so much as not clear why it's exceptional
+              </div></li><li><div>
+                We had an offline discussion and wanna send this out to get more feedbacks. So generally just adding `date_trunc` is pretty straightforward and makes Spark consistent with other databases about this function, while extending `trunc` to support timestamp type is a better API design.
+              </div></li><li><div>
+                If we haven't get a similar function, I would have gone +1 but what I am less sure is `date_trunc` actually quite sounds a better version of `trunc` to be honest. Seems both also extend the same parent here `TruncTime`.
+
+I feel like we are trying to add this better version alone by working around because it takes a relatively larger change to update other related functions consistently.
+              </div></li><li><div>
+                I get `date_trunc` is common in other DBMS. I can see that this can be done now and we can still proceed `trunc`, etc. later. So, I am fine but still less sure tho.
+              </div></li><li><div>
+                hmm...even if we decide to change this later, I honestly think merging `trunc` and `date_trunc` would be simple, only touching a couple of files (mostly `datetimeExpressions.scala`).
+This PR isn't too small as you said, but most of the codes here can be used without modification if we are to merge `date_trunc`. 
+              </div></li><li><div>
+                SPARK-17174 originally described few functions related with hour, min, etc. but I received an advice to fix up other related functions too even though they could also be done alone too. I agreed with doing other functions too at that time and I tried to propose as so.
+
+I am saying I think this PR actually more targets adding another (better) version of `trunc` to support day, hour, min, etc. in the format. In this case, I think we should deduplicate/support the logics with related functions too.
+
+Ah, so, I think I am less sure about why this should be done alone leaving out other related changes, and other functions we (I) usually reject.
+
+and I think you and @cloud-fan say the reasons are, it's common and this PR targets a separate functionality consistent with other DBMS.
+              </div></li><li><div>
+                - The API proposed by this PR is consistent with the other DBs. 
+- The implementation does not introduce the behavior changes. 
+
+The implementation is clean and the PR quality is pretty good. 
+
+              </div></li><li><div>
+                **[Test build #85131 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85131/testReport)** for PR 20015 at commit [`3547b7c`](https://github.com/apache/spark/commit/3547b7c0bf8caa972e018f6875e4b0f599c4e12f).
+ * This patch **fails Spark unit tests**.
+ * This patch merges cleanly.
+ * This patch adds the following public classes _(experimental)_:
+  * `trait TruncInstant extends BinaryExpression with ImplicitCastInputTypes `
+              </div></li><li><div>
+                **[Test build #85132 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85132/testReport)** for PR 20015 at commit [`b12ba92`](https://github.com/apache/spark/commit/b12ba92add942c087dd45933464937479fc24bcd).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds the following public classes _(experimental)_:
+  * `trait TruncInstant extends BinaryExpression with ImplicitCastInputTypes `
+              </div></li><li><div>
+                **[Test build #85140 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85140/testReport)** for PR 20015 at commit [`80a1959`](https://github.com/apache/spark/commit/80a195989bd138fade5910cbf495b472a57ce445).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds the following public classes _(experimental)_:
+  * `trait TruncInstant extends BinaryExpression with ImplicitCastInputTypes `
+              </div></li><li><div>
+                **[Test build #85141 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85141/testReport)** for PR 20015 at commit [`0d1a8cb`](https://github.com/apache/spark/commit/0d1a8cbc922bc410d8d4a69c26b16290773a197c).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds the following public classes _(experimental)_:
+  * `trait TruncInstant extends BinaryExpression with ImplicitCastInputTypes `
+              </div></li><li><div>
+                LGTM
+              </div></li><li><div>
+                Thanks! Merged to master
+              </div></li><li><div>
+                **[Test build #85146 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/85146/testReport)** for PR 20015 at commit [`238d7d4`](https://github.com/apache/spark/commit/238d7d470c583c910bccbca8bbcaa681b67d6025).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds the following public classes _(experimental)_:
+  * `trait TruncInstant extends BinaryExpression with ImplicitCastInputTypes `
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Can we use a timestamp string like `1997-02-28 05:02:11` to show the difference from `trunc` a bit more clearly?
+              </div></li><li><div>
+                Seems `input` and `truncFunc` descriptions missing.
+              </div></li><li><div>
+                nit: Since this is a time, it can be `val t = ...`
+              </div></li><li><div>
+                Maybe `TruncInstant`? I received this advice before and I liked it too. Not a big deal tho.
+              </div></li><li><div>
+                `// unknown format or too small level`?
+              </div></li><li><div>
+                nit: one space each more.
+              </div></li><li><div>
+                Could we make those lowercased too?
+              </div></li><li><div>
+                Maybe, `'second', 'minute', 'hour', 'week', 'month' and 'quarter'`
+              </div></li><li><div>
+                Why do we need a type parameter `T`?
+              </div></li><li><div>
+                Can we bring quarter and week forward, maybe to 3 and 4? Then it's more conform to the order of time granularity and max-level design is not influenced.
+              </div></li><li><div>
+                Maybe `truncFunc: (Any, Int) =&gt; Any` is enough? So we don't need to use the `T`, but I'm not sure if this is better... 
+              </div></li><li><div>
+                Let us use the lower case and also update the other functions in this file. For example, `ToUnixTimestamp`
+              </div></li><li><div>
+                nit: d -&gt; ts or t
+              </div></li><li><div>
+                Nit: `YYYY` -&gt; `yyyy`
+              </div></li><li><div>
+                Also update the original `trunc`
+              </div></li><li><div>
+                Maybe, `time` -&gt; `instant`.
+              </div></li><li><div>
+                Remove `@return`
+              </div></li><li><div>
+                Remove this line.
+              </div></li><li><div>
+                `date` -&gt; `ts`.
+              </div></li><li><div>
+                `d` -&gt; `t` or `ts`.
+              </div></li><li><div>
+                `test` -&gt; `testTrunc` ?
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

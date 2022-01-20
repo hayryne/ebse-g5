@@ -1,0 +1,94 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 305
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> This closes #409
+                </div><div><b>message:</b> This closes #409
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> bump sshj to same jclouds version [merge after jclouds 2.0 upgrade]
+                </div><div><b>body:</b> please use `https://github.com/apache/brooklyn-server/compare/master...andreaturli:upgrade-sshj?w=1` to review this pr
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @andreaturli Do we want to defer merging this until jclouds 2.0.0 is released, and we have updated brooklyn to depend on 2.0.0? It looks like jclouds 1.9.2 (which brooklyn still depends on) depends on 0.8.1. See
+https://github.com/jclouds/jclouds/blob/rel/jclouds-1.9.2/drivers/sshj/pom.xml#L92
+
+              </div></li><li><div>
+                @aledsage good point, not sure. there are some users that may solve some problems by using this version. BTW jclouds 2 is close, as there is already a rc2 around.
+
+              </div></li><li><div>
+                I also have integration test failures on this branch:
+
+```
+  SshjToolIntegrationTest.testAsyncExecAbortsIfProcessFails:273 expected [false] but found [true]
+  SshjToolIntegrationTest.testAsyncExecTimesOut:234 exec took 301 seconds expected [true] but found [false]
+```
+
+In both cases the behaviour actually being tested works as expected but it fails to clean up temporary files afterwards, blocking on this line of `SshjTool`:
+
+```
+int execDeleteResult = asInt(acquire(new ShellAction(deleteTemporaryFilesCommand(), out, err, pollTimeout)), -1)
+```
+
+The tests block waiting for the channel to close:
+
+```
+"main" #1 prio=5 os_prio=31 tid=0x00007fd9fc800000 nid=0x1703 waiting on condition [0x0000700000217000]
+   java.lang.Thread.State: TIMED_WAITING (parking)
+        at sun.misc.Unsafe.park(Native Method)
+        - parking to wait for  &lt;0x00000007b9ff5468&gt; (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
+        at java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:215)
+        at java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2163)
+        at net.schmizz.concurrent.Promise.tryRetrieve(Promise.java:170)
+        at net.schmizz.concurrent.Promise.retrieve(Promise.java:137)
+        at net.schmizz.concurrent.Event.await(Event.java:103)
+        at net.schmizz.sshj.connection.channel.AbstractChannel.join(AbstractChannel.java:259)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool$ShellAction.create(SshjTool.java:1007)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool$ShellAction.create(SshjTool.java:924)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool.acquire(SshjTool.java:625)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool.acquire(SshjTool.java:611)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool$2.run(SshjTool.java:433)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool.execScriptAsyncAndPoll(SshjTool.java:544)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjTool.execScript(SshjTool.java:316)
+        at org.apache.brooklyn.util.core.internal.ssh.sshj.SshjToolIntegrationTest.testAsyncExecTimesOut(SshjToolIntegrationTest.java:221)
+        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+```
+
+If you enable sshj's debug log you'll see lots of messages like:
+
+```
+DEBUG net.schmizz.concurrent.Promise [main]: Awaiting &lt;&lt;chan#4 / close&gt;&gt;
+```
+
+              </div></li><li><div>
+                I think it's better wait for jclouds 2 then
+
+              </div></li><li><div>
+                @andreaturli agreed - can you change the PR's title to say that it is for once we upgrade to jclouds 2.0 (e.g. `bump sshj to same jclouds version [merge after jclouds 2.0 upgrade]`)
+
+              </div></li><li><div>
+                I'm getting one additional failure to those reported by @sjcorbett:
+
+```
+  SshjToolIntegrationTest.testAsyncExecStdoutAndStderr:195 expected [mystringToStdout
+mystringPostSleepToStdout] but found [mystringToStdout
+mystringPostSleepToStdout
+Welcome to Ubuntu 14.04.4 LTS (GNU/Linux 4.4.27-moby x86_64)
+ * Documentation:  https://help.ubuntu.com/
+Welcome to Ubuntu 14.04.4 LTS (GNU/Linux 4.4.27-moby x86_64)
+ * Documentation:  https://help.ubuntu.com/
+Welcome to Ubuntu 14.04.4 LTS (GNU/Linux 4.4.27-moby x86_64)
+ * Documentation:  https://help.ubuntu.com/]
+```
+
+              </div></li><li><div>
+                @andreaturli This was merged as part of https://github.com/apache/brooklyn-server/pull/481, I believe. If that is correct, then can you close this PR please? If not, can you rebase it so we can see what changes still need to be made?
+              </div></li><li><div>
+                merged at #481
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Not copying to local file
+
+              </div></li><li><div>
+                ops, you are right!
+seems like the only test capturing that is in `SshToolAbstractIntegrationTest` which is marked as `integration` -- I'll try to fix it
+
+              </div></li><li><div>
+                I think it should be fixed now, @neykov can you have another look at it?
+
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

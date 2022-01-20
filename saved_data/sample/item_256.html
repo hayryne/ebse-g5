@@ -1,0 +1,1124 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 256
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ * The configuration class for KafkaConsumer
+ 
+              </div></li><li><div>
+                 the consumer is fully typed, and deserialization can be too. But in case it is not provided we should
+ default to byte[]
+              </div></li><li><div>
+                 Override default max poll config if there is no value
+              </div></li><li><div>
+                
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ 
+              </div></li><li><div>
+                 These are values we enforce in sazma, and they cannot be overwritten.
+              </div></li><li><div>
+                 if consumer bootstrap servers are not configured, get them from the producer configs
+              </div></li><li><div>
+                 Always use default partition assignment strategy. Do not allow override.
+              </div></li><li><div>
+                 Disable consumer auto-commit because Samza controls commits
+              </div></li><li><div>
+                 group id should be unique per job
+              </div></li><li><div>
+                 return default
+              </div></li><li><div>
+                 accept kafka values directly
+              </div></li><li><div>
+                 client id should be unique per job
+              </div></li><li><div>
+                *
+   * Helper method to create configs for use in Kafka consumer.
+   * The values are based on the "consumer" subset of the configs provided by the app and Samza overrides.
+   *
+   * @param config config provided by the app.
+   * @param systemName system name to get the consumer configuration for.
+   * @param clientId client id to be used in the Kafka consumer.
+   * @return KafkaConsumerConfig
+   
+              </div></li><li><div>
+                *
+   * If settings for auto.reset in samza are different from settings in Kafka (auto.offset.reset),
+   * then need to convert them (see kafka.apache.org/documentation):
+   * "largest" -&gt; "latest"
+   * "smallest" -&gt; "earliest"
+   *
+   * If no setting specified we return "latest" (same as Kafka).
+   * @param autoOffsetReset value from the app provided config
+   * @return String representing the config value for "auto.offset.reset" property
+   
+              </div></li><li><div>
+                
+   * By default, KafkaConsumer will fetch some big number of available messages for all the partitions.
+   * This may cause memory issues. That's why we will limit the number of messages per partition we get on EACH poll().
+   
+              </div></li><li><div>
+                Kafka client configuration
+              </div></li><li><div>
+                 Translate samza config value to kafka config value
+              </div></li><li><div>
+                 move the responses into the queue
+              </div></li><li><div>
+                 Since we are not polling from ALL the subscribed topics, so we need to "change" the subscription temporarily
+              </div></li><li><div>
+                
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ 
+              </div></li><li><div>
+                 High watermark is fixed to be the offset of last available message,
+ so the lag is now at least 0, which is the same as Samza's definition.
+ If the lag is not 0, then isAtHead is not true, and kafkaClient keeps polling.
+              </div></li><li><div>
+                 consume
+              </div></li><li><div>
+                 update the metrics
+              </div></li><li><div>
+                 ignore
+              </div></li><li><div>
+                 find current lags for for each SSP
+ nothing to read
+              </div></li><li><div>
+                 we may get InvalidOffsetException | AuthorizationException | KafkaException exceptions,
+ but we still just rethrow, and log it up the stack.
+              </div></li><li><div>
+                 this is required by the KafkaConsumer to get the metrics
+              </div></li><li><div>
+                 join() may timeout
+ in this case we should interrupt it and wait again
+              </div></li><li><div>
+                 the actual polling of the messages from kafka
+              </div></li><li><div>
+                 populate the MetricNames first time
+              </div></li><li><div>
+                 The only way to figure out lag for the KafkaConsumer is to look at the metrics after each poll() call.
+ One of the metrics (records-lag) shows how far behind the HighWatermark the consumer is.
+ This method populates the lag information for each SSP into latestLags member variable.
+              </div></li><li><div>
+                 End offsets are the offset of the newest message + 1
+ If the message we are about to consume is &lt; end offset, we are starting with a lag.
+              </div></li><li><div>
+                 creates a separate thread for getting the messages.
+              </div></li><li><div>
+                 this is already vetted offset so there is no need to validate it
+              </div></li><li><div>
+                registered SSPs
+              </div></li><li><div>
+                 calls the setIsAtHead for the BlockingEnvelopeMap
+              </div></li><li><div>
+                 Since we need to poll only from some subset of TopicPartitions (passed as the argument),
+ we need to pause the rest.
+              </div></li><li><div>
+                 initialize lag metrics
+              </div></li><li><div>
+                 This is expensive, so only do it once at the beginning. After the first poll, we can rely on metrics for lag.
+              </div></li><li><div>
+                 lag between the current offset and the highwatermark
+              </div></li><li><div>
+                 we need to wait until the thread starts
+              </div></li><li><div>
+                 move message to the BlockingEnvelopeMap's queue
+              </div></li><li><div>
+                *
+ * This class contains a separate thread that reads messages from kafka and puts them  into the BlockingEnvelopeMap
+ * through KafkaSystemConsumer.KafkaConsumerMessageSink object.
+ * This class is not thread safe. There will be only one instance of this class per KafkaSystemConsumer object.
+ * We still need some synchronization around kafkaConsumer. See pollConsumer() method for details.
+ 
+              </div></li><li><div>
+                 Synchronize, in case the consumer is used in some other thread (metadata or something else)
+              </div></li><li><div>
+                 lags behind the high water mark, as reported by the Kafka consumer.
+              </div></li><li><div>
+                *
+   * Add new partition to the list of polled partitions.
+   * Bust only be called before {@link KafkaConsumerProxy#start} is called..
+   
+              </div></li><li><div>
+                 KafkaSystemConsumer uses the failureCause to propagate the throwable to the container
+              </div></li><li><div>
+                 Parse the returned records and convert them into the IncomingMessageEnvelope.
+              </div></li><li><div>
+                 list of all the SSPs we poll from, with their next(most recently read + 1) offsets correspondingly.
+              </div></li><li><div>
+                *
+   * Stop this KafkaConsumerProxy and wait for at most {@code timeoutMs}.
+   * @param timeoutMs maximum time to wait to stop this KafkaConsumerProxy
+   
+              </div></li><li><div>
+                 derived value for the highwatermark
+              </div></li><li><div>
+                *
+   * Create a KafkaSystemConsumer for the provided {@code systemName}
+   * @param systemName system name for which we create the consumer
+   * @param config application config
+   * @param metrics metrics for this KafkaSystemConsumer
+   * @param clock system clock
+   
+              </div></li><li><div>
+                *
+   * record the ssp and the offset. Do not submit it to the consumer yet.
+   * @param systemStreamPartition ssp to register
+   * @param offset offset to register with
+   
+              </div></li><li><div>
+                *
+   * Create internal kafka consumer object, which will be used in the Proxy.
+   * @param systemName system name for which we create the consumer
+   * @param clientId client id to use int the kafka client
+   * @param config config
+   * @return kafka consumer object
+   
+              </div></li><li><div>
+                 set the offset for each TopicPartition
+              </div></li><li><div>
+                
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ 
+              </div></li><li><div>
+                 keep registration data until the start - mapping between registered SSPs and topicPartitions, and their offsets
+              </div></li><li><div>
+                *
+   * return system name for this consumer
+   * @return system name
+   
+              </div></li><li><div>
+                *
+   * Set the offsets to start from.
+   * Register the TopicPartitions with the proxy.
+   * Start the proxy.
+   
+              </div></li><li><div>
+                 currently this feature cannot be enabled, because we do not have the size of the messages available.
+ messages get double buffered, hence divide by 2
+              </div></li><li><div>
+                subscribe to all the registered TopicPartitions
+              </div></li><li><div>
+                 This sink is used to transfer the messages from the proxy/consumer to the BlockingEnvelopeMap.
+              </div></li><li><div>
+                 this value should already be the 'upcoming' value
+              </div></li><li><div>
+                *
+   * Compare two String offsets.
+   * Note. There is a method in KafkaSystemAdmin that does that, but that would require instantiation of systemadmin for each consumer.
+   * @return see {@link Long#compareTo(Long)}
+   
+              </div></li><li><div>
+                *
+   * convert from TopicPartition to TopicAndPartition
+   
+              </div></li><li><div>
+                 This proxy contains a separate thread, which reads kafka messages (with consumer.poll()) and populates
+ BlockingEnvelopMap's buffers.
+              </div></li><li><div>
+                 start the proxy thread
+              </div></li><li><div>
+                 needs to be called after all the registrations are completed
+              </div></li><li><div>
+                 all recoverable execptions are handled by the client.
+ if we get here there is nothing left to do but bail out.
+              </div></li><li><div>
+                 register the older (of the two) offset in the consumer, to guarantee we do not miss any messages.
+              </div></li><li><div>
+                *
+   * convert to TopicPartition from SystemStreamPartition
+   
+              </div></li><li><div>
+                 we are using assign (and not subscribe), so we need to specify both topic and partition
+              </div></li><li><div>
+                 Create the proxy to do the actual message reading.
+              </div></li><li><div>
+                 get the thresholds, and set defaults if not defined.
+              </div></li><li><div>
+                 add the partition to the proxy
+              </div></li><li><div>
+                 create a sink for passing the messages between the proxy and the consumer
+              </div></li><li><div>
+                 initialize the subscriptions for all the registered TopicPartitions
+              </div></li><li><div>
+                 check if the proxy is running
+              </div></li><li><div>
+                 stop the proxy (with 1 minute timeout)
+              </div></li><li><div>
+                 extract kafka client configs
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 should be ignored
+              </div></li><li><div>
+                 should NOT be ignored
+              </div></li><li><div>
+                 if KAFKA_CONSUMER_PROPERTY_PREFIX is set, then PRODUCER should be ignored
+              </div></li><li><div>
+                 if KAFKA_CONSUMER_PROPERTY_PREFIX is not set, then PRODUCER should be used
+              </div></li><li><div>
+                 test stuff that should not be overridden
+              </div></li><li><div>
+                 should be no failures
+              </div></li><li><div>
+                 not full neither by size nor by messages
+              </div></li><li><div>
+                
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ 
+              </div></li><li><div>
+                 fake size, upto the limit
+ fake size, below the limit
+ event with the second message still below the size limit
+              </div></li><li><div>
+                 limit by number of messages 4/2 = 2 per partition
+ limit by number of bytes - disabled
+ should disable
+              </div></li><li><div>
+                 queue for ssp0 should be full now, because we added message of size FETCH_THRESHOLD_MSGS/partitionsNum
+              </div></li><li><div>
+                 queue for ssp1 should full now, because we added message of size 20 on top
+              </div></li><li><div>
+                 fake size
+ fake size
+              </div></li><li><div>
+                 Pass 0 as fetchThresholdByBytes, which disables checking for limit by size
+              </div></li><li><div>
+                 queue for ssp1 should be less then full now, because we added message of size (FETCH_THRESHOLD_MSGS/partitionsNum - 1)
+              </div></li><li><div>
+                 not full by size, but should be full by messages
+              </div></li><li><div>
+                 should be full by size, but not full by number of messages (1 of 2)
+              </div></li><li><div>
+                 mock kafkaConsumer and SystemConsumer
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> NewSystemConsumer for kafka system
+                </div><div><b>message:</b> NewSystemConsumer for kafka system
+
+Remove SimpleConsumer  and BrokerProxy from Samza's KafkaSystemConsumer implementation.
+Instead use KafkaConsumerProxy with high-level kafka consumer.
+
+Author: Boris S &lt;boryas@apache.org&gt;
+Author: Boris Shkolnik &lt;bshkolni@linkedin.com&gt;
+
+Reviewers: Shanthoosh Venktataraman &lt;spvenkat@usc.edu&gt;, Prateek Maheshwari &lt;pmaheshwari@linkedin.com&gt;
+
+Closes #624 from sborya/NewConsumer2
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> New consumer for kafka system
+                </div><div><b>body:</b> Remove SimpleConsumer  and BrokerProxy from Samza's KafkaSystemConsumer implementation.
+Instead use KafkaConsumerProxy with high-level kafka consumer.
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @sborya : instead of deleting the "old" Kafka consumer's source-code, it would be good to re-name them under a new package if users require the ability to rollback
+              </div></li><li><div>
+                Additionally, @prateekm and @nickpan47's feedback was to document the list of supported broker versions with this release. 
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                any reason to use a different constructor? would be nice to keep this PR just focussed on the KafkaConsumer and revert other changes
+              </div></li><li><div>
+                Revert this change.
+              </div></li><li><div>
+                Minor: Rephrase it as "Shuttting down SamzaContainer"
+              </div></li><li><div>
+                s/Coordinator stream manager config/configuration in coordinator stream.
+              </div></li><li><div>
+                Can we move  shutting down the `coordinatorStreamManager` into finally block. Would be better have the entire thing within a try - finally block
+              </div></li><li><div>
+                Make all of these as per-instance methods on the KafkaConsumerConfig class?
+              </div></li><li><div>
+                This class is the "BrokerProxy". Maybe, rename it to reflect that accurately
+              </div></li><li><div>
+                Extract MessageSink as a separate java class instead of a static inner class
+              </div></li><li><div>
+                s/r/record
+              </div></li><li><div>
+                s/sspToMetricName/perPartitionMetrics
+              </div></li><li><div>
+                Can we complete java docs to each of these individual methods(here and everywhere).
+              </div></li><li><div>
+                This seems to me like duplication of what we have internally in LinkedIn for linkedin kafka consumer client(all internal classes). 
+1. What is the plan forward ? Are we going to simplify this and make the kafkaConsumer pluggable here? 
+2. Can we make this as a part of this patch itself.
+              </div></li><li><div>
+                Can this be made immutable too? A nice thing with doing this is that we can make the lifecycle of the "proxy" mirror the lifecycle of the "SystemConsumer" instance. 
+ie., register() -&gt; delegates to proxy.register(tp, offset) likewise, start() -&gt; invokes proxy.start()
+              </div></li><li><div>
+                final here since they're set during construction anyways
+              </div></li><li><div>
+                This getAdminClientId method is not used anywhere in this patch and in samza codebase. Can we please delete it?
+              </div></li><li><div>
+                Please remove this unnecessary newline.
+              </div></li><li><div>
+                Just curious, in what scenarios does the records parameter will be null. It appears to me that this check is unnecessary and can be deleted.
+              </div></li><li><div>
+                Minor: Prefer using String.format to concatenate here. 
+              </div></li><li><div>
+                Why do we use the static method in `NewKafkaSystmeConsumer` to create the object and use the factory to return it. It kind of looks odd to me. Can we inline this invocation here and delete that method?
+              </div></li><li><div>
+                May be better to rename this to `HighLevelKafkaConsumer` or simply `KafkaSystemConsumer` or choose some other better name. NewKafkaConsumer can mean multiple things here(could be a upgrade of kafka consumer version or a different samza internal implementation etc). 
+              </div></li><li><div>
+                Can we remove the individual fields like clientID , groupId and other kafka consumer related properties from here and `KafkaConsumerProxy` and expose individual instance methods in `KafkaConsumerConfig` (E.x: `kafkaConsumerConfig.getClientId`).
+
+Rather than  the following done everywhere(in the form of static method):
+```
+String clientId = KafkaConsumerConfig.getProducerClientId(config)
+```
+Can we do this instead: 
+```
+String clientId = kafkaConsumerConfig.getClientId() 
+```
+Just by passing in the kafkaConsumerConfig object alone to `NewKafkaConsumer` and `KafkaConsumerProxy` we can get rid of unnecessary fields and assignments everywhere.
+
+              </div></li><li><div>
+                Rather than parsing the offsets here and comparing, it will be better to use the comparator from `kafkaSystemAdmin` here(KafkaSystemAdmin.offsetComparator method). 
+              </div></li><li><div>
+                All of the following static methods(`toTopicAndPartition(topicParittion)`, `toTopicAndPartition(SystemStreamPartition`)  here seems to have similar names and  different parameter type.  Do we need a static method here just to create a object. Can we instead inline the method invocations? 
+              </div></li><li><div>
+                Correct me if i'm wrong here. This appears to be used only within the `KafkaConsumerProxy`. Can we make it an internal static class of the `KafkaConsumerProxy` class?
+              </div></li><li><div>
+                Previously we were using SimpleConsumer in samza which had configurations (such as `zookeeper.connect`) which are no longer supported in the new kafkaConsumer.
+
+New kafka consumer configs: http://kafka.apache.org/documentation/#newconsumerconfigs. 
+
+We need to update our samza configuration table. 
+
+1. Delete the old configuration references (systems.system-name.consumer.zookeeper.connect, etc) 
+2. Stress some of the important features of new kafkaConsumer(`SSL`, `keySerializer`, `valueSerializer`, `max.poll.records`). Our implementation overrides the defaults with user-defined configurations and it will be better to document it.
+              </div></li><li><div>
+                1. Can you please share the rationale why we want to allow users to define configuration `auto.reset.offset` with predefined kafka constants  directly? 
+2. Previously, `samza`  did not allow users to specify value anything other than `largest`, `smallest` for the configuration `auto.reset.offset`. Now if we want to allow users to specify the predefined kafka  `auto.reset.offset` configurations, can we update the configuration table documentation in accordance with this implementation. 
+              </div></li><li><div>
+                Minor: 
+s/KAFKA_CONSUMER_MAX_POLL_RECORDS_DEFAULT/DEFAULT_KAFKA_CONSUMER_MAX_POLL_RECORDS
+              </div></li><li><div>
+                Might be useful to document the default return value and also log the reset value if it isn't one of `latest` or `smallest`
+              </div></li><li><div>
+                Good to document public factory methods.
+              </div></li><li><div>
+                Can this be private since there's already a `getKafkaSystemConsumerConfig` factory method?
+              </div></li><li><div>
+                I think this line was too long so Intelij divided it into two lines. 
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                Please create a separate Jira for this. We can do it after this one.
+              </div></li><li><div>
+                In general I agree. But we cannot do easily it yet. For this we need to get rid of SimpleConsumer in the Admin. Which should be a separate PR.
+              </div></li><li><div>
+                Yes, it should be used in getAdmin in the factory! Thanks, will update.
+              </div></li><li><div>
+                The rest of the configs passed through the consumer.* are directly passed to the kafka consumer. This is the only one that requires translation. I think we should allow both new kafka settings, as well as support backward compatible samza values.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                This class doesn't talk directly to brokers anymore, so I thought we should get rid of Broker name.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                It is not a static inner class, so it will require some changes if we decide to extract it. 
+Not sure if it is needed (this is how it was in the original implementation, so I didn't look into refactoring of it).
+              </div></li><li><div>
+                It may happened if Kafka decides throw an exception we don't handle. So may be it is better to throw exception in this case.
+              </div></li><li><div>
+                But 'r' is shorter!  : )  Changed it to record.
+
+              </div></li><li><div>
+                to minimize scala to java conversions.
+              </div></li><li><div>
+                I totally agree. I called it new just to differentiate from existing KafkaSystemConsumer. Now that it is deleted it can be removed. May screw up the diffs though..
+              </div></li><li><div>
+                At some point we may want to get rid of the BlockingEnvelopeMap in KafkaSystemConsumer entirely. But not now.
+              </div></li><li><div>
+                We can improve it when we change SystemAdmin to use new kafka consumer.
+              </div></li><li><div>
+                I think it is a good idea. Done.
+              </div></li><li><div>
+                to calculate this value we need to know number of partitions. But we know it only all of them are registered.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                not straight forward, but doable. Right now it is a object method, so using it requires creating an SystemAdmin object. Since it is scala, we cannot just make it static. It needs to be moved to the KafkaSystemAdmin object. And this will requires refactoring of all the places where it is used.
+This is a probably a good idea anyway, but adds even more changes to this pretty big PR. I've created SAMZA-1867 and will do it after this PR.
+              </div></li><li><div>
+                I think it makes it easier to read and reuse. I left the two which are used in multiple places. 
+              </div></li><li><div>
+                it needs access to KafkaSystemConsumer members.
+              </div></li><li><div>
+                Just curious(Please correct me if i'm wrong).
+
+1. Minor: Does it makes sense to rename this to `KafkaConsumerThread` or `KafkaMessageFetchThread` or `KafkaConsumerPollThread`(or some other name). I think the name `KafkaConsumerProxy` implies that this can be used in the place of KafkaConsumer object(with the proxy connotation introducing some additional functionality on top of `KafkaConsumer`).  
+
+2. Does it makes sense to make this class package-private(Since it's used only within KafkaConsumer)? 
+              </div></li><li><div>
+                Minor: Do we have to add non-null Precondition checks for some arguments here?
+              </div></li><li><div>
+                At line 124 in this class, we're adding all (k,v) pairs from the injectProps into final config bag. So if the user turns on kafka auto-commit by mistake, we would add it. Do we need to handle that scenario? 
+              </div></li><li><div>
+                Minor:
+s/bootstrapServer/bootstrapServers
+              </div></li><li><div>
+                Minor(Please change if makes sense): 
+Can simplify the return statement with option.getOrElse().
+```
+String.format("%s-%s", jobNameOption.getOrElse("undefined_job_name"), jobIdOption.getOrElse("undefined_job_name")); 
+```
+              </div></li><li><div>
+                Just curious about this synchronized block. 
+We pause and resume the `KafkaConsumer` for the SSP's from this list `topicPartitionsToPause` within the synchronized block.  Why do we need to temporarily pause them if all we do is resume them right after poll? Can you please share the significance of this division and pausing, resuming a subset before/after poll? 
+              </div></li><li><div>
+                Why this has to wait for 5 mins to stop the proxy thread. Can we set the proxy thread stop timeout to reasonably low value?
+              </div></li><li><div>
+                Minor: s/getNewKafkaSystemConsumer/getKafkaSystemConsumer
+              </div></li><li><div>
+                Would be great to take TimeUnit or duration as the second parameter here. From the arguments, it's not clear what is the timeunit of timeout parameter.
+              </div></li><li><div>
+                Do we need to interrupt the consumerPoll thread here after the timeout expires. Let's say If the thread did not die after this timeout (say got stuck in kafkaConsumer.fetch), what is the line of action?
+              </div></li><li><div>
+                &gt; if Kafka decides throw an exception we don't handle.
+
+
+In that scenario, it will be propogated back to the caller, control-flow won't even reach the processResults method here.
+              </div></li><li><div>
+                Do we need to handle the interrupt in the consumer poll thread? Existing implementation doesn't seem to handle it and the consumer poll thread is interrupted during `KafkaSystemConsumer.stop()`
+              </div></li><li><div>
+                Why do we have  the log level guard here. In slf4j/log4j combination, event can be logged unconditionally and message formatting is applied(for parameterized log statements) only based upon the configured  log level of the application. To me this check introduces unnecessary complexity, what is the value add we get from this?
+              </div></li><li><div>
+                @shanthoosh: this should be expected behavior right? injected properties should always have highest precedence. injected properties != user-defined properties. 
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                Don't we explicitly "seek" to a particular offset anyways during register()? In that case, the Kafka configs for offset-reset have no effect?
+              </div></li><li><div>
+                Can we just do a new KafkaSystemConsumer()?
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                Samza enforces thresholding based on the # of messages / partition. To achieve this, we pause those partitions for which we already have buffered messages for and un-pause the rest. 
+              </div></li><li><div>
+                This change came up during testing and seems like a good thing to keep.
+CoordinatorStreamManager has its own life cycle, so unnecessary passing a reference to it into another class (with its own life cycle) is not desired.This way we can stop() it here, without worrying about the other reference.
+              </div></li><li><div>
+                1. Naming came from BrokerProxy, and later LiKafkaConsumerProxy. So it may be a good idea to keep the name to preserve the history. 
+2. Do you mean keep the class or the constructor package private? I didn't see a lot of package private classes in our code.
+              </div></li><li><div>
+                I'd rather not add even more stuff to this PR. It is too big already.
+              </div></li><li><div>
+                Since we already manage offsets in samza through checkpoint topic, we should not allow users to turn auto-commit on to manage checkpoints in kafka(when using the kafkaSystemConsumer). Kafka-autocommit is unnecessary and could potentially create confusion given that we have our own mechanism to rewind/fast-forward the checkpointed offsets(with checkpoint tool). 
+
+(Ex: What if the user turns on kafka auto-commit, stops the job and  updates offsets stored in kafka. After this user would expect samza to resume from the updated offset in kafka. But the job would resume with the checkpointed offset stored in samza checkpoint topic)
+
+I think we should log the warning here if auto-commit is turned on and document in configuration table that it should not be turned on.
+              </div></li><li><div>
+                Interesting question. Generally speaking @vjagadish1989 is correct. But some settings may be required by samza. One of hem is disabling auto commits. So should we enforce it?
+              </div></li><li><div>
+                Since we control the partition assignment strategy in `JobCoordinator` via generated `JobModel`,  setting this configuration is unnecessary and can be removed.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                not so easy. Requires some scala magic. As is -  jobConfig.getJobId().getOrElse("default") - doesn't compile.
+              </div></li><li><div>
+                This setting comes into play if the offset is invalid. User can override this behavior.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                changed to 60 seconds.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                I think disabling it is the best way forward, unless we've strong enough rationale not to do so.
+              </div></li><li><div>
+                &gt; Do you mean keep the class or the constructor package private? I didn't see a lot of package private classes in our code.
+
+I meant, if possible we can make this whole class package private. Looking at the usages, it's doable. General rule of thumb is to choose lowest level of visibility for a class. 
+              </div></li><li><div>
+                s/kc/KafkaSystemConsumer/
+              </div></li><li><div>
+                Minor: variable names should follow camel-case convention.
+s/SSPsToFetch/partitionsToFetch
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                In this case we need it (because there is a loop), but in other cases I've removed it.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                I guess you are right, but this is just a good coding style - check function's arguments :)
+              </div></li><li><div>
+                done. sspsToFetch
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                Please delete these unnecessary commented out empty code block.
+              </div></li><li><div>
+                Can we please delete this empty method. 
+              </div></li><li><div>
+                Why do we log the message here and then throw up. The codeflow that triggers `register(ssp, offset)` already logs any exception. Please delete it if it's redundant.
+              </div></li><li><div>
+                Typo: "SamzaContainer"
+              </div></li><li><div>
+                Why do we need to extend Kafka's ConsumerConfig class?
+              </div></li><li><div>
+                I don't think the "will fetch ALL available messages for all partitions" comment is true. Can you confirm? There still seems to be a default MAX_POLL_RECORDS of 500 in the ConsumerConfig.
+
+Also, should this be private?
+              </div></li><li><div>
+                Should provide meaningful param documentation and document what this method does in some detail.
+              </div></li><li><div>
+                Prefer not adding `final` to local variables, unless we do this consistently across the codebase. IMHO it's not worth doing.
+              </div></li><li><div>
+                Prefer choosing the desired behavior and updating this comment instead of leaving TODOs and open questions in code.
+              </div></li><li><div>
+                "setting default key serialization" -&gt; "Setting key serializer"
+"consumer(for {})" -&gt; "consumer for system {}"
+Same below.
+              </div></li><li><div>
+                Do we still need to support injectedProperties or can we inline those here?
+              </div></li><li><div>
+                Add newline between methods.
+              </div></li><li><div>
+                Does "\\W" work? https://docs.oracle.com/javase/tutorial/essential/regex/pre_char_classes.html
+              </div></li><li><div>
+                Will be cleaner to pass the autoOffsetReset string explicitly instead of passing all Properties.
+              </div></li><li><div>
+                Maybe just `metrics`?
+              </div></li><li><div>
+                What's this metricName? Is this a prefix? Also, doesn't look like this is used outside the constructor. Do we need this field?
+              </div></li><li><div>
+                IMHO we don't need to mark fields and methods package private explicitly - it's boilerplate and doesn't add value. Would prefer deleting this everywhere.
+              </div></li><li><div>
+                Remove comment or add more details of what this means and how it's used.
+              </div></li><li><div>
+                Prefer using topicPartitionsToOffset, Not worth saving 1 character IMHO. Would also be good to document what these maps represent.
+              </div></li><li><div>
+                Prefer adding meaningful javadocs or not adding them at all, preferably the former.
+              </div></li><li><div>
+                Use this.messageSink etc consistently. Same for proxy.
+              </div></li><li><div>
+                s/it is/it has
+              </div></li><li><div>
+                Do we need to log the proxy object reference? Maybe "Created KafkaConsumerProxy"?
+              </div></li><li><div>
+                Isn't metricName derived from systemName and clientId? Probably don't need to log again. What does KafkaConsumer.toString return?
+              </div></li><li><div>
+                Does this need to be public?
+              </div></li><li><div>
+                Please clean up javadocs for public APIs.
+              </div></li><li><div>
+                Can we remove injectedProperties?
+              </div></li><li><div>
+                Please capitalize first letter in log statements and javadocs everywhere.
+              </div></li><li><div>
+                Should this be a exception?
+              </div></li><li><div>
+                Log consumer id here and in exception message for context.
+              </div></li><li><div>
+                Incorrect javadoc format.
+              </div></li><li><div>
+                Should not refer to proxy thread, that's implementation details of the proxy,
+              </div></li><li><div>
+                Which other exceptions is this referring to? There don't seem to be any recoverable exceptions.
+              </div></li><li><div>
+                Log consumer ID for context. Use the same message in the exception for traceability.
+              </div></li><li><div>
+                Log consumer id everywhere.
+              </div></li><li><div>
+                Strongly prefer combining these messages into a single log line. Same for other logs from this method.
+              </div></li><li><div>
+                Comment does not match code. Also, should this be hardcoded?
+              </div></li><li><div>
+                Is this the right class name? Also, the `+` should not be in the message.
+              </div></li><li><div>
+                Should be before we call super.register.
+              </div></li><li><div>
+                Does this need to be public?
+              </div></li><li><div>
+                Don't think we need to log this. This is not useful for users.
+              </div></li><li><div>
+                `return super.poll()` directly?
+              </div></li><li><div>
+                Use Javadoc format. Don't need a separate block for this. Same at the end.
+              </div></li><li><div>
+                What does this metric represent? Number of registered TopicPartitions? If so, maybe call this registered-topic-partitions?
+              </div></li><li><div>
+                Can the KafkaSystemConsumer create this KafkaConsumer itself?
+              </div></li><li><div>
+                "Created KafkaSystemConsumer"?
+              </div></li><li><div>
+                Can KafkaSystemProducer create Producer instances itself?
+              </div></li><li><div>
+                Indent this block by 2 more so that it's aligned correctly.
+              </div></li><li><div>
+                This class isn't the thread, it has a thread, so the javadoc for this class shouldn't refer to it as a thread. It also doesn't interact with the BEM directly, so should mention the KafkaConsumerSink instead, and add the BEM related documentation to the Sink.
+              </div></li><li><div>
+                Explicit check + throw exception instead of assert.
+              </div></li><li><div>
+                Also, do we need to keep these maps both this class and the Proxy, or can we move them to the proxy?
+              </div></li><li><div>
+                Use Javadoc format.
+              </div></li><li><div>
+                s/is called/should be called
+              </div></li><li><div>
+                Is this still true?
+              </div></li><li><div>
+                Also, incorrect class name.
+              </div></li><li><div>
+                Incorrect class name.
+              </div></li><li><div>
+                We aren't stopping anything here?
+              </div></li><li><div>
+                Move private methods to end of class. Prefer the following order: Constructors, public, protected, package private, private, inner classes.
+              </div></li><li><div>
+                Does this need to be public? If so, add javadoc for public methods.
+              </div></li><li><div>
+                If this map doesn't change after start, this check should be in start instead of here.
+              </div></li><li><div>
+                Include context in exception message. E.g., systemName, clientId etc.
+              </div></li><li><div>
+                Would be better to have a more explicit string (e.g. "systemName={} clientId={}" etc) instead of making users figure out what the "/" separated parts are.
+Also, what's included in super.toString?
+              </div></li><li><div>
+                Is this logic available in open source? I believe this would be linkedin-kafka-clients specific since this is  for large message support?
+              </div></li><li><div>
+                Can remove comment. There's also no 'client' in Kafka, so is not accurate.
+              </div></li><li><div>
+                If we don't handle these exceptions, would it be better to not catch them here and try-catch-log them in the caller instead? Even otherwise, since we don't handle them differently, you could just catch Exception, Log it with context, and rethrow it with context.
+              </div></li><li><div>
+                I don't see the benefit of throwing SamzaException here. Even if you don't do that, you'll get an NPE with the same amount of information. Should either delete this, or log more context in SamzaException that may be helpful for debugging.
+              </div></li><li><div>
+                Use Javadoc format for methods everywhere in this class.
+              </div></li><li><div>
+                Delete unused code.
+              </div></li><li><div>
+                Does this need to be public?
+              </div></li><li><div>
+                Fix todo?
+              </div></li><li><div>
+                @vjagadish1989 Speaking of which, this behavior initially caused a perf degradation that the kafka team had to fix. Do you recall if their fix went into Kafka main?
+              </div></li><li><div>
+                Would prefer to just inline these offset type constants in the method.
+              </div></li><li><div>
+                Can use isBlank instead of isEmpty.
+              </div></li><li><div>
+                This should be in a Samza package.
+              </div></li><li><div>
+                I agree about the utility of allowing users to set auto.reset.offset, but doesn't make sense to allow using Samza's config values for Kafka's config keys. We should to remove this method and pass the user provided consumer config as-is.
+              </div></li><li><div>
+                Can we delete this method?
+              </div></li><li><div>
+                Extract out of the if block and reuse in SamzaException for the else block.
+              </div></li><li><div>
+                Comment should be above @Test annotation.
+              </div></li><li><div>
+                Don't need empty setup method.
+              </div></li><li><div>
+                createConsumer?
+              </div></li><li><div>
+                Should stop the consumer to prevent leaking Consumers during tests.
+              </div></li><li><div>
+                Typo: MockKafkaSystemConsumer
+              </div></li><li><div>
+                Should be warn, since this is not a normal use case.
+              </div></li><li><div>
+                Not sure what this is talking about. Can you clarify what this means?
+              </div></li><li><div>
+                Can delete these comments.
+              </div></li><li><div>
+                you are right, we don't need to. Fixed.
+              </div></li><li><div>
+                Fixed the comment. It is package private because it is used in the tests.
+              </div></li><li><div>
+                I guess consistency is the key. Removed.
+              </div></li><li><div>
+                My understanding, it allows the caller to add some configs, which are not part of the app provided config. Not sure if there are any specific use cases. It is used in some tests, but can easily be gotten rid off.
+              </div></li><li><div>
+                According to the document it does. Changed. Added test. Tested.
+              </div></li><li><div>
+                According to Samza Configuration [page](https://samza.apache.org/learn/documentation/0.14/jobs/configuration-table.html) use should provide Samza values, and we need to translate it.
+If you, guys, think we need to change - let's do it in a separate, small patch.
+              </div></li><li><div>
+                we should, but not in this patch. It is still used in few places. I can clean up after we commit this patch and systemAdmin one.  Filed SAMZA-1899.
+              </div></li><li><div>
+                Agree, removed the question. If bootstrap_servers is not provided under 'consumer' configs, we get it from the 'producer' configs.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                nope. fixed.
+              </div></li><li><div>
+                Fixed.
+              </div></li><li><div>
+                changed wording to '..proxy has stopped'.
+              </div></li><li><div>
+                ok.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                good point. done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                changed the wording, but left synchronization in.
+              </div></li><li><div>
+                done. catch Exception, log, rethrow.
+              </div></li><li><div>
+                Added more context. I don't like NPEs. They look like a missed check for null, but in this case it is not.
+              </div></li><li><div>
+                changed to '//' for private methods.
+
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                done.
+              </div></li><li><div>
+                removed todo. This timeout is different from consumer.request.timeout.ms. So it should be internal to Samza. 
+No sense adding another config at this point.
+              </div></li><li><div>
+                At first I thought it may be a good idea to have 'package private', to show it is not an omission, but, when there are too many of those, it doesn't make sense anymore.
+
+              </div></li><li><div>
+                added comment.
+              </div></li><li><div>
+                Added documentation and renamed (it is not about 1 char, more about readability).
+The maps in the Consumer are used for registration, and then transferred to the proxy on start()
+              </div></li><li><div>
+                done. this.* should be used only when the scope is ambiguous. 
+              </div></li><li><div>
+                changed the comment.
+              </div></li><li><div>
+                added toString()
+              </div></li><li><div>
+                Fixed the logging, but left in the kafkaConsumer. Since we may have multiple consumers for the same system, this will help to differentiate between them.
+              </div></li><li><div>
+                It is used in KafkaSystemFactory
+              </div></li><li><div>
+                In theory yes. In practice, the stopping sequence are not well debugged and we may end up with calling stop from a few places. There should be no harm in ignoring it in this case.
+              </div></li><li><div>
+                Deleted the comment. The original idea was, on resetting the consumer to first/last message, instead of querying admin for first/last offset, just pass a special value for the offset, and use seekToBeginning()/End() here.
+              </div></li><li><div>
+                All recoverable exceptions are taken care by Kafka consumer. If we get here - we need to throw. 
+Changed the comments.
+              </div></li><li><div>
+                normal operations should be well under the timeout. I don't see a need for a config here.
+              </div></li><li><div>
+                fixed.
+              </div></li><li><div>
+                Done.
+              </div></li><li><div>
+                changed it to systemname:clientid all over the class.
+              </div></li><li><div>
+                Actually, since one can pass a null as the 'cause', no 'if' needed at all.
+              </div></li><li><div>
+                see above.
+              </div></li><li><div>
+                registered is kind of implicit here. But, sure, why not.
+              </div></li><li><div>
+                I've used this static method to avoid awkward scala-java conversions. But this part may change in the other patch (changing SystemAdmin) and I will review it there.
+              </div></li><li><div>
+                this is not related to this patch. Just formatting.
+              </div></li><li><div>
+                Scala formatting is causing many issues with checkStyle. So I prefer to delegate this task to Intelij. If checkstyle fails I will address it.
+              </div></li><li><div>
+                sure.
+              </div></li><li><div>
+                Fixed the typo. Thanks.
+              </div></li><li><div>
+                Right. Fixed.
+              </div></li><li><div>
+                Why does this class need to extend HashMap? If this is intended to be used as a Samza config class, should this be MapConfig instead?
+              </div></li><li><div>
+                Can you clarify what this is for, and how this is different than kafka's ConsumerConfig?
+              </div></li><li><div>
+                No `-` between param name and documentation for consistency with rest of javadocs.
+              </div></li><li><div>
+                "Helper method to create configs for"
+              </div></li><li><div>
+                Maybe: "system name to get consumer configuration for"
+              </div></li><li><div>
+                Maybe: "if consumer bootstrap servers aren't configured, get them from producer configs"
+              </div></li><li><div>
+                Shouldn't jobName and jobId be always available? Would prefer to throw if not instead of defaulting to arbitrary values.
+              </div></li><li><div>
+                Prefer using JobConfig.getJobName
+              </div></li><li><div>
+                Prefer using JobConfig.getJobId, which already default to 1.
+              </div></li><li><div>
+                We shouldn't allow samza values ("largest", "smallest") for kafka consumer configuration - that's a misconfiguration. Would prefer to remove this method.
+              </div></li><li><div>
+                Can remove `/* package private */` everywhere.
+              </div></li><li><div>
+                Can remove comment.
+              </div></li><li><div>
+                Prefer moving to the bottom, even though this is public.
+              </div></li><li><div>
+                `this.toString` only adds the clientId which is not meaningful, so prefer not logging it.
+              </div></li><li><div>
+                "Ignoring InterruptedException while waiting for consumer poll thread to start."
+              </div></li><li><div>
+                The clientId isn't useful in these messages since it just tells us the jobName and jobId, which we'd know anyway if when looking at the logs. Would prefer to remove everywhere.
+              </div></li><li><div>
+                Maybe: "Cannot start KafkaConsumerProxy without any registered TopicPartitions for system %s"
+              </div></li><li><div>
+                Log systemName/this.
+              </div></li><li><div>
+                Stop this KafkaConsumerProxy and wait for at most {@code timeoutMs}.
+              </div></li><li><div>
+                Public method javadoc shouldn't refer to implementation details.
+Maybe: "maximum time to wait to stop this KafkaConsumerProxy"
+              </div></li><li><div>
+                s/event/even. s/join returns/join may timeout and return
+Should wait for timeoutMs/2 in both calls if the API documents that timeout is the maximum amount.
+              </div></li><li><div>
+                Maybe; 'must only be called before {@link KafkaConsumerProxy#start} is called.'
+
+Also, prefer arranging public methods in the order they're expected to be called in. Here, addTopicPartition, start, stop.
+              </div></li><li><div>
+                Minor: topicPartitionsToSSP.
+              </div></li><li><div>
+                Would be useful to clarify what `next offsets` means here.
+              </div></li><li><div>
+                Minor: "partition %s with offset %s to queue" for consistency.
+              </div></li><li><div>
+                This is already logged above, so can remove this log.
+              </div></li><li><div>
+                kafkaConsumerMetrics.setNumTopicPartitions?
+              </div></li><li><div>
+                What does this comment mean?
+              </div></li><li><div>
+                Include system name in log message. Also, wrap e in a new SamzaException with the same message for context.
+              </div></li><li><div>
+                Maybe: ("Received null 'records' after polling consumer in KafkaConsumerProxy " + this)
+              </div></li><li><div>
+                I think 'already de-serialized' isn't true for this implementation, remove comment.
+              </div></li><li><div>
+                From HashMap javadoc: `When the number of entries in the hash table exceeds the product of the load factor and the current capacity, the hash table is &lt;i&gt;rehashed&lt;/i&gt; (that is, internal data structures are rebuilt) so that the hash table has approximately twice the number of buckets.`
+
+You should use a higher count ((records.count()/0.75) + 1) or load factor if the intention behind passing count is to avoid a resize.
+              </div></li><li><div>
+                Prefer `messages`
+              </div></li><li><div>
+                Prefer no `final` for local variables.
+              </div></li><li><div>
+                Prefer `ime`.
+              </div></li><li><div>
+                Formatting: add space before `=`, and remove extra space after it.
+              </div></li><li><div>
+                Maybe: "Starting consumer poll thread {} for system {}", consumerPollThread.getName, systemName
+              </div></li><li><div>
+                s/Latency/Lag
+              </div></li><li><div>
+                Maybe: "pollConsumer for {} SSPs: {}", sspToFetch.size(), sspsToFetch
+              </div></li><li><div>
+                This is logged a few lines later, so can remove.
+              </div></li><li><div>
+                s/timeout/timeoutMs
+              </div></li><li><div>
+                Minor: Space between `;` and `//`
+              </div></li><li><div>
+                Prefer inlining this method in populateCurrentLags since it's only used in one place. I think there are too many metrics/lag related methods in this class already.
+              </div></li><li><div>
+                Prefer `currentLagMetric`
+              </div></li><li><div>
+                Prefer inlining single use helper method, since there are too many metrics/lag related methods in this class.
+              </div></li><li><div>
+                Include system name.
+              </div></li><li><div>
+                This is a similar comment to pollConsumer. I'd prefer to clarify how they're related. Also, since pollConsumer is only called within this method, this method should be above pollConsumer in this class.
+              </div></li><li><div>
+                Minor: can remove extra newline.
+              </div></li><li><div>
+                `consumer {}` should be systemName instead.
+              </div></li><li><div>
+                protected/package private methods should be above private methods, right after public methods.
+              </div></li><li><div>
+                I'd propose the following method order for readability:
+```
+package private Methods:
+addTopicPartition
+start
+isRunning
+stop
+getFailureCause
+
+private methods:
+createProxyThreadRunnable
+initializeLags
+fetchMessages
+pollConsumer
+processResults
+moveMessagesToTheirQueue
+populateCurrentLags (inline populateMetricNames)
+updateMetrics (inline getLatestLag)
+getRecordSize
+```
+              </div></li><li><div>
+                I think these methods can all be package private (I mean remove `public`, not add the /* package private */ annotation) since the only user should be KafkaSystemConsumer
+              </div></li><li><div>
+                Prefer logging systemName explicitly instead of this. In this class this can refer to the thread or this class depending on where it's used, so would prefer to not use it in logs to avoid confusion.
+              </div></li><li><div>
+                Typo: "BlockingEnvelopeMap"
+              </div></li><li><div>
+                "and their offsets"
+              </div></li><li><div>
+                Include description for javadocs. Maybe: "Create a KafkaSystemConsumer for the provided {@code systemName}"
+              </div></li><li><div>
+                "application config"
+              </div></li><li><div>
+                "metrics for this KafkaSystemConsumer"
+              </div></li><li><div>
+                No '-' in param docs. ". Should be sufficient to say "clock system clock"
+              </div></li><li><div>
+                This shouldn't be here since the consumer is being passed in.
+              </div></li><li><div>
+                Is the space separator in metricName intentional? What is this used for? If this is prefix for metrics, do we need clientId in it - it's just the jobName + jobId.
+              </div></li><li><div>
+                Would prefer to log everything in this class as "Created KafkaConsumerProxy {} for systemName {}" for consistency with rest of the codebase.
+              </div></li><li><div>
+                Don't need clientId. Also see comment about log message format above.
+              </div></li><li><div>
+                Can this be done in KafkaConsumerProxy#start instead? Would be better to consolidate interactions with the KafkaConsumer in one class.
+              </div></li><li><div>
+                This should this be an exception, or at least an error log.
+              </div></li><li><div>
+                Should be error.
+              </div></li><li><div>
+                Include context in exception message.
+              </div></li><li><div>
+                Should this be an error?
+              </div></li><li><div>
+                Can this entire method be in KafkaConsumerProxy to consolidate consumer management in one class (as the name KafkaConsumerProxy implies).
+              </div></li><li><div>
+                "numPartitions"
+              </div></li><li><div>
+                Would prefer to combine these log lines in one message at the end of this method if possible. Currently this adds log noise every time a new consumer is created, which is often.
+              </div></li><li><div>
+                Use javadoc format.
+              </div></li><li><div>
+                Same comment as other class: prefer ordering methods logically by how they're used. E.g., it makes more sense to order them as 'register, start, poll, stop' etc than the current order of 'start, stop, register, poll'. Also, prefer ordering methods by visibility: public, protected then private methods.
+              </div></li><li><div>
+                this class is used to initialize kafka's KafkaConsumer, so which expects Map&lt;String, Object).
+We cannot use kafka's ConsumerConfig because it is packaged private for kafka packages.
+              </div></li><li><div>
+                As mentioned above,  since we cannot use ConsumerConfig directly, we need a class to pass to KafkaConsumer.
+              </div></li><li><div>
+                This was done to match current functionality.
+I guess, we should change it to be consistent with getClientId logic, which does throw.
+              </div></li><li><div>
+                These are the correct 'samza' values. We cannot remove them if we want to be backward compatible (https://samza.apache.org/learn/documentation/0.14/jobs/configuration-table.html)
+              </div></li><li><div>
+                this is the only differentiator between different proxies.
+              </div></li><li><div>
+                we can have multiple consumers and multiple proxies. I think it can be helpful to see if a log comes from different proxies/consumers.
+              </div></li><li><div>
+                changed the comment.
+              </div></li><li><div>
+                removed the code.
+              </div></li><li><div>
+                I think this code was removed.
+              </div></li><li><div>
+                I will remove client id here.
+              </div></li><li><div>
+                will put this change for later.
+              </div></li><li><div>
+                removed.
+              </div></li><li><div>
+                made it error.
+              </div></li><li><div>
+                May be. I don't think we should do it in this patch. I will add a jira for it.
+              </div></li><li><div>
+                will do in later patch.
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

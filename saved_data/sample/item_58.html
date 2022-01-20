@@ -1,0 +1,189 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 58
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ * This exception indicates that SASL authentication has failed. The error message
+ * in the exception indicates the actual cause of failure.
+ * &lt;p&gt;
+ * SASL authentication failures typically indicate invalid credentials, but
+ * could also include other failures specific to the SASL mechanism used
+ * for authentication.
+ * &lt;/p&gt;
+ 
+              </div></li><li><div>
+                *
+         * If an authentication exception is encountered with connection to any broker,
+         * fail all pending requests.
+         
+              </div></li><li><div>
+                 This is already logged as error, but propagated here to perform any clean ups.
+              </div></li><li><div>
+                *
+ * This exception indicates that SASL authentication has failed.
+ * On authentication failure, clients abort the operation requested and raise one
+ * of the subclasses of this exception:
+ * &lt;ul&gt;
+ *   &lt;/li&gt;{@link SaslAuthenticationException} if SASL handshake fails with invalid credentials
+ *   or any other failure specific to the SASL mechanism used for authentication&lt;/li&gt;
+ *   &lt;li&gt;{@link UnsupportedSaslMechanismException} if the SASL mechanism requested by the client
+ *   is not supported on the broker.&lt;/li&gt;
+ *   &lt;li&gt;{@link IllegalSaslStateException} if an unexpected request is received on during SASL
+ *   handshake. This could be due to misconfigured security protocol.&lt;/li&gt;
+ * &lt;/ul&gt;
+ 
+              </div></li><li><div>
+                *
+ * This exception indicates unexpected requests prior to SASL authentication.
+ * This could be due to misconfigured security, e.g. if PLAINTEXT protocol
+ * is used to connect to a SASL endpoint.
+ 
+              </div></li><li><div>
+                *
+ * This exception indicates that SASL authentication has failed. The error message
+ * in the exception indicates the actual cause of failure.
+ * &lt;p&gt;
+ * SASL authentication failures typically indicate invalid credentials, but
+ * could also include other failures specific to the SASL mechanism used
+ * for authentication.
+ * &lt;/p&gt;
+ 
+              </div></li><li><div>
+                *
+ * This exception indicates that the SASL mechanism requested by the client
+ * is not enabled on the broker.
+ 
+              </div></li><li><div>
+                 Sasl authentication error which may be one of NONE, UNSUPPORTED_SASL_MECHANISM, ILLEGAL_SASL_STATE,
+ SASL_AUTHENTICATION_FAILED or NETWORK_EXCEPTION
+              </div></li><li><div>
+                 expected exception
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> KAFKA-5947; Handle authentication failure in admin client, txn producer
+                </div><div><b>message:</b> KAFKA-5947; Handle authentication failure in admin client, txn producer
+
+1. Raise AuthenticationException for authentication failures in admin client
+2. Handle AuthenticationException as a fatal error for transactional producer
+3. Add comments to authentication exceptions
+
+Author: Rajini Sivaram &lt;rajinisivaram@googlemail.com&gt;
+
+Reviewers: Vahid Hashemian &lt;vahidhashemian@us.ibm.com&gt;, Ismael Juma &lt;ismael@juma.me.uk&gt;
+
+Closes #3928 from rajinisivaram/KAFKA-5947-auth-failure
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> KAFKA-5947: Handle authentication failure in admin client, txn producer
+                </div><div><b>body:</b> 1. Raise AuthenticationException for authentication failures in admin client
+2. Handle AuthenticationException as a fatal error for transactional producer
+3. Add comments to authentication exceptions
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @vahidhashemian @hachikuji Can you review, please? Thanks.
+              </div></li><li><div>
+                @rajinisivaram Thanks for the PR. It looks good to me after a quick review.
+I like the alternate exception name @ijuma suggested.
+              </div></li><li><div>
+                @vahidhashemian @ijuma Thanks for the reviews. Have addressed the comments so far.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                I wonder if this should be called `InvalidCredentialsException`.
+              </div></li><li><div>
+                What is the reason for `hardShutdownTimeMs.get() != INVALID_SHUTDOWN_TIME`?
+              </div></li><li><div>
+                Would it be worth making this more generic and simply call it `fatalError` or something?
+              </div></li><li><div>
+                Nit: empty line.
+              </div></li><li><div>
+                Nit: empty line.
+              </div></li><li><div>
+                Nit: long line.
+              </div></li><li><div>
+                We can pass the serializers in the constructor and it's a bit more concise.
+              </div></li><li><div>
+                This is the default.
+              </div></li><li><div>
+                This is also the default, I think.
+              </div></li><li><div>
+                This and max in flight are defaults right?
+              </div></li><li><div>
+                At the moment, we have a single error code and exception for authentication failure with an error message giving more details. For SSL, this includes any handshake exception (e.g. server host name verification failure). At the moment, we are reporting only invalid credentials for SASL, but we may add others too. Since we convert SSLException and SaslException from the providers, it is simpler to maintain a more generic `AuthenticationFailed` exception rather than separate exceptions for different failures.
+              </div></li><li><div>
+                The issue I have is that `AuthenticationFailedException` is too similar to `AuthenticationException`.
+              </div></li><li><div>
+                What about `SaslAuthenticationFailedException` and `SslAuthenticationFailedException`?
+              </div></li><li><div>
+                That sounds good to me.
+              </div></li><li><div>
+                I will add without the `Failed` to be consistent with `TopicAuthorizationException` etc. So `SaslAuthenticationException` and `SslAuthenticationException`.
+              </div></li><li><div>
+                I read it a bit too quickly on my phone and I hadn't seen the "Failed" part. What you did in the end is what I had in mind.
+              </div></li><li><div>
+                We don't want to exit this background thread until a close has been requested. If we are closing and there is an authentication exception, we want to terminate immediately. If we are not closing, the thread is kept alive so that a future request after credentials are added can succeed. This is tested in the integration test.
+              </div></li><li><div>
+                Hmm... The code was changed from generic to more specific in the other PR based on review comments. So I thought this should be specific too.
+              </div></li><li><div>
+                Should we add a method that is like this one, but returns the exception instead? It seems a bit convoluted to throw a stored exception just to catch it. Not sure if that helps other cases, but at least here, it seems to make the code cleaner.
+              </div></li><li><div>
+                To add to the constructors, we need to remove the import restrictions on the package. It feels better to do them as properties instead since this test is currently in the security package. @vahidhashemian did that to avoid changing the restrictions.
+              </div></li><li><div>
+                copied and pasted earlier :-), removed now.
+              </div></li><li><div>
+                yes, removed.
+              </div></li><li><div>
+                I removed the SSL exception part from the doc. Will add `SslAuthenticationException` and the associated docs in #3918 
+              </div></li><li><div>
+                OK, we can leave it like that then.
+              </div></li><li><div>
+                The serialization package is open to everyone (it's public API and at the lowest layer). So I don't think we should worry about that. It's not like we're avoiding a dependency here, we are just hiding it via a string based config (that still requires the default constructor to be present).
+              </div></li><li><div>
+                Nit: we can change the parameter to be `by name` (`=&gt; Unit` instead of  `() =&gt; Unit`) and then you don't need the noisy `() =&gt;` in every invocation.
+              </div></li><li><div>
+                Do we want to include the exception message or stacktrace?
+              </div></li><li><div>
+                Why are we calling `handleFailure` directly instead of `fail`? If we used `fail` in both places, we could extract a method and call it twice in succession, once for `newCalls` and once for `callsToSend`.
+              </div></li><li><div>
+                Hmm, what's the impact of not exiting immediately? It seems like we would not have any responses anyway, so it should happen pretty quickly either way (and all pending requests have been cancelled). Maybe keep it simple?
+              </div></li><li><div>
+                I changed the existing method to return the exception rather than throw it.
+              </div></li><li><div>
+                @hachikuji, if you have a chance, have a look and see if this is OK.
+              </div></li><li><div>
+                Looks ok to me.
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Handle authentication failures from transactional producer and KafkaAdminClient
+                </div><div><b>description:</b> Follow on from KAFKA-5854 to handle authentication failures better for transactional producer API and KafkaAdminClient
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                GitHub user rajinisivaram opened a pull request:
+
+    https://github.com/apache/kafka/pull/3928
+
+    KAFKA-5947: Handle authentication failure in admin client, txn producer
+
+    1. Raise AuthenticationException for authentication failures in admin client
+    2. Handle AuthenticationException as a fatal error for transactional producer
+    3. Add comments to authentication exceptions
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/rajinisivaram/kafka KAFKA-5947-auth-failure
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/kafka/pull/3928.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #3928
+    
+----
+commit 764f38785f83a95f840c398c9ef2f557e67fe07a
+Author: Rajini Sivaram &lt;rajinisivaram@googlemail.com&gt;
+Date:   2017-09-20T15:27:23Z
+
+    KAFKA-5947: Handle authentication exceptions in admin client and txn
+    producer
+
+----
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/kafka/pull/3928
+
+              </div></li></ol></div></div></html>

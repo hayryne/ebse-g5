@@ -1,0 +1,75 @@
+<!DOCTYPE html><html><div class="item-title">
+        Item 68
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 And a "unique" tmp directory for each volume
+ Make sure we can handle nested directories (a single tmpdir with potentially multiple unique dirs)
+              </div></li><li><div>
+                 Make some directories to simulate multiple volumes
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-2532 Use VolumeManager to check for tmpDir existence.
+                </div><div><b>message:</b> ACCUMULO-2532 Use VolumeManager to check for tmpDir existence.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> FileUtil expects instance.dfs.dir in tmpDir path
+                </div><div><b>description:</b> FileUtil#cleanupIndexOp(AccumuloConfiguration, Path, VolumeManager, ArrayList) checks that the temporary directory Path it was given ends with the value of instance.dfs.dir and "/tmp".
+
+instance.dfs.dir is no longer appended to each volume, so this check is likely wrong and result in tmp directories not being cleaned up properly.
+
+This also necessitates a unit test to prevent from happening again.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                [~ecn], something else I noticed while reading through this code:
+
+{code:title=FileUtil.java:97-99}
+      // try to reserve the tmp dir
+      if (!fs.createNewFile(new Path(result, "__reserve")))
+        result = null;
+{code}
+
+It looks like this {{__reserve}} file is never used anywhere else. Do you recall what the intent of making it was?
+              </div></li><li><div>
+                the intent of the reserve file was to esnure only one thread uses the tmp dir.   In hadoop 1 I think if two threads try to create the same dir at around the same time they will both report success.   With a file only one would report success.  
+              </div></li><li><div>
+                Ah, thanks [~kturner]. It came across as dead code, but I'll add a comment in about that.
+              </div></li><li><div>
+                Commit 6420dd3d49c97ee5c9a5e173914ca5374a26c8e5 in accumulo's branch refs/heads/1.6.0-SNAPSHOT from [~elserj]
+[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=6420dd3 ]
+
+ACCUMULO-2532 Relax access on cleanupIndexOp and add tests that show failure case.
+
+              </div></li><li><div>
+                Commit 74ffff1a189c807995c33d400aca4fed7b183d38 in accumulo's branch refs/heads/1.6.0-SNAPSHOT from [~elserj]
+[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=74ffff1 ]
+
+ACCUMULO-2532 Use VolumeManager to check for tmpDir existence.
+
+              </div></li><li><div>
+                Commit 9678a2c51a33cc8c58969450e81c0acf40714930 in accumulo's branch refs/heads/1.6.0-SNAPSHOT from [~elserj]
+[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=9678a2c ]
+
+ACCUMULO-2532 Expand on comment as to why we create this (otherwise curious) file
+
+              </div></li><li><div>
+                Commit 74ffff1a189c807995c33d400aca4fed7b183d38 in accumulo's branch refs/heads/master from [~elserj]
+[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=74ffff1 ]
+
+ACCUMULO-2532 Use VolumeManager to check for tmpDir existence.
+
+              </div></li><li><div>
+                Commit 9678a2c51a33cc8c58969450e81c0acf40714930 in accumulo's branch refs/heads/master from [~elserj]
+[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=9678a2c ]
+
+ACCUMULO-2532 Expand on comment as to why we create this (otherwise curious) file
+
+              </div></li><li><div>
+                Is there a particular reason you went with the following pattern:
+{code}
+File dfsDir = Files.createTempDir();
+   
+try {
+  // stuff
+} finally {
+  FileUtils.deleteQuietly(dfsDir);
+}
+{code}
+Instead of using {{@Before}} and {{@After}} methods?
+              </div></li><li><div>
+                [~mdrob], I think it was because I didn't always use a single temp directory. I know at least one of the tests made two temp directories (to be a slightly more honest test than create two "volume" dirs beneath a common parent).
+              </div></li></ol></div></div></html>
