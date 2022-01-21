@@ -39,6 +39,7 @@ async function fetchInstance(id) {
     ])
 
     return {
+        id,
         git_comments,
         git_commits,
 
