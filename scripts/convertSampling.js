@@ -1,24 +1,14 @@
-const samples = require('../saved_data/sampling_2.json')
-const PDFDocument = require('pdfkit')
 const fs = require('fs');
-const path = require('path');
-const fsExtra = require('fs-extra')
 
-// Clearing dir
-fsExtra.emptyDirSync(path.join(__dirname, `../sampling_pdf`))
+var html_to_pdf = require('html-pdf-node')
+const url = require('url')
+process.setMaxListeners(0)
+for (let i = 1; i <= 10; i++) {
+    const x = url.pathToFileURL(__dirname + `/../saved_data/sample/item_${i}.html`).href
 
-let i = 0
+    let options = { format: 'A4', margin: { top: '30px', bottom: '30px', left: '30px', right: '30px' } };
 
-// Writing pdfs
-for (const sample of samples) {
-    const doc = new PDFDocument();
-
-    doc.pipe(fs.createWriteStream(path.join(__dirname, `../sampling_pdf/sample_${i}.pdf`)))
-    doc.text(JSON.stringify(sample), 100, 100)
-    doc.end()
-
-    i++
-    
-    if (i > 10)
-        break
+    html_to_pdf.generatePdf({ url: x }, options).then(pdfBuffer => {
+      fs.writeFileSync(__dirname + `/../saved_data/sample_pdf/item_${i}.pdf`, pdfBuffer, 'binary')
+    });
 }
