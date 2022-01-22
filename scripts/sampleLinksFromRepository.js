@@ -38,7 +38,7 @@ async function sampleLinksFromRepository(repoId) {
             (SELECT COUNT(*) FROM github_jira_link WHERE linked = ${linked} AND satd_count >= 2 AND repo_id = ${repoId}) 
             / 
             (SELECT COUNT(*) FROM github_jira_link WHERE linked = ${linked} AND satd_count >= 2) 
-        )
+        ) + 1
         
         `, d => d.id)
 
