@@ -6,7 +6,7 @@ const { fetchInstance } = require('./fetchInstance')
 const { sampleLinksFromRepository } = require('./sampleLinksFromRepository')
 db.on('open', main)
 
-
+/** Helper function for starting an iterative process */
 async function process(message, iterations, callback) {
     console.log(message)
 
@@ -22,35 +22,22 @@ async function process(message, iterations, callback) {
 }
 
 async function main() {
-    const countMap = new Map()
-
     /* Getting count of links by repository */
-    const repoCount = await fetch(`
+    const repoIds = await fetch(`
     
-    SELECT count(*) as num, repo_id 
+    SELECT DISTINCT repo_id 
     FROM github_jira_link 
-    WHERE satd_count > 2 
-    GROUP BY repo_id
     
-    `)
-
-    for (const { num, repo_id } of repoCount)
-        countMap.set(repo_id, num)
+    `, d => d.repo_id)
         
-    const totalCount = Array.from(countMap.values()).reduce((a, b) => a + b, 0)
-    const sampleGoal = 500
     const ids = []
     
-    await process("Collecting instances ids", countMap.size, async update => {
-
-        
-        for (const repoId of countMap.keys()) {
-            const count = countMap.get(repoId)            
-            const linkIds = await sampleLinksFromRepository(repoId, sampleGoal * (count / totalCount))
+    await process("Collecting instances ids", repoIds.length, async update => {
+        for (const repoId of repoIds) {        
+            const linkIds = await sampleLinksFromRepository(repoId)
             ids.push(...linkIds)
             update()
         }
-
     })
 
     const finalData = []

@@ -60,7 +60,7 @@ async function fetchInstance(id) {
         // // Prevent from doing any computation if no issue
         entry.issue_number === null ? null :
             fetch(`
-                gibberish SELECT github_issue.title, github_issue.body, github_issue_satd.label_id 
+                SELECT github_issue.title, github_issue.body, github_issue_satd.label_id 
                 FROM github_issue
                 LEFT JOIN github_issue_satd
                 ON github_issue_satd.number = github_issue.number
