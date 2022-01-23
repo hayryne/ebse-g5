@@ -1,71 +1,68 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 252
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HIVE-7490: Revert ORC stripe size (Prasanth J, reviewed by Gunther Hagleitner)
-                </div><div><b>message:</b> HIVE-7490: Revert ORC stripe size (Prasanth J, reviewed by Gunther Hagleitner)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 There's some bogus code that can modify the queue name. Force-set it for pool sessions.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HIVE-15645 : Tez session pool may restart sessions in a wrong queue (Sergey Shelukhin, reviewed by Gunther Hagleitner)
+                </div><div><b>message:</b> HIVE-15645 : Tez session pool may restart sessions in a wrong queue (Sergey Shelukhin, reviewed by Gunther Hagleitner)
 
-git-svn-id: https://svn.apache.org/repos/asf/hive/trunk@1613238 13f79535-47bb-0310-9956-ffa450edef68
+Change-Id: I90fb70a24e878c6cc839197dade14889a7b2b621
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Revert ORC stripe size
-                </div><div><b>description:</b> HIVE-6037 reverted the changes to ORC stripe size introduced by HIVE-7231.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Tez session pool may restart sessions in a wrong queue
+                </div><div><b>description:</b> 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                +1
+                Preliminary patch. [~sseth] does this make sense?
               </div></li><li><div>
-                This is slated for fixing in HIVE-6586, but you can fix it here if you prefer.
+                Your comment says:
 
-* [ORC block size and block padding comment on HIVE-6586 | https://issues.apache.org/jira/browse/HIVE-6586?focusedCommentId=14053403&amp;page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-14053403]
+// There's some bogus code that can modify the queue name. Force-set it for pool sessions.
+
+This fix sounds like a guess. Is there an actual test case to show what's being fixed? If there is bogus code, can we fix that?
+              </div></li><li><div><div><b>body:</b> We had a repro on some cluster that indicates that the patch will fix the problem.
+It has to do with config being out of sync with the property. First session gets config and property correct, but something (I am pretty sure it's the unset in open path) resets the config. Then the 2nd session (after expiration) gets the property correct but the config is not set, so it logs as if it is going to correct queue but goes to a wrong (default) queue, which is what we have observed for a specific session in the cluster. The field is also reset to null from conf (in a place where I added the warn log), after the log statement about the queue. The 3rd session (after the 2nd expiration) logs null queue (because the field is also null now), and goes to the wrong queue, as does every one after that. So, for pool sessions we set the session into conf every time now. I also added a warn log for the future, and a null check cause we never expect null queue for pool sessions. To fix this properly the separation of pool and non-pool sessions that was started at some point needs to be completed, but that's a major refactoring, not a bugfix.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                This still might be one step forward two steps back. How do you know that clearing the conf wasn't done for some specific reason? Also, the exception nukes a case that used to work - what if that was done intentionally? 
+              </div></li><li><div>
+                The unsetting of the config is done for sessions with queue specified by the user, which is not something supported by pool sessions. The exception case is to manifest future bugs (if any) better - it was not supposed to work, and thus worked improperly...
+              </div></li><li><div>
+                Updated the logging in the patch.
+              </div></li><li><div>
+                +1
               </div></li><li><div>
                 
 
-{color:red}Overall{color}: -1 at least one tests failed
-
 Here are the results of testing the latest attachment:
-https://issues.apache.org/jira/secure/attachment/12657464/HIVE-7490.1.patch
+https://issues.apache.org/jira/secure/attachment/12847969/HIVE-15645.01.patch
 
-{color:red}ERROR:{color} -1 due to 3 failed/errored test(s), 5756 tests executed
+{color:red}ERROR:{color} -1 due to no test(s) being added or modified.
+
+{color:red}ERROR:{color} -1 due to 6 failed/errored test(s), 10942 tests executed
 *Failed tests:*
 {noformat}
-org.apache.hadoop.hive.cli.TestMiniTezCliDriver.testCliDriver_dynpart_sort_optimization
-org.apache.hadoop.hive.cli.TestMinimrCliDriver.testCliDriver_ql_rewrite_gbtoidx
-org.apache.hive.hcatalog.pig.TestOrcHCatLoader.testReadDataPrimitiveTypes
+TestDerbyConnector - did not produce a TEST-*.xml file (likely timed out) (batchId=234)
+org.apache.hadoop.hive.cli.TestMiniLlapCliDriver.testCliDriver[orc_llap_counters] (batchId=136)
+org.apache.hadoop.hive.cli.TestMiniLlapLocalCliDriver.testCliDriver[schema_evol_text_vec_part] (batchId=148)
+org.apache.hadoop.hive.cli.TestMiniLlapLocalCliDriver.testCliDriver[vector_if_expr] (batchId=139)
+org.apache.hadoop.hive.ql.security.authorization.plugin.TestHiveAuthorizerCheckInvocation.org.apache.hadoop.hive.ql.security.authorization.plugin.TestHiveAuthorizerCheckInvocation (batchId=208)
+org.apache.hadoop.hive.ql.security.authorization.plugin.TestHiveAuthorizerShowFilters.org.apache.hadoop.hive.ql.security.authorization.plugin.TestHiveAuthorizerShowFilters (batchId=208)
 {noformat}
 
-Test results: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/32/testReport
-Console output: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/32/console
-Test logs: http://ec2-174-129-184-35.compute-1.amazonaws.com/logs/PreCommit-HIVE-TRUNK-Build-32/
+Test results: https://builds.apache.org/job/PreCommit-HIVE-Build/3009/testReport
+Console output: https://builds.apache.org/job/PreCommit-HIVE-Build/3009/console
+Test logs: http://104.198.109.242/logs/PreCommit-HIVE-Build-3009/
 
 Messages:
 {noformat}
+Executing org.apache.hive.ptest.execution.TestCheckPhase
 Executing org.apache.hive.ptest.execution.PrepPhase
 Executing org.apache.hive.ptest.execution.ExecutionPhase
 Executing org.apache.hive.ptest.execution.ReportingPhase
-Tests exited with: TestsFailedException: 3 tests failed
+Tests exited with: TestsFailedException: 6 tests failed
 {noformat}
 
 This message is automatically generated.
 
-ATTACHMENT ID: 12657464
+ATTACHMENT ID: 12847969 - PreCommit-HIVE-Build
               </div></li><li><div>
-                [~leftylev] Thanks for the link. Sorry I completely missed it. Look at HIVE-6586 it looks like it gonna take awhile to get it committed. Since this patch is ready to be committed I will go ahead and commit it.
-
-The test failures are not related. 
-              </div></li><li><div>
-                *Looking at HIVE-6586
-
-              </div></li><li><div>
-                Committed to trunk.
-              </div></li><li><div>
-                Okay, thanks [~prasanth_j].  I updated the comment on HIVE-6586 with a pointer to this JIRA.
-
-* [updated comment | https://issues.apache.org/jira/browse/HIVE-6586?focusedCommentId=14053403&amp;page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-14053403]
-              </div></li><li><div><div><b>body:</b> This changes the default value of *hive.exec.orc.default.stripe.size* in 0.14.0 so the wiki needs version information ... but first Configuration Properties needs to document the parameter with its original default value (0.13.0, HIVE-5425).
-
-* [Configuration Properties | https://cwiki.apache.org/confluence/display/Hive/Configuration+Properties]
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                *hive.exec.orc.default.stripe.size* is documented in Configuration Properties with its change of default value in 0.14.0:
-
-* [Configuration Properties -- hive.exec.orc.default.stripe.size | https://cwiki.apache.org/confluence/display/Hive/Configuration+Properties#ConfigurationProperties-hive.exec.orc.default.stripe.size]
-              </div></li><li><div>
-                This has been fixed in 0.14 release. Please open new jira if you see any issues.
-
+                Committed to master... cannot repro vertex_if failure, the rest are old
               </div></li></ol></div></div></html>

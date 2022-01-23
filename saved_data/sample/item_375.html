@@ -1,307 +1,318 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 375
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers instead of hardcoding value for header. (#2771)
-                </div><div><b>message:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers instead of hardcoding value for header. (#2771)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Record clusterId performing change in CosmosDB (#4312)
+                </div><div><b>message:</b> Record clusterId performing change in CosmosDB (#4312)
 
+Records the clusterId (if configured) with the updated document while persisting in ComosDB. This is an optional property. By default no `clusterId` info is saved
 
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Default CORS handling doesn't handle headers well
-                </div><div><b>body:</b> Given this web action:
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Multi Region OpenWhisk deployment using CosmosDB
+                </div><div><b>body:</b> For OpenWhisk setups using CosmosDB its possible to deploy multiple OpenWhisk cluster in different regions via using multi region CosmosDB setup. Purpose of this issue is to track high level changes required to support such deployment
 
-```php
-&lt;?php
-function main(array $args) : array
-{
-    return [
-        'hello' =&gt; 'world'
-    ];
-}
+## Metadata and CosmosDB
+
+CosmosDB supports multi region deployments where it supports transparent replication of data across regions. In doing that it supports 2 modes
+
+1. `Multi Master` - In this mode multiple regions can handles writes locally. When used with OpenWhisk this mode can be enabled for `actovations` collection as objects in this collection are immutable and hence no conflict resolution need to be performed
+2. `Single Master` - In this mode only one region handles the write while reads work locally for each region. This mode would be used for `whisks` and `subjects` collection
+
+### Separate Account for Collections
+
+As multi master is needed only for activation we would need to support configuring separate connection details on a per collection basis. 
+
+This is now possible via #4198
+
+### Cache Invalidation
+
+OpenWhisk cluster uses a Kafka topic `cacheInvalidation` to communicate changes to any cached entity. Messages on this topic are of the form
+
+```json
+{"instanceId":"controller0","key":{"mainId":"guest/hello"}}
 ```
 
-This JS call in a browser will fail:
+When deploying multiple seprate cluster of OpenWhisk which do not share same Kafka instance we would need a way to propagate the cache change event across cluster. For CosmosDB based setups this can be done by using [CosmosDB ChangeFeed][1] support. It enables reading changes that are made to any specific collection.  
 
-```html
-&lt;!doctype html&gt;
-&lt;html&gt;
-    &lt;head&gt;
-    &lt;/head&gt;
-    &lt;body&gt;
-        &lt;h1&gt;Test&lt;/h1&gt;
+#### &lt;a name="cache-invalidation-service"&gt;&lt;/a&gt;Cache Invalidation Service (#4314)
 
-        &lt;pre id="data"&gt;
-        &lt;/pre&gt;
+To propagate changes across cluster we can implement a new service which makes use of the [changefeedprocessor][2] library to listen to changes happening in `whisks` and `subject` collection and then convert them into Kafka message events which can be sent to `cacheInvalidation`.
 
-        &lt;script src="https://code.jquery.com/jquery-3.2.1.min.js"&gt;&lt;/script&gt;
-        &lt;script type="text/javascript"&gt;
-            $(document).ready(function() {
-                jQuery.ajax({
-                    url: "https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json",
-                    type: "GET",
-                    headers: {
-                        'X-Clacks-Overhead': 'GNU Terry Pratchett'
-                    },
-                    contentType: 'application/json; charset=utf-8',
-                    success: function(resultData) {
-                        console.log(resultData)
-                        $('#data').html("Action result is: " + JSON.stringify(resultData))
-                    },
-                    error : function(jqXHR, textStatus, errorThrown) {
-                        console.log("Error: " + textStatus)
-                        console.log(errorThrown)
-                        console.log(jqXHR)
-                        $('#data').html("Error")
-                    },
-                    timeout: 120000,
-                });
-            });
-        &lt;/script&gt;
-    &lt;/body&gt;
-    &lt;/html&gt;
+So each cluster would have its own cache invalidation service running which would ensure that changes done by other clusters are picked up and routed to local cluster `cacheInvalidation` topic
+
+#### Handling Deletes (#4339)
+
+Per [change feed support docs][1] there is no direct support for listening to deletes
+
+&gt; The change feed includes inserts and update operations made to documents within the collection. You can capture deletes by setting a "soft-delete" flag within your documents in place of deletes
+
+So we would need to implement such a support in our `CosmosDBArtifactStore` where 
+
+1. Upon delete we set a `_deleted` flag
+2. Fliter out such soft deleted entries from query results
+3. Use this flag in cache invalidation service to detect deletes
+
+#### Identifying Cluster making the change (#4312)
+
+Controllers would pickup changes from `cacheInvalidation` topic and then invalidate cached entry if the instanceId of the message differs. When propagating changes from other clusters we would need to determine if change picked via CosmosDB changefeed occurred from current cluster or other cluster. For this purpose we would need to add some metadata while performing any CRUD operation which identifies the current cluster.
+
+## Code attachments and S3 (#4392)
+
+S3 support replication of a bucket only to 1 other region. For multi region setups we can leverage using CDN like CloudFront to act as a local cache which reduces latency for ready code binary in other regions
+
+[1]: https://docs.microsoft.com/en-us/azure/cosmos-db/change-feed
+[2]: https://github.com/Azure/azure-documentdb-changefeedprocessor-java
+                </div></div></li><li><div><div><b>title:</b> Multi Region OpenWhisk deployment using CosmosDB
+                </div><div><b>body:</b> For OpenWhisk setups using CosmosDB its possible to deploy multiple OpenWhisk cluster in different regions via using multi region CosmosDB setup. Purpose of this issue is to track high level changes required to support such deployment
+
+## Metadata and CosmosDB
+
+CosmosDB supports multi region deployments where it supports transparent replication of data across regions. In doing that it supports 2 modes
+
+1. `Multi Master` - In this mode multiple regions can handles writes locally. When used with OpenWhisk this mode can be enabled for `actovations` collection as objects in this collection are immutable and hence no conflict resolution need to be performed
+2. `Single Master` - In this mode only one region handles the write while reads work locally for each region. This mode would be used for `whisks` and `subjects` collection
+
+### Separate Account for Collections
+
+As multi master is needed only for activation we would need to support configuring separate connection details on a per collection basis. 
+
+This is now possible via #4198
+
+### Cache Invalidation
+
+OpenWhisk cluster uses a Kafka topic `cacheInvalidation` to communicate changes to any cached entity. Messages on this topic are of the form
+
+```json
+{"instanceId":"controller0","key":{"mainId":"guest/hello"}}
 ```
 
-With an error message in the Chrome console of:
+When deploying multiple seprate cluster of OpenWhisk which do not share same Kafka instance we would need a way to propagate the cache change event across cluster. For CosmosDB based setups this can be done by using [CosmosDB ChangeFeed][1] support. It enables reading changes that are made to any specific collection.  
 
-&gt; XMLHttpRequest cannot load https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json. Request header field X-Clacks-Overhead is not allowed by Access-Control-Allow-Headers in preflight response.
+#### &lt;a name="cache-invalidation-service"&gt;&lt;/a&gt;Cache Invalidation Service (#4314)
 
-This is because [`defaultCorsResponse`](https://github.com/apache/incubator-openwhisk/blob/master/core/controller/src/main/scala/whisk/core/controller/WebActions.scala#L354)  sends back `Access-Control-Allow-Headers` of `Authorization ` and `Content-Type` only.
+To propagate changes across cluster we can implement a new service which makes use of the [changefeedprocessor][2] library to listen to changes happening in `whisks` and `subject` collection and then convert them into Kafka message events which can be sent to `cacheInvalidation`.
 
-What should happen is that `Access-Control-Allow-Headers` should be whatever was sent in `Access-Control-Request-Headers`.
-                </div></div></li><li><div><div><b>title:</b> Default CORS handling doesn't handle headers well
-                </div><div><b>body:</b> Given this web action:
+So each cluster would have its own cache invalidation service running which would ensure that changes done by other clusters are picked up and routed to local cluster `cacheInvalidation` topic
 
-```php
-&lt;?php
-function main(array $args) : array
-{
-    return [
-        'hello' =&gt; 'world'
-    ];
-}
+#### Handling Deletes (#4339)
+
+Per [change feed support docs][1] there is no direct support for listening to deletes
+
+&gt; The change feed includes inserts and update operations made to documents within the collection. You can capture deletes by setting a "soft-delete" flag within your documents in place of deletes
+
+So we would need to implement such a support in our `CosmosDBArtifactStore` where 
+
+1. Upon delete we set a `_deleted` flag
+2. Fliter out such soft deleted entries from query results
+3. Use this flag in cache invalidation service to detect deletes
+
+#### Identifying Cluster making the change (#4312)
+
+Controllers would pickup changes from `cacheInvalidation` topic and then invalidate cached entry if the instanceId of the message differs. When propagating changes from other clusters we would need to determine if change picked via CosmosDB changefeed occurred from current cluster or other cluster. For this purpose we would need to add some metadata while performing any CRUD operation which identifies the current cluster.
+
+## Code attachments and S3 (#4392)
+
+S3 support replication of a bucket only to 1 other region. For multi region setups we can leverage using CDN like CloudFront to act as a local cache which reduces latency for ready code binary in other regions
+
+[1]: https://docs.microsoft.com/en-us/azure/cosmos-db/change-feed
+[2]: https://github.com/Azure/azure-documentdb-changefeedprocessor-java
+                </div></div></li><li><div><div><b>title:</b> Multi Region OpenWhisk deployment using CosmosDB
+                </div><div><b>body:</b> For OpenWhisk setups using CosmosDB its possible to deploy multiple OpenWhisk cluster in different regions via using multi region CosmosDB setup. Purpose of this issue is to track high level changes required to support such deployment
+
+## Metadata and CosmosDB
+
+CosmosDB supports multi region deployments where it supports transparent replication of data across regions. In doing that it supports 2 modes
+
+1. `Multi Master` - In this mode multiple regions can handles writes locally. When used with OpenWhisk this mode can be enabled for `actovations` collection as objects in this collection are immutable and hence no conflict resolution need to be performed
+2. `Single Master` - In this mode only one region handles the write while reads work locally for each region. This mode would be used for `whisks` and `subjects` collection
+
+### Separate Account for Collections
+
+As multi master is needed only for activation we would need to support configuring separate connection details on a per collection basis. 
+
+This is now possible via #4198
+
+### Cache Invalidation
+
+OpenWhisk cluster uses a Kafka topic `cacheInvalidation` to communicate changes to any cached entity. Messages on this topic are of the form
+
+```json
+{"instanceId":"controller0","key":{"mainId":"guest/hello"}}
 ```
 
-This JS call in a browser will fail:
+When deploying multiple seprate cluster of OpenWhisk which do not share same Kafka instance we would need a way to propagate the cache change event across cluster. For CosmosDB based setups this can be done by using [CosmosDB ChangeFeed][1] support. It enables reading changes that are made to any specific collection.  
 
-```html
-&lt;!doctype html&gt;
-&lt;html&gt;
-    &lt;head&gt;
-    &lt;/head&gt;
-    &lt;body&gt;
-        &lt;h1&gt;Test&lt;/h1&gt;
+#### &lt;a name="cache-invalidation-service"&gt;&lt;/a&gt;Cache Invalidation Service (#4314)
 
-        &lt;pre id="data"&gt;
-        &lt;/pre&gt;
+To propagate changes across cluster we can implement a new service which makes use of the [changefeedprocessor][2] library to listen to changes happening in `whisks` and `subject` collection and then convert them into Kafka message events which can be sent to `cacheInvalidation`.
 
-        &lt;script src="https://code.jquery.com/jquery-3.2.1.min.js"&gt;&lt;/script&gt;
-        &lt;script type="text/javascript"&gt;
-            $(document).ready(function() {
-                jQuery.ajax({
-                    url: "https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json",
-                    type: "GET",
-                    headers: {
-                        'X-Clacks-Overhead': 'GNU Terry Pratchett'
-                    },
-                    contentType: 'application/json; charset=utf-8',
-                    success: function(resultData) {
-                        console.log(resultData)
-                        $('#data').html("Action result is: " + JSON.stringify(resultData))
-                    },
-                    error : function(jqXHR, textStatus, errorThrown) {
-                        console.log("Error: " + textStatus)
-                        console.log(errorThrown)
-                        console.log(jqXHR)
-                        $('#data').html("Error")
-                    },
-                    timeout: 120000,
-                });
-            });
-        &lt;/script&gt;
-    &lt;/body&gt;
-    &lt;/html&gt;
+So each cluster would have its own cache invalidation service running which would ensure that changes done by other clusters are picked up and routed to local cluster `cacheInvalidation` topic
+
+#### Handling Deletes (#4339)
+
+Per [change feed support docs][1] there is no direct support for listening to deletes
+
+&gt; The change feed includes inserts and update operations made to documents within the collection. You can capture deletes by setting a "soft-delete" flag within your documents in place of deletes
+
+So we would need to implement such a support in our `CosmosDBArtifactStore` where 
+
+1. Upon delete we set a `_deleted` flag
+2. Fliter out such soft deleted entries from query results
+3. Use this flag in cache invalidation service to detect deletes
+
+#### Identifying Cluster making the change (#4312)
+
+Controllers would pickup changes from `cacheInvalidation` topic and then invalidate cached entry if the instanceId of the message differs. When propagating changes from other clusters we would need to determine if change picked via CosmosDB changefeed occurred from current cluster or other cluster. For this purpose we would need to add some metadata while performing any CRUD operation which identifies the current cluster.
+
+## Code attachments and S3 (#4392)
+
+S3 support replication of a bucket only to 1 other region. For multi region setups we can leverage using CDN like CloudFront to act as a local cache which reduces latency for ready code binary in other regions
+
+[1]: https://docs.microsoft.com/en-us/azure/cosmos-db/change-feed
+[2]: https://github.com/Azure/azure-documentdb-changefeedprocessor-java
+                </div></div></li><li><div><div><b>title:</b> Multi Region OpenWhisk deployment using CosmosDB
+                </div><div><b>body:</b> For OpenWhisk setups using CosmosDB its possible to deploy multiple OpenWhisk cluster in different regions via using multi region CosmosDB setup. Purpose of this issue is to track high level changes required to support such deployment
+
+## Metadata and CosmosDB
+
+CosmosDB supports multi region deployments where it supports transparent replication of data across regions. In doing that it supports 2 modes
+
+1. `Multi Master` - In this mode multiple regions can handles writes locally. When used with OpenWhisk this mode can be enabled for `actovations` collection as objects in this collection are immutable and hence no conflict resolution need to be performed
+2. `Single Master` - In this mode only one region handles the write while reads work locally for each region. This mode would be used for `whisks` and `subjects` collection
+
+### Separate Account for Collections
+
+As multi master is needed only for activation we would need to support configuring separate connection details on a per collection basis. 
+
+This is now possible via #4198
+
+### Cache Invalidation
+
+OpenWhisk cluster uses a Kafka topic `cacheInvalidation` to communicate changes to any cached entity. Messages on this topic are of the form
+
+```json
+{"instanceId":"controller0","key":{"mainId":"guest/hello"}}
 ```
 
-With an error message in the Chrome console of:
+When deploying multiple seprate cluster of OpenWhisk which do not share same Kafka instance we would need a way to propagate the cache change event across cluster. For CosmosDB based setups this can be done by using [CosmosDB ChangeFeed][1] support. It enables reading changes that are made to any specific collection.  
 
-&gt; XMLHttpRequest cannot load https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json. Request header field X-Clacks-Overhead is not allowed by Access-Control-Allow-Headers in preflight response.
+#### &lt;a name="cache-invalidation-service"&gt;&lt;/a&gt;Cache Invalidation Service (#4314)
 
-This is because [`defaultCorsResponse`](https://github.com/apache/incubator-openwhisk/blob/master/core/controller/src/main/scala/whisk/core/controller/WebActions.scala#L354)  sends back `Access-Control-Allow-Headers` of `Authorization ` and `Content-Type` only.
+To propagate changes across cluster we can implement a new service which makes use of the [changefeedprocessor][2] library to listen to changes happening in `whisks` and `subject` collection and then convert them into Kafka message events which can be sent to `cacheInvalidation`.
 
-What should happen is that `Access-Control-Allow-Headers` should be whatever was sent in `Access-Control-Request-Headers`.
-                </div></div></li><li><div><div><b>title:</b> Default CORS handling doesn't handle headers well
-                </div><div><b>body:</b> Given this web action:
+So each cluster would have its own cache invalidation service running which would ensure that changes done by other clusters are picked up and routed to local cluster `cacheInvalidation` topic
 
-```php
-&lt;?php
-function main(array $args) : array
-{
-    return [
-        'hello' =&gt; 'world'
-    ];
-}
-```
+#### Handling Deletes (#4339)
 
-This JS call in a browser will fail:
+Per [change feed support docs][1] there is no direct support for listening to deletes
 
-```html
-&lt;!doctype html&gt;
-&lt;html&gt;
-    &lt;head&gt;
-    &lt;/head&gt;
-    &lt;body&gt;
-        &lt;h1&gt;Test&lt;/h1&gt;
+&gt; The change feed includes inserts and update operations made to documents within the collection. You can capture deletes by setting a "soft-delete" flag within your documents in place of deletes
 
-        &lt;pre id="data"&gt;
-        &lt;/pre&gt;
+So we would need to implement such a support in our `CosmosDBArtifactStore` where 
 
-        &lt;script src="https://code.jquery.com/jquery-3.2.1.min.js"&gt;&lt;/script&gt;
-        &lt;script type="text/javascript"&gt;
-            $(document).ready(function() {
-                jQuery.ajax({
-                    url: "https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json",
-                    type: "GET",
-                    headers: {
-                        'X-Clacks-Overhead': 'GNU Terry Pratchett'
-                    },
-                    contentType: 'application/json; charset=utf-8',
-                    success: function(resultData) {
-                        console.log(resultData)
-                        $('#data').html("Action result is: " + JSON.stringify(resultData))
-                    },
-                    error : function(jqXHR, textStatus, errorThrown) {
-                        console.log("Error: " + textStatus)
-                        console.log(errorThrown)
-                        console.log(jqXHR)
-                        $('#data').html("Error")
-                    },
-                    timeout: 120000,
-                });
-            });
-        &lt;/script&gt;
-    &lt;/body&gt;
-    &lt;/html&gt;
-```
+1. Upon delete we set a `_deleted` flag
+2. Fliter out such soft deleted entries from query results
+3. Use this flag in cache invalidation service to detect deletes
 
-With an error message in the Chrome console of:
+#### Identifying Cluster making the change (#4312)
 
-&gt; XMLHttpRequest cannot load https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json. Request header field X-Clacks-Overhead is not allowed by Access-Control-Allow-Headers in preflight response.
+Controllers would pickup changes from `cacheInvalidation` topic and then invalidate cached entry if the instanceId of the message differs. When propagating changes from other clusters we would need to determine if change picked via CosmosDB changefeed occurred from current cluster or other cluster. For this purpose we would need to add some metadata while performing any CRUD operation which identifies the current cluster.
 
-This is because [`defaultCorsResponse`](https://github.com/apache/incubator-openwhisk/blob/master/core/controller/src/main/scala/whisk/core/controller/WebActions.scala#L354)  sends back `Access-Control-Allow-Headers` of `Authorization ` and `Content-Type` only.
+## Code attachments and S3 (#4392)
 
-What should happen is that `Access-Control-Allow-Headers` should be whatever was sent in `Access-Control-Request-Headers`.
-                </div></div></li><li><div><div><b>title:</b> Default CORS handling doesn't handle headers well
-                </div><div><b>body:</b> Given this web action:
+S3 support replication of a bucket only to 1 other region. For multi region setups we can leverage using CDN like CloudFront to act as a local cache which reduces latency for ready code binary in other regions
 
-```php
-&lt;?php
-function main(array $args) : array
-{
-    return [
-        'hello' =&gt; 'world'
-    ];
-}
-```
-
-This JS call in a browser will fail:
-
-```html
-&lt;!doctype html&gt;
-&lt;html&gt;
-    &lt;head&gt;
-    &lt;/head&gt;
-    &lt;body&gt;
-        &lt;h1&gt;Test&lt;/h1&gt;
-
-        &lt;pre id="data"&gt;
-        &lt;/pre&gt;
-
-        &lt;script src="https://code.jquery.com/jquery-3.2.1.min.js"&gt;&lt;/script&gt;
-        &lt;script type="text/javascript"&gt;
-            $(document).ready(function() {
-                jQuery.ajax({
-                    url: "https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json",
-                    type: "GET",
-                    headers: {
-                        'X-Clacks-Overhead': 'GNU Terry Pratchett'
-                    },
-                    contentType: 'application/json; charset=utf-8',
-                    success: function(resultData) {
-                        console.log(resultData)
-                        $('#data').html("Action result is: " + JSON.stringify(resultData))
-                    },
-                    error : function(jqXHR, textStatus, errorThrown) {
-                        console.log("Error: " + textStatus)
-                        console.log(errorThrown)
-                        console.log(jqXHR)
-                        $('#data').html("Error")
-                    },
-                    timeout: 120000,
-                });
-            });
-        &lt;/script&gt;
-    &lt;/body&gt;
-    &lt;/html&gt;
-```
-
-With an error message in the Chrome console of:
-
-&gt; XMLHttpRequest cannot load https://openwhisk.eu-gb.bluemix.net/api/v1/web/19FT_dev/default/cors.json. Request header field X-Clacks-Overhead is not allowed by Access-Control-Allow-Headers in preflight response.
-
-This is because [`defaultCorsResponse`](https://github.com/apache/incubator-openwhisk/blob/master/core/controller/src/main/scala/whisk/core/controller/WebActions.scala#L354)  sends back `Access-Control-Allow-Headers` of `Authorization ` and `Content-Type` only.
-
-What should happen is that `Access-Control-Allow-Headers` should be whatever was sent in `Access-Control-Request-Headers`.
+[1]: https://docs.microsoft.com/en-us/azure/cosmos-db/change-feed
+[2]: https://github.com/Azure/azure-documentdb-changefeedprocessor-java
                 </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                I think this is important for the `OPTIONS` preflight, it looks like client can specify the headers that the valid requests are intended to send.
+                Nice writeup, thanks! Can we potentially normalize between CouchDB and CosmosDB here by listening to the CouchDB changes feed as well for cache invalidation?
               </div></li><li><div>
-                https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS#Access-Control-Request-Headers
-```
-The Access-Control-Request-Headers header is used when issuing a preflight request to let the server know what HTTP headers will be used when the actual request is made.
-```
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+                Not well versed with CouchDB global replication support. Does it support across regions? Or we need to read from primary and just take care of cache invalidation part using its change feed?
+              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Record clusterId performing change in CosmosDB
+                </div><div><b>body:</b> Enables storing the clusterId information as part of document json in db.
 
-Closes #2653.
-FYI @akrabat 
-                </div></div></li><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+## Description
 
-Closes #2653.
-FYI @akrabat 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+For Multi Region deployments (#4277) we need to differentiate which cluster made change to a document while emitting the cache invalidation event. This PR enables storing a `_clusterId` attribute which can be configured to uniquely identify current cluster. 
 
-Closes #2653.
-FYI @akrabat 
-                </div></div></li><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+Later this attribute can be used by the cache invalidation service to filter out changes which are done by same cluster and only convert those changes from other cluster to local cache invalidation kafka topic
+## Related issue and scope
+&lt;!--- Please include a link to a related issue if there is one. --&gt;
+- [ ] I opened an issue to propose and discuss this change (#4277 )
 
-Closes #2653.
-FYI @akrabat 
-                </div></div></li><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+## My changes affect the following components
+&lt;!--- Select below all system components are affected by your change. --&gt;
+&lt;!--- Enter an `x` in all applicable boxes. --&gt;
+- [ ] API
+- [ ] Controller
+- [ ] Message Bus (e.g., Kafka)
+- [ ] Loadbalancer
+- [ ] Invoker
+- [ ] Intrinsic actions (e.g., sequences, conductors)
+- [ ] Data stores (e.g., CouchDB)
+- [ ] Tests
+- [ ] Deployment
+- [ ] CLI
+- [ ] General tooling
+- [ ] Documentation
 
-Closes #2653.
-FYI @akrabat 
-                </div></div></li><li><div><div><b>title:</b> Echo Access-Control-Request-Headers as Access-Control-Allow-Headers 
-                </div><div><b>body:</b> Instead of hardcoding the header value for `Access-Control-Allow-Headers`, echo back the request headers from the request when `Access-Control-Request-Headers` is present.
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Use `x` in all the boxes that apply: --&gt;
+- [ ] Bug fix (generally a non-breaking change which closes an issue).
+- [ ] Enhancement or new feature (adds new functionality).
+- [ ] Breaking change (a bug fix or enhancement which changes existing behavior).
 
-Closes #2653.
-FYI @akrabat 
+## Checklist:
+&lt;!--- Please review the points below which help you make sure you've covered all aspects of the change you're making. --&gt;
+
+- [ ] I signed an [Apache CLA](https://github.com/apache/incubator-openwhisk/blob/master/CONTRIBUTING.md).
+- [ ] I reviewed the [style guides](https://github.com/apache/incubator-openwhisk/wiki/Contributing:-Git-guidelines#code-readiness) and followed the recommendations (Travis CI will check :).
+- [ ] I added tests to cover my changes.
+- [ ] My changes require further changes to the documentation.
+- [ ] I updated the documentation where necessary.
+
+
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                PG3 1114 🔵 
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Should explicitly state that the `Access-Control-Request-Headers` is not echoed back when `web-custom-options` is enabled.
-              </div></li><li><div>
-                Need test that ensures `Access-Control-Request-Headers` isn't echoed back when `web-custom-options` is enabled.
-              </div></li><li><div>
-                The next paragraph states:
+                # [Codecov](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=h1) Report
+&gt; Merging [#4312](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=desc) into [master](https://codecov.io/gh/apache/incubator-openwhisk/commit/2ddd3c9cfd1b31176a54634f254707774a90f4f0?src=pr&amp;el=desc) will **decrease** coverage by `4.9%`.
+&gt; The diff coverage is `9.09%`.
 
-```
-Alternatively, OPTIONS requests can be handled manually by a web action. To enable this option add a
-`web-custom-options` annotation with a value of `true` to a web action. When this feature is enabled, CORS headers will
-not automatically be added to the request response. Instead, it is the developer's responsibility to append their
-desired headers programmatically. Below is an example of creating custom responses to OPTIONS requests.
+[![Impacted file tree graph](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/graphs/tree.svg?width=650&amp;token=l0YmsiSAso&amp;height=150&amp;src=pr)](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=tree)
+
+```diff
+@@            Coverage Diff             @@
+##           master    #4312      +/-   ##
+==========================================
+- Coverage   85.68%   80.78%   -4.91%     
+==========================================
+  Files         168      168              
+  Lines        7861     7870       +9     
+  Branches      523      524       +1     
+==========================================
+- Hits         6736     6358     -378     
+- Misses       1125     1512     +387
 ```
 
-Sufficient?
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+
+| [Impacted Files](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=tree) | Coverage Δ | |
+|---|---|---|
+| [...nwhisk/core/database/cosmosdb/CosmosDBConfig.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJDb25maWcuc2NhbGE=) | `94.11% &lt;ø&gt; (-5.89%)` | :arrow_down: |
+| [...core/database/cosmosdb/CosmosDBArtifactStore.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJBcnRpZmFjdFN0b3JlLnNjYWxh) | `0% &lt;0%&gt; (-95.36%)` | :arrow_down: |
+| [...penwhisk/core/database/cosmosdb/CosmosDBUtil.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJVdGlsLnNjYWxh) | `96% &lt;100%&gt; (+0.16%)` | :arrow_up: |
+| [...core/database/cosmosdb/RxObservableImplicits.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvUnhPYnNlcnZhYmxlSW1wbGljaXRzLnNjYWxh) | `0% &lt;0%&gt; (-100%)` | :arrow_down: |
+| [...sk/core/database/cosmosdb/CosmosDBViewMapper.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJWaWV3TWFwcGVyLnNjYWxh) | `0% &lt;0%&gt; (-92.6%)` | :arrow_down: |
+| [...whisk/core/database/cosmosdb/CosmosDBSupport.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJTdXBwb3J0LnNjYWxh) | `0% &lt;0%&gt; (-84.62%)` | :arrow_down: |
+| [...abase/cosmosdb/CosmosDBArtifactStoreProvider.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvcmUvZGF0YWJhc2UvY29zbW9zZGIvQ29zbW9zREJBcnRpZmFjdFN0b3JlUHJvdmlkZXIuc2NhbGE=) | `4% &lt;0%&gt; (-52%)` | :arrow_down: |
+| [...in/scala/org/apache/openwhisk/common/Counter.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL2NvbW1vbi9Db3VudGVyLnNjYWxh) | `40% &lt;0%&gt; (-20%)` | :arrow_down: |
+| [.../scala/org/apache/openwhisk/utils/Exceptions.scala](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree#diff-Y29tbW9uL3NjYWxhL3NyYy9tYWluL3NjYWxhL29yZy9hcGFjaGUvb3BlbndoaXNrL3V0aWxzL0V4Y2VwdGlvbnMuc2NhbGE=) | `20% &lt;0%&gt; (-20%)` | :arrow_down: |
+| ... and [3 more](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312/diff?src=pr&amp;el=tree-more) | |
+
+------
+
+[Continue to review full report at Codecov](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=continue).
+&gt; **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
+&gt; `Δ = absolute &lt;relative&gt; (impact)`, `ø = not affected`, `? = missing data`
+&gt; Powered by [Codecov](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=footer). Last update [2ddd3c9...0d29a5c](https://codecov.io/gh/apache/incubator-openwhisk/pull/4312?src=pr&amp;el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).
+
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div><div><b>body:</b> Minor: It may be worth noting (comment in the cluster id config?) that clusterId may change in the case where doc is created from one cluster, and edited from another, when both clusters use the same collection.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div><div><b>body:</b> Documented it now as part of scaladoc for `CosmosDBConstants`  
+                </div><div><b>label:</b> documentation
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

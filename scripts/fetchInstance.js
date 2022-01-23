@@ -84,7 +84,8 @@ async function fetchInstance(id) {
             FROM github_pull
             LEFT JOIN github_pull_satd
             ON github_pull.number =  github_pull_satd.number AND
-            github_pull.repo_id = github_pull_satd.repo_id
+            github_pull.repo_id = github_pull_satd.repo_id AND
+            github_pull_satd.type = "description"
             WHERE github_pull.number = ${entry.pull_number} AND github_pull.repo_id = ${entry.repo_id}
         `, mapper),
 
@@ -105,6 +106,7 @@ async function fetchInstance(id) {
             ON github_pull_review.id = github_pull_satd.id
             AND github_pull_review.number = github_pull_satd.number
             AND github_pull_review.repo_id = github_pull_satd.repo_id
+            AND github_pull_satd.type = "review"
             WHERE github_pull_review.number = ${entry.pull_number} AND github_pull_review.repo_id = ${entry.repo_id}
         `, mapper),
 

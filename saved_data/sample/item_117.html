@@ -1,109 +1,33 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 117
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fixed CS. This closes #1449
-                </div><div><b>message:</b> Fixed CS. This closes #1449
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CAMEL-15770 - Fixed docs about kafkaHeaderSerializer
+                </div><div><b>message:</b> CAMEL-15770 - Fixed docs about kafkaHeaderSerializer
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> CAMEL-10756: Mina2 Producer "hang" until timeout if the response message could not be decoded
-                </div><div><b>body:</b> 
-                </div></div></li><li><div><div><b>title:</b> CAMEL-10756: Mina2 Producer "hang" until timeout if the response message could not be decoded
-                </div><div><b>body:</b> 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> CAMEL-10756: Mina2 Producer "hang" until timeout if the response message could not be decoded
-                </div><div><b>body:</b> 
-                </div></div></li><li><div><div><b>title:</b> CAMEL-10756: Mina2 Producer "hang" until timeout if the response message could not be decoded
-                </div><div><b>body:</b> 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Can you avoid using the Java 8 API so this PR can be backported to branches that still support Java 1.7, eg 2.17.x branch.
-              </div></li><li><div><div><b>body:</b> Ok i have updated the code to remain backward compatible. 
-In addition i slightly improve the exceptionCaught and skip closing session in case of an IOException, since this kind of error is handled by mina itself (@see  org.apache.mina.core.service.IoHandlerAdapter.exceptionCaught)
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Mina2 Producer "hang" until timeout if the response message could not be decoded
-                </div><div><b>description:</b> I have tried to upgrade from camel 2.16 to 2.18 and run into an issue with camel-mina2. It looks like CAMEL-10024 has maybe introduced this issue.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Kafka serialize/deserialize properties are inconsistently named
+                </div><div><b>description:</b> There are 3 pairs of serializer/deserialiser properties on the Kafka component.
 
-*The scenario which fail:*
-A Mina2 producer send a request to a server, the server provide a response which could not be interpreted/decoded by a custom codec on the producer side (e.g. due to invalid encoding).
+The inconsistent parts of the names are highlighted
 
-*Expected behavior:*
-* The Exception from the decoder on the producer side will be directly propogated to the caller. The mina2 session will be closed.
+&nbsp;
+||Consumer||Producer||Type||
+|*kafka*HeaderDeserializer|*kafka*HeaderSerializer|Bean|
+|keyDeserializer|keySerializer*Class*|String FQN|
+|*value*Deserializer|serializer*Class*|String FQN|
 
-*Current behavior:*
-* Instead of the exception from the decoder, the producer wait until the timeout is reached and the caller get a timeout exception after the timeout is reached.
+&nbsp;
 
-*First analysis:*
-I have attached a patch for the camel-mina2 module which contain a test {{org.apache.camel.component.mina2.Mina2CustomCodecTest.testProducerFailInDecodingResponse()}} to reproduce this issue. 
+I think it would be worth making these names consistent.
+||Current||Proposed||
+|kafkaHeaderDeserializer|headerDeserializer|
+|kafkaHeaderSerializer|headerSerializer|
+|keyDeserializer|keyDeserializer |
+|keySerializerClass|keySerializer|
+|valueDeserializer|valueDeserializer|
+|serializerClass|valueSerializer|
 
-*If i revert the changes done within CAMEL-10024, the test run correct.* If I debug into the new code, i see that the producer "hang" in {{Mina2Producer.closeSessionIfNeededAndAwaitCloseInHandler(IoSession)}} -- {{closeLatch.await(timeout, TimeUnit.MILLISECONDS);}} which was introduced with CAML-10024.
+It looks like there was an intent to denote the key- and value- properties as expecting a class FQN string by appending 'Class' to the name. I don't see any other properties that do this so I think the consistent approach is to leave it off.
 
-I could not yet provide a fix as well, since I don't really understand the details of CAMEL-10024. But hopefully my testcase helps to fix this issue.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> CAMEL-10024 was introduced to take care of the fact that producers were returned to the pool with an active CloseFuture.
-When you reusing this producer the CloseFuture closed the session that was being used.
-The Producer should wait for the handler to close the session.
-I think the "exceptionCaught" method should not use the same closeSessionIfNeededAndAwaitCloseInHandler (because this method is already inside the handler).
-awaiting the CloseFuture should be sufficient (I think/hope).
-B.t.w. maybe the session should only be closed based on the "disconnect" setting.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                [~cibsen@e-ma.net] or [~ancosen]: What do you think, should the session be closed on https://github.com/apache/camel/blob/master/components/camel-mina2/src/main/java/org/apache/camel/component/mina2/Mina2Producer.java#L510? My feeling is that the Producer itself should ask for the closing of the session based on the "disconnect" setting.
-              </div></li><li><div>
-                Just my two cents on this: I think closing the session in an mina internal error would make sense. E.g. If Mina receive UDP packages and of them is causing an session exception, further processing might make no sense. From my understandning the "disconnect" flag is intended in case i want to stop the session after valid processing the request.
-
-I have prepared a proposal which fix the test and switch back to a basic close connection behavior as suggested by Arno:
-https://github.com/Thopap/camel/commit/16d1f57640752d8c5a8fcace1299decc50176c46
-              </div></li><li><div>
-                I'm doubting about what the developers of mina would advise.
-According to https://mina.apache.org/mina-project/apidocs/org/apache/mina/core/service/IoHandler.html#exceptionCaught-org.apache.mina.core.session.IoSession-java.lang.Throwable- the connection is closed if the cause is an instance of IoException.
-I think the "producer" should be in control of the closing of the session not the "handler".
-But still.. I think this solution will work given that exceptions should be exceptional.
-              </div></li><li><div>
-                GitHub user Thopap opened a pull request:
-
-    https://github.com/apache/camel/pull/1449
-
-    CAMEL-10756: Mina2 Producer "hang" until timeout if the response message could not be decoded
-
-    
-
-You can merge this pull request into a Git repository by running:
-
-    $ git pull https://github.com/Thopap/camel master
-
-Alternatively you can review and apply these changes as the patch at:
-
-    https://github.com/apache/camel/pull/1449.patch
-
-To close this pull request, make a commit to your master/trunk branch
-with (at least) the following in the commit message:
-
-    This closes #1449
-    
-----
-commit f37c5576fa32d499359d0aaeb4be5f8e3e8782fb
-Author: Thomas Papke &lt;thomas.papke@icw.de&gt;
-Date:   2017-01-30T15:49:07Z
-
-    CAMEL-10765: Remove unused oauth dependency from camel-cxf pom
-
-commit 16d1f57640752d8c5a8fcace1299decc50176c46
-Author: Thomas Papke &lt;thomas.papke@icw.de&gt;
-Date:   2017-02-06T12:32:47Z
-
-    CAMEL-10756 Mina2 Producer "hang" until timeout if the response message
-    could not be decoded
-    * Adapt exception caught
-
-commit 833468d4ddd886ecc66b5ce0950e60f2806fc252
-Author: Thopap &lt;thomas.papke@icw.de&gt;
-Date:   2017-02-06T15:50:54Z
-
-    Merge remote-tracking branch 'origin/master'
-
-----
-
-              </div></li><li><div>
-                Github user asfgit closed the pull request at:
-
-    https://github.com/apache/camel/pull/1449
-
-              </div></li><li><div>
-                Thanks for the PR
-              </div></li></ol></div></div></html>
+I've made an assumption that valueDeserializer &amp; serializerClass are a pair, as the descriptions don't match. It would be good to take the opportunity to make all six descriptions consistent.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> On the camel side this is done. I need to do more work on SB and examples around. Also add some migration and update documentation. The codebase in main camel is done.
+                </div><div><b>label:</b> documentation
+                </div></div></li></ol></div></div></html>

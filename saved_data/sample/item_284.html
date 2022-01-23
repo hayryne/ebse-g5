@@ -1,24 +1,151 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 284
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> TS-826 TSHttpTxnErrorBodySet() can leak memory
-                </div><div><b>message:</b> TS-826 TSHttpTxnErrorBodySet() can leak memory
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merge pull request #643 from yatsukhnenko/TS-4443
+                </div><div><b>message:</b> Merge pull request #643 from yatsukhnenko/TS-4443
 
-Author: William Bardwell
-Review: leif
+[TS-4443] regex_remap: fix $i substitution
 
-git-svn-id: https://svn.apache.org/repos/asf/trafficserver/traffic/trunk@1137775 13f79535-47bb-0310-9956-ffa450edef68
+This makes this feature actually work. Review: leif.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [TS-4443] regex_remap: fix $i substitution
+                </div><div><b>body:</b> 
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                Yep, this looks much better. I'll do another round of reviews in a little bit. [approve ci]
 
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> TSHttpTxnErrorBodySet() can leak memory
-                </div><div><b>description:</b> TSHttpTxnErrorBodySet() sets HttpSM::t_state.internal_msg_buffer without freeing any old contents in there.
-There can be an error message in that if you have a request with a bad hostname and you let the transaction get past DNS
-lookup.  Instead it should free the contents, or there should be another field that it sets and nothing else does.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Patch based on what TSHttpTxnServerRequestBodySet does.
+Thanks!
+
               </div></li><li><div>
-                Resolved on both 3.0.x and trunk.
-              </div></li><li><div><div><b>body:</b> Correct me if I'm wrong but with this patch it's still leaking mimetype. See HttpSM::setup_internal_transfer line 5416 which frees internal_msg_buffer_type...it's expected that mimetype was malloced since clearly it's being freed. So that means there is still a memory leak in TSHttpTxnErrorBodySet().
+                Can one of the admins verify this patch? Only approve PRs which have been reviewed.
+
+              </div></li><li><div>
+                I ran the CI on this, unfortunately the patch does not format with clang-format. See e.g. https://ci.trafficserver.apache.org/view/github/job/Github-Linux/74/console
+
+              </div></li><li><div><div><b>body:</b> One more thing: This seems to only be for IPv4. I think we should support both v4 and v6, so in addition to the code that is here to be modified for IPv6, we also have to bump up the max length accordingly.
+
+I'd be fine with just bumping it up to 39, or 46, or perhaps INET6_ADDRSTRLEN (is that cross platform) ?). E.g.
+
+```
+diff --git a/plugins/regex_remap/regex_remap.cc b/plugins/regex_remap/regex_remap.cc
+index ad973ce..4ef0daf 100644
+--- a/plugins/regex_remap/regex_remap.cc
++++ b/plugins/regex_remap/regex_remap.cc
+@@ -532,7 +532,7 @@ RemapRegex::get_lengths(const int ovector[], int lengths[], TSRemapRequestInfo *
+         len += req_url-&gt;matrix_len;
+         break;
+       case SUB_CLIENT_IP:
+-        len += 15; // Allow for 255.255.255.255
++        len += INET6_ADDRSTRLEN; /* is this cross platform? */
+         break;
+       default:
+         break;
+```
+
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Opened bug https://issues.apache.org/jira/browse/TS-1038
+                In addition to INET6_ADDRSTRLEN I think we should use inet_ntop instead of inet_ntoa
+
+              </div></li><li><div>
+                Yep, that was the first portion of my reply :). 
+
+              </div></li><li><div>
+                If you don't mind using internal APIs, use `ats_ip_ntop` from `ink_inet.h`.
+
+              </div></li><li><div>
+                Since this is a "core" plugin, ats_ip_ntop() ought to be fine. It doesn't require anything other than C++ and the #include file, right? @jpeach We probably need to document these things somewhere, explaining that using lib/ts from plugins is fine ?
+
+              </div></li><li><div>
+                done
+
+              </div></li><li><div>
+                looks good to me, passes CI build tests on Linux/FBSD.
+
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> regex_remap: fix $i substitution
+                </div><div><b>description:</b> GitHub #635
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Github user yatsukhnenko commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-219503130
+  
+    In addition to INET6_ADDRSTRLEN I think we should use inet_ntop instead of inet_ntoa
+
+              </div></li><li><div>
+                Github user zwoop commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-219507130
+  
+    Yep, that was the first portion of my reply :). 
+
+              </div></li><li><div>
+                Github user jpeach commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-219523907
+  
+    If you don't mind using internal APIs, use ``ats_ip_ntop`` from ``ink_inet.h``.
+
+              </div></li><li><div>
+                Github user zwoop commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-219728080
+  
+    Since this is a "core" plugin, ats_ip_ntop() ought to be fine. It doesn't require anything other than C++ and the #include file, right? @jpeach We probably need to document these things somewhere, explaining that using lib/ts from plugins is fine ?
+
+              </div></li><li><div>
+                Github user yatsukhnenko commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-219967991
+  
+    done
+
+              </div></li><li><div>
+                Github user zwoop commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-220376270
+  
+    
+    
+    .
+
+
+              </div></li><li><div>
+                Github user yatsukhnenko commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-220377419
+  
+    You had to say [approve ci] 😉
+
+              </div></li><li><div>
+                Github user zwoop commented on the pull request:
+
+    https://github.com/apache/trafficserver/pull/643#issuecomment-220634880
+  
+    looks good to me, passes CI build tests on Linux/FBSD.
+
+              </div></li><li><div>
+                Github user zwoop closed the pull request at:
+
+    https://github.com/apache/trafficserver/pull/643
+
+              </div></li><li><div>
+                Commit a504f198a6c7650248272483af23bef887b528cd in trafficserver's branch refs/heads/master from [~yatsukhnenko]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=a504f19 ]
+
+[TS-4443] regex_remap: fix $i substitution
+
+              </div></li><li><div>
+                Commit ceb2a5114d011b1b95f811e2083cc0649b183f93 in trafficserver's branch refs/heads/master from [~zwoop]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=ceb2a51 ]
+
+Merge pull request #643 from yatsukhnenko/TS-4443
+
+[TS-4443] regex_remap: fix $i substitution
+
+This makes this feature actually work. Review: leif.
+              </div></li><li><div>
+                Commit ceb2a5114d011b1b95f811e2083cc0649b183f93 in trafficserver's branch refs/heads/master from [~zwoop]
+[ https://git-wip-us.apache.org/repos/asf?p=trafficserver.git;h=ceb2a51 ]
+
+Merge pull request #643 from yatsukhnenko/TS-4443
+
+[TS-4443] regex_remap: fix $i substitution
+
+This makes this feature actually work. Review: leif.
               </div></li></ol></div></div></html>

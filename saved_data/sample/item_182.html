@@ -1,180 +1,62 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 182
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                *
-     * Performs a stored procedure call with the given parameters.
-     * &lt;p/&gt;
-     * An Object array variant of {@link #call(String, List)}.
-     *
-     * @param sql    the SQL statement
-     * @param params an array of parameters
-     * @return the number of rows updated or 0 for SQL statements that return nothing
-     * @throws SQLException if a database access error occurs
-     * @see #call(String)
-     
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> merge changeset 19584 from trunk (GROOVY-3649: SQL named parameters in Sql.executeUpdate)
-                </div><div><b>message:</b> merge changeset 19584 from trunk (GROOVY-3649: SQL named parameters in Sql.executeUpdate)
+                 Do not use URL.equals.  It uses the network to resolve names and compares ip addresses!
+ That is a violation of RFC and just plain evil.
+ http://michaelscharf.blogspot.com/2006/11/javaneturlequals-and-hashcode-make.html
+ http://docs.oracle.com/javase/7/docs/api/java/net/URL.html#equals(java.lang.Object)
+ "Since hosts comparison requires name resolution, this operation is a blocking operation.
+ Note: The defined behavior for equals is known to be inconsistent with virtual hosting in HTTP."
+              </div></li><li><div><div><b>comment:</b>  See ClassNodeResolver.isSourceNewer for another method that replaces '|' with ':'.
+ WTF: Why is this done and where is it documented?
+ As the java.net.URL Javadoc says, the recommended way to get a URL is via URI.
+ http://docs.oracle.com/javase/7/docs/api/java/net/URL.html
+ "Note, the URI class does perform escaping of its component fields in certain circumstances.
+ The recommended way to manage the encoding and decoding of URLs is to use URI, and to convert
+ between these two classes using toURI() and URI.toURL()."
+ A possibly better approach here is to construct a URI and then resolve it against
+ a URI for the current working directory.
+ But we use this string match for now so everyone can see it doesn't hurt file-only classpaths.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Just doing the same thing...
+              </div></li><li><div>
+                 Gotta use configscript for this because : separated paths can't have : in them
+ and GroovyMain ignores -cp.
+              </div></li><li><div>
+                 Create the interface
+              </div></li><li><div>
+                 Create a concrete class which implements the interface
+              </div></li><li><div>
+                 This works for a URL in the classpath, but there isn't a way to do this from the command line.
+    public void testConfigURIClasspath() {
+        URI baseURI = new URI("https://raw.github.com/jimwhite/groovy-snippets/master/GROOVY-6451/")
+        GroovyCodeSource codeSource = new GroovyCodeSource(baseURI.resolve("run_from_uri_test.groovy"))
+        def shell = new GroovyShell()
+        shell.classLoader.addURL(baseURI.toURL())
+        // We're testing whether this fails:
+        def script = shell.parse(codeSource)
+        script.run()
+    }
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix GROOVY-6597: Don't use URL.equals and let URLs get onto URLClassLoader's classpath.
+                </div><div><b>message:</b> Fix GROOVY-6597: Don't use URL.equals and let URLs get onto URLClassLoader's classpath.
 
-git-svn-id: http://svn.codehaus.org/groovy/branches/GROOVY_1_7_X@19585 a5544e8c-8a19-0410-ba12-f9af4593a198
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> GroovyClassLoader.addClasspath should respect URI paths and not use URL.equals
+                </div><div><b>description:</b> GroovyClassLoader.addClasspath has two kinds of problems with URLs.  
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> SQL named parameters in Sql.executeUpdate
-                </div><div><b>description:</b> I've been looking for ways to enhance Groovy's SQL usability, and one thing I came up with is the use of named parameters which can in turn be mapped to bean properties.  This is particularly handy for insert/ update statements, which usually require a long parameter list.  
+For one thing it uses URL.equals to avoid adding duplicate paths to the classpath.  That is very bad since it is a blocking operation that performs domain name resolution. 
 
-For example:
-{code}
-class Person {
-  int id
-  String firstName
-  String lastName
-  String address
-}
+The second thing is that even though it is a URLClassLoader it doesn't add paths that are URIs/URLs as URLs but instead always makes a file: path.
 
-def sql = new Sql(...)
-sql.executeUpdate( '''update person set 
-    first_name= :firstName, last_name= :lastName, addr= :address  
-    where id= :id''',  somePerson )
-{code}
-
-Now, I realize using a GString is a similar alternative to passing the parameters as a list, but AFAIK it cannot be lazily evaluated if the actual SQL string is externalized and passed in at runtime.  Correct?  One possible improvement to this might be to allow a map as the 'model' and hierarchical property access as GStrings already allow.
-
-Attached is an example class that extends groovy.sql.Sql, but if this was found to be a worthwhile feature, it could be a nice addition to the base Sql class.
+The solution for both is to use URI for making and comparing paths before adding them with addURL(URL).
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Fixed bug in my example (&amp; added test case) where query was being truncated after last param.
-              </div></li><li><div>
-                We could perhaps have a look at this issue again, if the patch still applies.
-              </div></li><li><div>
-                I've been using it in a couple of my projects, which has proven useful, but at the same time my use case is somewhat limited.  If I have time over the holidays maybe I'll take another look at it.  
-
-The primary use case is for executeInsert and executeUpdate where you typically have a large number of parameters in a SQL query.  I should also take a look to see if this supports a map as well as bean object.  (I think it uses getProperty calls, in which case the answer would be "yes", but it's been a while since I looked at it.)
-
-"Ordinal named parameters" as Paul suggested in comment 1 is not supported by my patch, so if that's something desirable it will take some more work as well.
-              </div></li><li><div>
-                Tom, if you want to attach your latest patch as is, I can see what I can do to add the 'ordinal named parameters' bit.
-              </div></li><li><div><div><b>body:</b> There is an important use case for named parameters when using Oracle (at least). When composing a complex condition for a query, the optimizer can make use of indexes (as opposed to table scans) only when identical parameters are distinguished.
-
-The user wants results containing all rows whose that appear earlier than the given (majorPart, minorPart) catenation.
-
-That is, for majorPart=10 and minorPart=5 the result contains rows having majorPart&lt;=9 and also rows having majorPart==10 if minorPart&lt;5:
-select * from example where majorPart&lt;10 or (majorPart=10 and minorPart&lt;5)
-
-The optimizer does a fine job with the literal values, since the two sets to be combined are clearly related (the second set is a contiguous extension of the first) - it will do an index scan if there is an index that begins with majorPart, minorPart. Using parameters for the equivalent query, the optimizer cannot make this determination and will do a union of two sets (or table scan for more complex queries). That's because the query text doesn't give any relationship between the two sets:
-
-select * from example where majorPart&lt;? or (majorPart=? and minorPart&lt;?)
-
-The use of named parameters will improve performance dramatically for applications that must process queries that have this characteristic (at least on Oracle).
-
-select * from example where majorPart&lt;:major or (majorPart=:major and minorPart&lt;:minor)
-
-This enables the optimizer to use the index as in the case of using literals in the statement, while also enabling the cached execution plan to be used by subsequent queries the use different values for majorPart/minorPart.
-
-Unfortunately, I don't know of a decent JDBC-compliant way to support this. Can the CallableStatement be used? It seems that JDBC kicks the can down the road by allowing the language for specifying statement parameters to be proprietary to the DBMS.
-
-Is there interest in developing a model for DB-specific extensions (allowing access to OraclePreparedStatement)?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                The class is documented and there are two small changes in the parsing of the query.  
-
-Now I guess my version doesn't support a Map as model since the method signatures specify GroovyObject, but that's an easy change; Paul's version is probably significantly different from this anyway.
-              </div></li><li><div>
-                Here's a project with all 3 of my proposals (inc. test cases): 
-* the original name/single-object based code (Sql2.groovy,)
-* An ordinal/property-based implementation (Sql3.groovy,)
-* An arbitrarily nested, property-based implementation (Sql4.groovy) 
-
-The last one follows the suggestions from my last comments.  They all cache the parsed position-based query string that is generated so when the same query is re-used, it is not re-parsed on the client side (and presumably, the DB server is caching the position-based query after the first time it is executed.)
-
-The ordinal version can't currently do both a plain-numeric parameter (?1) _and_ an ordinal with property reference (?1.someProperty) but that's just a regex issue.  So there's a unit test failure because of that.  I figure if the ordinal version is used, it has to be able to accept a plain ordinal in case the parameter is a primitive rather than object.
-
-re: munging to ignore parameters w/in quoted strings.  Good point, I didn't think of that.
-              </div></li><li><div>
-                In response to John's comment: As he said, Oracle might support native named parameters but I'm not aware of any other DB vendor who does.  In John's case, he could do query creation via GString, which would replace the parameters with literal values, and then Oracle could optimize it.  
-
-In any case I don't think named parameters can be left in the query when it's passed to the JDBC driver, otherwise I'm almost certain it would be incompatible with many DB vendors.  
-
-Sorry, I don't know if I ever caught Paul's last request for my latest version.  Will post here if I find something newer.
-              </div></li><li><div><div><b>body:</b> Paul, can you point to what you've committed?  Nothing shows up on the 'source' tab for this issue.
-
-So if you want to be able to 'cache' the ordinal query, this is what I would do:
-{code}
-PATTERN = Pattern.compile( /\?\d+\.\w+/ )
-//after it's parsed, split it so you have a position and param name.
-// instead of a NamedQuery class, we have two classes like this:
-class OrdinalQuery {
-	String sql
-	List&lt;OrdinalParam&gt; params
-}
-
-class OrdinalParam {
-	int position
-	String paramName
-}
-
-// assume we've replaced all named ordinal params with positional ? parameters like before
-// and created an OrdinalQuery instance which can be cached, keyed by the original query string
-// now when we collect our list of positional parameters, it looks like this:
-	int executeUpdate( String sql, List ordinalParams ) {
-		def query = parseQuery( sql )
-		super.executeUpdate query.sql, 
-			query.params.collect { ordinalParams[it.position-1].getProperty( it.paramName ) }
-	}
-{code}
-
-Does that make sense?
-
-Another option would just be to make parameter properties recursively accessible, i.e.
-{code} db.update( '''INSERT INTO orders (orderId, customerId, itemId, quantity, price, address)
-       VALUES (:order.orderNum, :customer.custId, :order.itemNum, :order.quantity, :order.price, :order.address)''', 
-    [order:order, customer:customer] ){code}
-
-Which has the additional advantage of arbitrarily deep child objects without making the parsing mechanism much more complex, but would require the 'model' object to always be a map or a single object.  This more closely follows the Grails MVC model convention too, if that is any advantage.
-
-Let me know what you think.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Quick hack to use ordinal parameters, but still cached.  Not tested; may have syntax errors. [Attached: Sql3.groovy]
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                A version of this is now in trunk and 1_7_X.
-It would be great if you can get a chance to test it.
-
-The version I have does no caching. That turns out to be a little harder for the named ordinal flavor.
-
-This should work for: query, eachRow, rows, execute, executeInsert and executeUpdate
-
-This doesn't do the Oracle-specific enhancement mentioned either.
-              </div></li><li><div>
-                Assuming proposed solution is suitable.
-              </div></li><li><div>
-                I am keen on an extension similar to what you propose.
-
-Project Zero allows a combination of named and ordinal named parameters.
-The named parameters (can be from a bean or a map) use the colon syntax you are suggesting.
-The ordinal named parameters use '?1.name' for the name property of the first supplied argument.
-E.g.:
-{code}
-data.update('INSERT INTO orders (orderId, customerId, itemId, quantity, price, address) VALUES(?1.orderNum, ?2.custId, ?1.itemNum, ?1.quantity, ?1.price, ?2.address', order, customer)
-{code}
-I think there is merit in supporting both of these.
+                While handling URLs in the classpath is not really worthwhile for pre-2.3.0 Groovy, I think eliminating the use of URL.equals should probably be done for earlier versions as a bug fix.
 
               </div></li><li><div>
-                It also seems useful to add this capability to all the applicable methods:
+                Patch added to PR #337.  This almost deserves it's own pull, but my codebase and the test code currently rely on the other stuff in #337.
 
-rows, execute, firstRow, eachRow, query, executeInsert, executeUpdate
-
-but probably leave it off:
-
-call
               </div></li><li><div>
-                I have added some caching. I think the GString support would be better for the nested case in your Sql4. I agreed with the sentiments in one of your comments re featuritis: "somewhat of a slippery slope". If you can test out what is there, I believe the issue can be closed now.
+                Yeah, looks like it was done then.  I think there are quite a few more issues with URIs in the compiler, but I'm ignoring them for now.
               </div></li><li><div>
-                I'll look at the patches later today. Thanks!
-
-Just one ocmment re "_In John's case, he could do query creation via GString_".
-Actually GString methods use placeholders too but you could certainly do this with the normal String version (I would suggest GString then calling toString()).
-              </div></li><li><div>
-                Re: "_Paul, can you point to what you've committed?_"
-
-We are having problems with FishEye at the moment which is how the source tab works. You can use your IDE or SVN command-line to look at history in the meantime.
-
-Basically it was similar to what you suggested but without caching and with some simplistic munging to not do replacement within quoted Strings.
-
+                So Jim, was this resolved with PR#337 or is their more work to do? From the description above and the code in the PR, I think we are all good - just double checking with you.
               </div></li></ol></div></div></html>

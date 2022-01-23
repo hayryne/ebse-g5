@@ -1,163 +1,33 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 360
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> APEXCORE-532: Fix issue where new operators added to dag starts from initial checkpoint
-                </div><div><b>message:</b> APEXCORE-532: Fix issue where new operators added to dag starts from initial checkpoint
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> New dynamically added operator does not start with correct windowId.
-                </div><div><b>description:</b> During dynamic DAG change, If new operator is added and connected to existing operator, it does not starts with correct windowId. The baseSeconds is set to 0 causing windowId management problems at master effectively halting purge from buffer server.
-
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Log for existing operator in DAG which got redeployed due to stream change.
-
-{code}
-2016-09-14 11:49:56,734 INFO com.datatorrent.stram.engine.StreamingContainer: Deploy request: [OperatorDeployInfo[id=1,name=Reader,type=INPUT,checkpoint={57d8ebbf00000077, 0, 0},inputs=[],outputs=[OperatorDeployInfo.OutputDeployInfo[portName=output,streamId=s1,bufferServer=ubuntu1504]]]]
-2016-09-14 11:49:56,734 DEBUG com.datatorrent.stram.engine.StreamingContainer: Restoring operator 1 to checkpoint 57d8ebbf00000077 stateless=false.
-2016-09-14 11:49:57,279 DEBUG com.datatorrent.bufferserver.internal.LogicalNode: BaseSeconds = 57d8ebbf00000000 and lBaseSeconds = 57d8ebbf00000000
-2016-09-14 11:49:57,279 INFO com.datatorrent.stram.StreamingContainerParent: begin window called 6330068481840513144 hex 57d8ebbf00000078
-{code}
-
-The log at new operator added 
-{code}
-2016-09-14 11:49:56,689 INFO com.datatorrent.stram.engine.StreamingContainer: Deploy request: [OperatorDeployInfo[id=2,name=Splitter,type=GENERIC,checkpoint={ffffffffffffffff, 0, 0},inputs=[OperatorDeployInfo.InputDeployInfo[portName=input,streamId=s1,sourceNodeId=1,sourcePortName=output,locality=&lt;null&gt;,partitionMask=0,partitionKeys=&lt;null&gt;]],outputs=[OperatorDeployInfo.OutputDeployInfo[portName=words,streamId=s2,bufferServer=ubuntu1504]]]]
-2016-09-14 11:49:56,691 DEBUG com.datatorrent.stram.engine.StreamingContainer: Restoring operator 2 to checkpoint ffffffffffffffff stateless=false.
-2016-09-14 11:49:57,190 DEBUG com.datatorrent.bufferserver.internal.LogicalNode: BaseSeconds = 0 and lBaseSeconds = ffffffff00000000
-2016-09-14 11:49:57,486 INFO com.datatorrent.stram.StreamingContainerParent: begin window called -4294967176 hex ffffffff00000078
-{code}
-
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+     * Return the number of windows before the next checkpoint including the current window.
+     * @return Number of windows from checkpoint, 1 if the checkpoint will be after the current window
+     
               </div></li><li><div>
-                Does the DAG have other operators other than the input operator before you added the new operator.
+                 this is write once variable 
               </div></li><li><div>
-                No, in my test the DAG initially contains only input operator. After some time I am adding new operator and connecting it to the output port of input operator
+                gn.connectInputPort("ip1", reservoir1);
+gn.connectInputPort("ip2", reservoir2);
               </div></li><li><div>
-                Let me try a couple of things and get back to you
-              </div></li><li><div>
-                GitHub user tushargosavi opened a pull request:
-
-    https://github.com/apache/apex-core/pull/393
-
-    **Review Only** Apexcore 408
-
-    Pull request for dynamic dag modification through stats listener.  It provides following
-    functionality
-    
-    - StatsListener can access the opearator name for easily detecting which opearator stats are being processed.
-    - StatsListener can create a instance of object through which it can submit dag modifications to the engine.
-    - StatsListener can return dag changes as a response to engine.
-    - PlanModifier is modified to take a DAG and apply it on the existing running DAG and deploy the changes.
-    
-    The following functionality is not working yet.
-    
-    - The new opearator does not start from the correct windowId (https://issues.apache.org/jira/browse/APEXCORE-532)
-    - Relanched application failed to start when it was killed after dynamic dag modification.
-    - There is no support for resuming operator from previous state when they were removed. This could be achived through
-      readig state through external storage on setup.
-    - persist operator support is not present for newly added streams.
-    - Not all parts are covered through tests.
-    
-    The demo application using the feature is available at
-    https://github.com/tushargosavi/apex-dynamic-scheduling
-    
-    There are two variations of WordCount application. The first variation detects the presence of
-    new files start a disconnected DAG to process the data.
-    (https://github.com/tushargosavi/apex-dynamic-scheduling/blob/master/src/main/java/com/datatorrent/wordcount/WordCountApp.java)
-    
-    The second application (https://github.com/tushargosavi/apex-dynamic-scheduling/blob/master/src/main/java/com/datatorrent/wordcount/ExtendApp.java),
-    initially only one reader operator is running in the DAG, and provides pendingFiles as auto-metric to stat listener.
-    On detecting pending files it attaches splitter counter and output operator to the read operator. Once files are processed the splitter, counter and
-    output operators are removed and added back again if new data files are added into the directory.
-
-You can merge this pull request into a Git repository by running:
-
-    $ git pull https://github.com/tushargosavi/incubator-apex-core APEXCORE-408
-
-Alternatively you can review and apply these changes as the patch at:
-
-    https://github.com/apache/apex-core/pull/393.patch
-
-To close this pull request, make a commit to your master/trunk branch
-with (at least) the following in the commit message:
-
-    This closes #393
-    
-----
-commit 05fcca2c919e2828f8348e5e4ed60d87e044b5ac
-Author: Tushar R. Gosavi &lt;tushar@apache.org&gt;
-Date:   2016-08-08T10:24:41Z
-
-    APEXCORE-496: Provide way to access dag elements for statslisteners.
-
-commit 8cf49f28a7732787c2517a5b345e4690be517280
-Author: Tushar R. Gosavi &lt;tushar@apache.org&gt;
-Date:   2016-07-05T08:40:26Z
-
-    APEXCORE-408: Dynamic dag changes in Apex through StatsListeners
-
-----
-
-              </div></li><li><div><div><b>body:</b> [~tushargosavi] checking why this is broken when it used to work before.
+                DefaultReservoir reservoir1 = new DefaultReservoir("ip1Res", 1024);
+DefaultReservoir reservoir2 = new DefaultReservoir("ip2Res", 1024);
+              </div></li><li><div><div><b>comment:</b>  Adding some extra time for the windows to finish
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                
+                GenericOperator go = new GenericOperator();
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> APEXCORE-360 #resolve Providing a way for operator to check how many windows till checkpoint.
+                </div><div><b>message:</b> APEXCORE-360 #resolve Providing a way for operator to check how many windows till checkpoint.
 
-If newly added operator is attached to some operator which was already exists in the DAG,
-- It starts from activation checkpoint
-- bufferserver subscriber use activation checkpoint id to set the initial baseSeconds (setup of BufferServerSubscriber).
-- when new data is received, we get partital windowId form tuple, or it with baseSeconds and
-  construct full windowId.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add capability in the engine to let the operator know about the next checkpoint window
+                </div><div><b>description:</b> Carryover from the older JIRA system..
 
-baseSeconds is expected to set to correct value if operator starts from known checkpoint,
-during initial dag deployment input operators sends resetWindow tuple, which sets baseSeconds
-for all downstream operators. In this case operator was added in the end and was started
-from activation checkpoint. but no resetWindow tuple was received to set its baseSeconds to
-correct value.
+The operator should be able to call an engine API to find out the number of windows till the next checkpoint.
 
-In this case the starting checkpoint is different than windowId, may be we should use two fields in
-deploy info
-- one for checkpoint from where to load the state
-- starting baseSeconds which is taken from existing upstream to correctly set the windowIds in absense of resetWindow tuple.
+Implementation of iteration feature requires the need to know the number of windows from checkpoint. If the delay is 1 the delay operator needs to know about the window before checkpoint by beginWindow of that window so it can save the tuples in that window for replay in case of recovery in future. If the delay is 2 then it needs to know 2 windows before checkpoint.
 
-              </div></li><li><div>
-                Rechecked the code again, for newly deployed operator we should be creating checkpoint from upstream operator recovery windowId as done in assignedContainers getActivationCheckpoint. but when new operator is added through addLogicalOperator, its recoveryWindowId is set to default value  which prevents getActivationCheckpoint to return
-correct  windowId.
-
-              </div></li><li><div>
-                GitHub user tushargosavi opened a pull request:
-
-    https://github.com/apache/apex-core/pull/402
-
-    APEXCORE-532: Fix issue where new operators added to dag starts from initial checkpoint
-
-    In case new operators are added dynamically, they should start from windowId of upstream operator. The issue was that new operators gets added using addLogicalOpeartor which sets recoveryWindowId to INITIAL_CHECKPOINT, which prevents getActivationCheckpoint to return correct window id of the operator during deploy.
-    
-    @PramodSSImmaneni  please review.
-
-You can merge this pull request into a Git repository by running:
-
-    $ git pull https://github.com/tushargosavi/incubator-apex-core APEXCORE-532
-
-Alternatively you can review and apply these changes as the patch at:
-
-    https://github.com/apache/apex-core/pull/402.patch
-
-To close this pull request, make a commit to your master/trunk branch
-with (at least) the following in the commit message:
-
-    This closes #402
-    
-----
-commit 30091217dced6d1581a8630374c942a811ab6ed2
-Author: Tushar R. Gosavi &lt;tushar@apache.org&gt;
-Date:   2016-10-03T07:07:59Z
-
-    APEXCORE-532: Fix issue where new operators added to dag starts from initial checkpoint
-
-----
-
-              </div></li><li><div>
-                Github user asfgit closed the pull request at:
-
-    https://github.com/apache/apex-core/pull/402
-
-              </div></li><li><div>
-                Still need to look into input operator addition scenario. Keeping JIRA open till release. 
-              </div></li></ol></div></div></html>
+The idea is to compute the windows from checkpoint and make it available in OperatorContext, for example by a method getWindowsFromCheckpoint. The operator can check the windows from checkpoint in beginWindow. In the iteration case it can save the tuples accordingly.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> This has been implemented and merged
+                </div><div><b>label:</b> requirement
+                </div></div></li></ol></div></div></html>

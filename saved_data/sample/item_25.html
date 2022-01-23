@@ -1,87 +1,184 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 25
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-13578 Remove Arrays.asList().subList() from FSHLog.offer()
-                </div><div><b>message:</b> HBASE-13578 Remove Arrays.asList().subList() from FSHLog.offer()
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-18001 Extend the "count" shell command to support specified conditions
+                </div><div><b>message:</b> HBASE-18001 Extend the "count" shell command to support specified conditions
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Remove Arrays.asList().subList() from FSHLog.offer()
-                </div><div><b>description:</b> while doing a run with a profiler I noticed this:
+Signed-off-by: Chia-Ping Tsai &lt;chia7712@gmail.com&gt;
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Extend the "count" shell command to support specified conditions
+                </div><div><b>description:</b> shell command "count" can only count the number of rows in a table.
+And, it could not count the number of the specified conditions.
+Can we allow users to specified conditions like command "scan"?
+In that case, we can count the number of rows under any conditions.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Hi Guangxu, 
+
+Today, thjere is no way to do that, but, indeed, might be interesting to add a "filter" parameter to the command. Is it something you are going to work on?
+
+JMS
+              </div></li><li><div>
+                [~jmspaggi] Thanks for the reviews.
+I think it is a very important option to specify the "startrow" and "stoprow".
+Can we add three parameters STARTROW, STOPROW and FILTER?
+              </div></li><li><div>
+                bq. Can we add three parameters STARTROW, STOPROW and FILTER?
+It is better to include the parameters COLUMNS.
+              </div></li><li><div>
+                We can go with STARTROW, STOPROW, FILTER and COLUMNS...
+
+[~andrewcheng] is this something you are going to work on?
+              </div></li><li><div>
+                {quote}
+We can go with STARTROW, STOPROW, FILTER and COLUMNS...
+Guangxu Cheng is this something you are going to work on?
+{quote}
+yep, I'm working on this. Thanks for your suggestion. patch will be coming soon.Thanks
+              </div></li><li><div>
+                I'm so sorry to submit the patch for so long.
+[~jmspaggi] [~chia7712] mind taking a look at it ? thanks
+              </div></li><li><div>
+                {code}
+-    def _count_internal(interval = 1000, caching_rows = 10)
++    def _count_internal(interval = 1000, scan = nil)
 {code}
-FSHLog.java
-void offer(final long sequence, final SyncFuture [] syncFutures, final int syncFutureCount) {
-  ...
-  this.syncFutures.addAll(Arrays.asList(syncFutures).subList(0, syncFutureCount));
-}
+Are users still able to pass on the size of cache to scan? 
+              </div></li><li><div>
+                bq.Are users still able to pass on the size of cache to scan?
+
 {code}
-it is creating an Arrays.ArrayList then a RandomAccessSubList, 
-and then addAll() is using creating an iterator and call the syncFutures.add() for each item.
+params = {
+          'INTERVAL' =&gt; 1000,
+          'CACHE' =&gt; 10
+        }.merge(params)
 
-a simpler for loop adding the items directly is not too ugly and it will avoid all this stuff.
-I've attached a simple test to compare the two, it will not make huge difference but since we are in the core path any tiny bit probably helps.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12728755/HBASE-13578-v0.patch
-  against master branch at commit 75bb815d9954e538488c4c549f7261b5be80551b.
-  ATTACHMENT ID: 12728755
+        scan = table._hash_to_scan(params)
+{code}
+{code}
+-        count = table._count_internal(params['INTERVAL'].to_i, params['CACHE'].to_i) do |cnt, row|
++        count = table._count_internal(params['INTERVAL'].to_i, scan) do |cnt, row|
+{code}
+sure, parameter CACHE will be set to the scan by _hash_to_scan(params) in couter.rb
+              </div></li><li><div>
+                {code}
++        else
++          scan.setFilter(org.apache.hadoop.hbase.filter.FilterList.new(
++              org.apache.hadoop.hbase.filter.FilterList::Operator.valueOf('MUST_PASS_ALL'),
++              filter,
++              org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter.new))
++        end
+{code}
+We need to ensure that all filters have the same value of parameter "reversed". Otherwise, we may fail to build the new FilterList. (Although it doesn't make sense to specify the parameter "reversed" for counting.)
+              </div></li><li><div>
+                On the other hand, would you please trigger the QA? (I mean that you should click the "Submit Patch")
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+Thanks.
+              </div></li><li><div>
+                v2 takes the suggestion from [~chia7712] Thanks
+              </div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 13m 37s {color} | {color:blue} Docker mode activated. {color} |
+| {color:blue}0{color} | {color:blue} rubocop {color} | {color:blue} 0m 1s {color} | {color:blue} rubocop was not available. {color} |
+| {color:blue}0{color} | {color:blue} ruby-lint {color} | {color:blue} 0m 1s {color} | {color:blue} Ruby-lint was not available. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 3m 23s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 15s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 8s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 14s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 28m 36s {color} | {color:green} Patch does not cause any errors with Hadoop 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 or 3.0.0-alpha2. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 8s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 4m 49s {color} | {color:green} hbase-shell in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 6s {color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 51m 46s {color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=1.12.3 Server=1.12.3 Image:yetus/hbase:757bf37 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12868108/HBASE-18001-v2.patch |
+| JIRA Issue | HBASE-18001 |
+| Optional Tests |  asflicense  javac  javadoc  unit  rubocop  ruby_lint  |
+| uname | Linux b3e5a707967c 3.13.0-106-generic #153-Ubuntu SMP Tue Dec 6 15:44:32 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
+| git revision | master / 341223d |
+| Default Java | 1.8.0_131 |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/6791/testReport/ |
+| modules | C: hbase-shell U: hbase-shell |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/6791/console |
+| Powered by | Apache Yetus 0.3.0   http://yetus.apache.org |
 
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
 
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
+This message was automatically generated.
 
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
+              </div></li><li><div>
+                LGTM
+Do we have any UT against the count executed by Shell?
 
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 checkstyle{color}.  The applied patch does not increase the total number of checkstyle errors
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-                       org.apache.hadoop.hbase.TestJMXListener
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/13860//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/13860//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/13860//artifact/patchprocess/checkstyle-aggregate.html
-
-  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/13860//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
+[~jmspaggi] Any comments?
+              </div></li><li><div><div><b>body:</b> v3: Add a unit test.
+                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                +1
+                | (/) *{color:green}+1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 14s {color} | {color:blue} Docker mode activated. {color} |
+| {color:blue}0{color} | {color:blue} rubocop {color} | {color:blue} 0m 0s {color} | {color:blue} rubocop was not available. {color} |
+| {color:blue}0{color} | {color:blue} ruby-lint {color} | {color:blue} 0m 0s {color} | {color:blue} Ruby-lint was not available. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:green}+1{color} | {color:green} test4tests {color} | {color:green} 0m 0s {color} | {color:green} The patch appears to include 1 new or modified test files. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 3m 18s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 7s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 15s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 30m 16s {color} | {color:green} Patch does not cause any errors with Hadoop 2.6.1 2.6.2 2.6.3 2.6.4 2.6.5 2.7.1 2.7.2 2.7.3 or 3.0.0-alpha2. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 8s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 5m 11s {color} | {color:green} hbase-shell in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 7s {color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 40m 20s {color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=1.12.3 Server=1.12.3 Image:yetus/hbase:757bf37 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12868543/HBASE-18001-v3.patch |
+| JIRA Issue | HBASE-18001 |
+| Optional Tests |  asflicense  javac  javadoc  unit  rubocop  ruby_lint  |
+| uname | Linux a3ad9ca0b078 4.4.0-43-generic #63-Ubuntu SMP Wed Oct 12 13:48:03 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build@2/component/dev-support/hbase-personality.sh |
+| git revision | master / 62d7323 |
+| Default Java | 1.8.0_131 |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/6825/testReport/ |
+| modules | C: hbase-shell U: hbase-shell |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/6825/console |
+| Powered by | Apache Yetus 0.3.0   http://yetus.apache.org |
 
-That is a weird failure. Can't see how related.
-              </div></li><li><div>
-                It's broken in master on my box so not related to the patch.
-              </div></li><li><div>
-                +1 
-              </div></li><li><div>
-                Test failure is because of my patch on HBASE-13564, not related to this. Sorry for that. 
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-1.1 #440 (See [https://builds.apache.org/job/HBase-1.1/440/])
-HBASE-13578 Remove Arrays.asList().subList() from FSHLog.offer() (matteo.bertozzi: rev 3fba9de03e63fbf4b60734c32a75b00e2f892411)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/wal/FSHLog.java
+
+This message was automatically generated.
+
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-1.2 #37 (See [https://builds.apache.org/job/HBase-1.2/37/])
-HBASE-13578 Remove Arrays.asList().subList() from FSHLog.offer() (matteo.bertozzi: rev 3a9304e98f7e5a72649ad2aa45574a6f6e53db4d)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/wal/FSHLog.java
-
+                UT looks good. [~chia7712] [~jmspaggi] Any other concerns? Thanks.
               </div></li><li><div>
-                FAILURE: Integrated in HBase-TRUNK #6429 (See [https://builds.apache.org/job/HBase-TRUNK/6429/])
-HBASE-13578 Remove Arrays.asList().subList() from FSHLog.offer() (matteo.bertozzi: rev ee562faeb3cd0b7a49a1319fdc775f1d43e32341)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/wal/FSHLog.java
-
+                +1.
+I will commit it later.
               </div></li><li><div>
-                Closing issues released in 1.1.0.
+                Thanks for the patch. [~andrewcheng]
+              </div></li><li><div>
+                Thanks [~chia7712] and [~jmspaggi] for review.:)
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-Trunk_matrix #3068 (See [https://builds.apache.org/job/HBase-Trunk_matrix/3068/])
+HBASE-18001 Extend the "count" shell command to support specified (chia7712: rev 64c701768bb451f37f65bbf3c3126d71a6cd2133)
+* (edit) hbase-shell/src/main/ruby/hbase/table.rb
+* (edit) hbase-shell/src/test/ruby/hbase/table_test.rb
+* (edit) hbase-shell/src/main/ruby/shell/commands/count.rb
+
               </div></li></ol></div></div></html>

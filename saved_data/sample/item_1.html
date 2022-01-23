@@ -1,59 +1,29 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 1
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 The current element cover a single value which is equal to the start of the inserted
- element. If the inserted element overwrites the current one, just remove the current
- (it's included in what we insert) and proceed with the insert.
+                *
+     * @return The length in bytes of the on disk size for this SSTable. For
+     * compressed files, this is not the same thing as the data length (see
+     * length())
+     
               </div></li><li><div>
-                 Does the new element stops before/at the current one,
-              </div></li><li><div>
-                 Otherwise (the current singleton interval override the new one), we want to leave the
- current element and move to the next, unless start == end since that means the new element
- is in fact fully covered by the current one (so we're done)
-              </div></li><li><div>
-                 Here start &lt;= starts[i] and end &lt;= starts[i]
- This means the current element is before the current one. However, one special
- case is if end == starts[i] and starts[i] == ends[i]. In that case,
- the new element entirely overwrite the current one and we can just overwrite
-              </div></li><li><div>
-                 If start == ends[i], then we can insert from the next one (basically the new element
- really start at the next element), except for the case where starts[i] == ends[i].
- In this latter case, if we were to move to next element, we could end up with ...[x, x][x, x]...
-              </div></li><li><div>
-                 We generate the list randomly, so "all" we check is that the resulting range tombstone list looks valid.
-              </div></li><li><div>
-                 We check that ranges are in the right order and that we never have something
- like ...[x, x][x, x] ...
-              </div></li><li><div>
-                 We can have an interval [x, x], but not 2 consecutives ones for the same x
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix potential AssertionError in RangeTombstoneList
-                </div><div><b>message:</b> Fix potential AssertionError in RangeTombstoneList
-
-patch by slebresne; reviewed by thobbs for CASSANDRA-7700
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Unexpected exception in RangeTombstoneList.insertFrom during Python Driver Duration Test
-                </div><div><b>description:</b> Found the attached exception (duration test log and associated Cassandra log) when running the Python driver duration tests against CASSANDRA_VERSION=cassandra-2.1.0-rc5 and master branch of driver. Error repeated in logs twice over 12 hours on master_gevent cluster, and once on gevent cluster over the same time period. Cluster and associated cluster setup via ctool.
-
-Log excerpt:
-{noformat}
-INFO  [MemtableFlushWriter:184] 2014-08-05 05:45:39,161 Memtable.java:360 - Completed flushing /srv/performance/cass/data/duration_test/ints-133f8c901c2f11e491e66b1b73f81641/duration_test-ints-ka-173-Data.db (2131716 bytes) for commitlog position ReplayPosition(segmentId=1407193910537, position=13460548)
-ERROR [SharedPool-Worker-7] 2014-08-05 05:45:45,160 ErrorMessage.java:218 - Unexpected exception during request
-java.lang.AssertionError: null
-	at org.apache.cassandra.db.RangeTombstoneList.insertFrom(RangeTombstoneList.java:528) ~[main/:na]
-	at org.apache.cassandra.db.RangeTombstoneList.addAll(RangeTombstoneList.java:221) ~[main/:na]
-{noformat}
-
-more details in attachment.
+                 This differs from length for compressed files (but we still need length for
+ SegmentIterator because offsets in the file are relative to the uncompressed size)
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix places where uncompressed sstable size is used in place of the compressed one.
+                </div><div><b>message:</b> Fix places where uncompressed sstable size is used in place of the compressed one.
+patch by slebresne; reviewed by jbellis for CASSANDRA-3338
 
 
+git-svn-id: https://svn.apache.org/repos/asf/cassandra/branches/cassandra-1.0.0@1180970 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Uncompressed sizes are used to estimate space for compaction of compressed sstables
+                </div><div><b>description:</b> We are using the uncompressed data size when estimating if we have enough to compact sstables. This means we can easily refuse compaction when there is clearly enough room to compact.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Could you point to the duration test that was run exactly? To at least know the kind of operation involved.
-              </div></li><li><div><div><b>body:</b> I'm reasonably confident that this is due to the fact that RangeTombstoneList does not handle properly ranges with the same start and end.
+                maybe we should rename .length() to uncompressedLength() as well?
 
-No query directly create such ranges currently but while writing sstables, it's possible for the {{RangeTombstone.Tracker.writeOpenedMarker}} method to create some. It's not new, 2.0 is affected too, though you'd have to be reasonably unlucky to trigger it, which is probably why we haven't seen it reported before.
-
-Attaching a patch (against 2.0) to properly handle such ranges. It includes a unit test thati does reproduce the assertion error here, though I'll note that I haven't ran the duration tests described above, so I'm suspecting the problem is indeed the one I describe and test here but I'm not 100% sure (it is "a" bug worth fixing in any case).
-                </div><div><b>label:</b> test
+otherwise +1
+              </div></li><li><div><div><b>body:</b> Actually renaming length() to uncompressedLength() proved to be a good idea, as I had missed quite a bunch of places where the onDiskLength should be used. Attached v2.
+                </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
                 +1
               </div></li><li><div>

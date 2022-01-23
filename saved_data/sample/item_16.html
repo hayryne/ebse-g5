@@ -1,426 +1,185 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 16
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 pass null for the last parameter, which used to be a CancelableProgressable, as now the
- opening can not be interrupted by a close request any more.
-              </div></li><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li><li><div>
-                 Should NEVER happen, but let's be paranoid.
-              </div></li><li><div><div><b>comment:</b>  TODO: backoff
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div>
-                 The region is opening and this maybe a retry on the rpc call, it is safe to ignore it.
-              </div></li><li><div>
-                 Just follow the old behavior, do we need to call reportRegionStateTransition? Maybe not?
- For normal case, it could happen that the rpc call to schedule this handler is succeeded,
- but before returning to master the connection is broken. And when master tries again, we
- have already finished the opening. For this case we do not need to call
- reportRegionStateTransition any more.
-              </div></li><li><div>
-                 The region is closing. This is possible as we will update the region state to CLOSED when
- calling reportRegionStateTransition, so the HMaster will think the region is offline,
- before we actually close the region, as reportRegionStateTransition is part of the
- closing process.
-              </div></li><li><div>
-                *
- * Handles opening of a region on a region server.
- * &lt;p/&gt;
- * Just done the same thing with the old {@link OpenRegionHandler}, with some modifications on
- * fencing and retrying. But we need to keep the {@link OpenRegionHandler} as is to keep compatible
- * with the zk less assignment for 1.x, otherwise it is not possible to do rolling upgrade.
- 
-              </div></li><li><div>
-                 XXX: The behavior is a bit broken. At master side there is no FAILED_CLOSE state, so if
- there are exception thrown from the CP, we can not report the error to master, and if here
- we just return without calling reportRegionStateTransition, the TRSP at master side will
- hang there for ever. So here if the CP throws an exception out, the only way is to abort
- the RS...
-              </div></li><li><div>
-                 This could happen as we will update the region state to OPEN when calling
- reportRegionStateTransition, so the HMaster will think the region is online, before we
- actually open the region, as reportRegionStateTransition is part of the opening process.
-              </div></li><li><div>
-                 If true, the hosting server is aborting. Region close process is different
- when we are aborting.
-              </div></li><li><div>
-                 XXX: Is this still possible? The old comment says about split, but now split is done at
- master side, so...
-              </div></li><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li><li><div>
-                 Just try our best to determine whether it is for closing meta. It is not the end of the world
- if we put the handler into a wrong executor.
-              </div></li><li><div><div><b>comment:</b>  TODO: backoff
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div>
-                *
- * Handles closing of a region on a region server.
- * &lt;p/&gt;
- * Just done the same thing with the old {@link CloseRegionHandler}, with some modifications on
- * fencing and retrying. But we need to keep the {@link CloseRegionHandler} as is to keep compatible
- * with the zk less assignment for 1.x, otherwise it is not possible to do rolling upgrade.
- 
-              </div></li><li><div>
-                 make sure that we can write to the table, which means the region is online
-              </div></li><li><div>
-                 No simple way to determine when it is safe to go on and produce the race so let's sleep for a
- well...
-              </div></li><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li><li><div>
-                 Submit the handler after the given delay. Used for retrying.
-              </div></li><li><div>
-                 Will be overriden in test to inject customized AssignmentManager
-              </div></li><li><div>
-                 Avoid reading from the TableDescritor every time(usually it will read from the file
- system)
-              </div></li><li><div>
-                 Here we do not fail the whole method since we also need deal with other
- procedures, and we can not ignore this one, so we still schedule a
- AssignRegionHandler and it will report back to master if we still can not get the
- TableDescriptor.
-              </div></li><li><div>
-                *
-   * @return Return table descriptors implementation.
-   
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-21217 Revisit the executeProcedure method for open/close region
-                </div><div><b>message:</b> HBASE-21217 Revisit the executeProcedure method for open/close region
+                 In hadoop2, YARN/MR2 starts a mini cluster with its own conf instance and updates settings.
+ Our HBase MR jobs need several of these settings in order to properly run.  So we copy the
+ necessary config properties here.  YARN-129 required adding a few properties.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-8528 [hadoop2] TestMultiTableInputFormat always on hadoop with YARN-129 applied (with Gary Helmling)
+                </div><div><b>message:</b> HBASE-8528 [hadoop2] TestMultiTableInputFormat always on hadoop with YARN-129 applied (with Gary Helmling)
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Revisit the executeProcedure method for open/close region
-                </div><div><b>description:</b> Currently we just call openRegion and closeRegion directly, which is a bit buggy. For example, in order to not fail all the open region requests while there is only one failure, we will catch the exception and set a flag in the return value. But for executeProcedures call, the return value will be ignored, and we expect the openRegion method will always call reportRegionStateTransition to report the failure but in fact it does not...
 
-And after HBASE-20881, we can confirm that the race could happen, where we send a close request to a region which is opening(HBASE-21199), and vice visa. So I think here we need to revisit the implementation of executeProcedures to make it more stable.
+git-svn-id: https://svn.apache.org/repos/asf/hbase/branches/0.95@1482563 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> [hadoop2] TestMultiTableInputFormat always fails on hadoop with YARN-129 applied
+                </div><div><b>description:</b> TestMulitTableInputFormat always fails if YARN-129 is applied.  Its error message isn't useful (assertion failed) -- but if you look at the stderr/stdout/syslog files of the jobs in hbase-server/target/org.apache.hadoop.mapred.MiniMRCluster* (minicluster data dirs) you'll find this class not found exception:
+
+{code}
+Exception in thread "main" java.lang.NoClassDefFoundError: org/apache/hadoop/mapreduce/v2/app/MRAppMaster
+Caused by: java.lang.ClassNotFoundException: org.apache.hadoop.mapreduce.v2.app.MRAppMaster
+        at java.net.URLClassLoader$1.run(URLClassLoader.java:202)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at java.net.URLClassLoader.findClass(URLClassLoader.java:190)
+        at java.lang.ClassLoader.loadClass(ClassLoader.java:306)
+        at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:301)
+        at java.lang.ClassLoader.loadClass(ClassLoader.java:247)
+Could not find the main class: org.apache.hadoop.mapreduce.v2.app.MRAppMaster.  Program will exit.
+{code}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                In general, maybe we should keep the old code as is, which is used to keep compatible with the master for 1.x, and implement new openRegion/closeRegion methods for 2.x.
-              </div></li><li><div>
-                ExecuteProcedures is problematic. Since it will group all the open/close operations in one call and execute them sequentially on the target RS. If one operation fails, all the operation will be marked as failure. Actually, some of the operations(like open region) is already executing in the open region handler thread. But master thinks these operations fails and reassign the regions  to another RS. So when the previous RS report to the master that the region is online, master will kill the RS since it already assign the region to another RS.
-In our internal version, I already discards the ExecuteProcedures method, but use the CompatRemoteProcedureResolver to send the open/close requests one by one.
-Should we fallback to CompatRemoteProcedureResolver until we find a way to resolve this?[~Apache9], [~stack].
-              </div></li><li><div><div><b>body:</b> You can see how do I implement the general remote procedure. The executeProcedures method is not the problem, the problem is we just call openRegion/closeRegion method directly, and they could fail. In general, the executeProcedures method should not fail, it will just schedule the procedures to an executor. And it is the procedure's duty to report back to master. Especially for opening/closing a region, we should use reportRegionStateTransition to tell master the result, instead of throwing exceptions and let the dispatcher to handle the problem.
+                Attached patch fixes problem for TestMultiTableInputFormat.  Waiting for QA bot to see if it affects and other tests.
+              </div></li><li><div><div><b>body:</b> Somehow the simplification of the yarn classpaths in YARN-129 doesn't include as much as before.  So we add unit tests's classpath into to the yarn.application.classpath so that the spawned children have the MR2 jars necessary to run.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                But anyway, I think we can change back to use CompatRemoteProcedureResolver for 2.1 and 2.0, as the implementation of executeProcedures on these branches have critical problems, not only you described above, you can see what I described in the description here... If it is a bulk assign it will not throw exception, but use return value to indicate that there is a failure, but executeProcedures will ignore the return value...
+                Coincidentally, I've just been looking at the exact same problem when running against 2.0.4-alpha.  Setting {{yarn.is.minicluster}} to "true" in the configuration solves the problem and in effect does the same as your patch (at least in 2.0.4-alpha).
               </div></li><li><div>
-                So, we should change back to use CompatRemoteProcedureResolver for 2.1 and 2.0 simply, will open another issue for it. As in 2.2, I think we can do some Refactoring here to make ExecuteProcedures won't return any error but report back the error to the master.
+                Here's an alternate patch for trunk that sets yarn.is.minicluster.  TestMultiTableInputFormat passes for me with this change.
               </div></li><li><div>
-                Agree. Let's do this.
-              </div></li><li><div>
-                Review board link:
+                [~ghelmling], I like the {{yarn.is.minicluster}} setting approach because it is more direct.  I'm wondering why this isn't the default when every minimrcluster is created.
 
-https://reviews.apache.org/r/68811/
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 20s{color} | {color:blue} Docker mode activated. {color} |
-|| || || || {color:brown} Prechecks {color} ||
-| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green}  0m  0s{color} | {color:green} Patch does not have any anti-patterns. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green}  0m  0s{color} | {color:green} The patch appears to include 3 new or modified test files. {color} |
-|| || || || {color:brown} master Compile Tests {color} ||
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  5m 32s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 46s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 17s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 10s{color} | {color:green} branch has no errors when building our shaded downstream artifacts. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m  6s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green} master passed {color} |
-|| || || || {color:brown} Patch Compile Tests {color} ||
-| {color:red}-1{color} | {color:red} mvninstall {color} | {color:red}  2m 48s{color} | {color:red} root in the patch failed. {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 44s{color} | {color:green} the patch passed {color} |
-| {color:red}-1{color} | {color:red} javac {color} | {color:red}  1m 44s{color} | {color:red} hbase-server generated 1 new + 187 unchanged - 1 fixed = 188 total (was 188) {color} |
-| {color:red}-1{color} | {color:red} checkstyle {color} | {color:red}  1m 16s{color} | {color:red} hbase-server: The patch generated 1 new + 317 unchanged - 4 fixed = 318 total (was 321) {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
-| {color:red}-1{color} | {color:red} shadedjars {color} | {color:red}  3m 13s{color} | {color:red} patch has 11 errors when building our shaded downstream artifacts. {color} |
-| {color:red}-1{color} | {color:red} hadoopcheck {color} | {color:red}  1m 46s{color} | {color:red} The patch causes 11 errors with Hadoop v2.7.4. {color} |
-| {color:red}-1{color} | {color:red} hadoopcheck {color} | {color:red}  3m 50s{color} | {color:red} The patch causes 11 errors with Hadoop v3.0.0. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m  6s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green} the patch passed {color} |
-|| || || || {color:brown} Other Tests {color} ||
-| {color:red}-1{color} | {color:red} unit {color} | {color:red}  0m 44s{color} | {color:red} hbase-server in the patch failed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 11s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 32m 30s{color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker | Client=17.05.0-ce Server=17.05.0-ce Image:yetus/hbase:b002b0b |
-| JIRA Issue | HBASE-21217 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12940911/HBASE-21217.patch |
-| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  shadedjars  hadoopcheck  hbaseanti  checkstyle  compile  |
-| uname | Linux 3bb66c2a281d 3.13.0-143-generic #192-Ubuntu SMP Tue Feb 27 10:45:36 UTC 2018 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 7ab77518a2 |
-| maven | version: Apache Maven 3.5.4 (1edded0938998edf8bf061f1ceb3cfdeccf443fe; 2018-06-17T18:33:14Z) |
-| Default Java | 1.8.0_181 |
-| findbugs | v3.1.0-RC3 |
-| mvninstall | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/patch-mvninstall-root.txt |
-| javac | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/diff-compile-javac-hbase-server.txt |
-| checkstyle | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/diff-checkstyle-hbase-server.txt |
-| shadedjars | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/patch-shadedjars.txt |
-| hadoopcheck | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/patch-javac-2.7.4.txt |
-| hadoopcheck | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/patch-javac-3.0.0.txt |
-| unit | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/artifact/patchprocess/patch-unit-hbase-server.txt |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/testReport/ |
-| Max. process+thread count | 84 (vs. ulimit of 10000) |
-| modules | C: hbase-server U: hbase-server |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/14477/console |
-| Powered by | Apache Yetus 0.7.0   http://yetus.apache.org |
+I brought this up with our mr2 guy, [~sandyr] -- he's going to do a quick look and post here explaining why.
 
-
-This message was automatically generated.
 
 
               </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 12s{color} | {color:blue} Docker mode activated. {color} |
-|| || || || {color:brown} Prechecks {color} ||
-| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green}  0m  0s{color} | {color:green} Patch does not have any anti-patterns. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green}  0m  0s{color} | {color:green} The patch appears to include 3 new or modified test files. {color} |
-|| || || || {color:brown} master Compile Tests {color} ||
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  4m 57s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 46s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 16s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 13s{color} | {color:green} branch has no errors when building our shaded downstream artifacts. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m  0s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green} master passed {color} |
-|| || || || {color:brown} Patch Compile Tests {color} ||
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  4m 56s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 46s{color} | {color:green} the patch passed {color} |
-| {color:red}-1{color} | {color:red} javac {color} | {color:red}  1m 45s{color} | {color:red} hbase-server generated 1 new + 187 unchanged - 1 fixed = 188 total (was 188) {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 17s{color} | {color:green} hbase-server: The patch generated 0 new + 316 unchanged - 5 fixed = 316 total (was 321) {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 10s{color} | {color:green} patch has no errors when building our shaded downstream artifacts. {color} |
-| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 10m 51s{color} | {color:green} Patch does not cause any errors with Hadoop 2.7.4 or 3.0.0. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m 14s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 32s{color} | {color:green} the patch passed {color} |
-|| || || || {color:brown} Other Tests {color} ||
-| {color:red}-1{color} | {color:red} unit {color} | {color:red}144m 59s{color} | {color:red} hbase-server in the patch failed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 23s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black}186m 33s{color} | {color:black} {color} |
-\\
-\\
-|| Reason || Tests ||
-| Failed junit tests | hadoop.hbase.replication.regionserver.TestDrainReplicationQueuesForStandBy |
-|   | hadoop.hbase.regionserver.TestRegionOpen |
-|   | hadoop.hbase.client.TestTableFavoredNodes |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker | Client=17.05.0-ce Server=17.05.0-ce Image:yetus/hbase:b002b0b |
-| JIRA Issue | HBASE-21217 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12940937/HBASE-21217-v1.patch |
-| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  shadedjars  hadoopcheck  hbaseanti  checkstyle  compile  |
-| uname | Linux 52b9f3706a0d 3.13.0-143-generic #192-Ubuntu SMP Tue Feb 27 10:45:36 UTC 2018 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 7ab77518a2 |
-| maven | version: Apache Maven 3.5.4 (1edded0938998edf8bf061f1ceb3cfdeccf443fe; 2018-06-17T18:33:14Z) |
-| Default Java | 1.8.0_181 |
-| findbugs | v3.1.0-RC3 |
-| javac | https://builds.apache.org/job/PreCommit-HBASE-Build/14480/artifact/patchprocess/diff-compile-javac-hbase-server.txt |
-| unit | https://builds.apache.org/job/PreCommit-HBASE-Build/14480/artifact/patchprocess/patch-unit-hbase-server.txt |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/14480/testReport/ |
-| Max. process+thread count | 4994 (vs. ulimit of 10000) |
-| modules | C: hbase-server U: hbase-server |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/14480/console |
-| Powered by | Apache Yetus 0.7.0   http://yetus.apache.org |
+                +1 on Gary's patch.
+              </div></li><li><div>
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12582734/hbase-8528_alt.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 3 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop2.0{color}.  The patch compiles against the hadoop 2.0 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in .
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop1-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/5631//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                bq. I like the yarn.is.minicluster setting approach because it is more direct. I'm wondering why this isn't the default when every minimrcluster is created.
+
+This is set in the MiniMRCluster configuration automatically, but the Configuration instance seems to be a copy of any Configuration passed down to the MiniMRCluster constructor, so it isn't visible externally.  At the moment HBaseTestingUtility doesn't even pass down the Configuration instance, but even if it did it wouldn't help due to the above.
+
+If you see any more transparent way of getting yarn.is.minicluster set automatically, that would be cool.
+              </div></li><li><div>
+                Tracked it down -- in  MiniMRClientClusterFactory, we get a conf from the job and feed it to the  MiniMRYarnCluster [1].  The job doesn't get the same conf we build in hbase -- it instantiates its own. [2]  This is why we need to manually copy over settings into the hbase mr client for mr2/yarn hbase jobs.  I'm going to add some comments to gary's patch to this effect.
 
 
-This message was automatically generated.
+[1] https://github.com/apache/hadoop-common/blob/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-jobclient/src/test/java/org/apache/hadoop/mapred/MiniMRClientClusterFactory.java#L73
+[2] https://github.com/apache/hadoop-common/blob/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-core/src/main/java/org/apache/hadoop/mapreduce/Job.java#L147
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                Do we need this setting in other MR unit tests?
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12583145/hbase-8528.alt.v2.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 3 new or modified tests.
+
+    {color:green}+1 hadoop1.0{color}.  The patch compiles against the hadoop 1.0 profile.
+
+    {color:green}+1 hadoop2.0{color}.  The patch compiles against the hadoop 2.0 profile.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.client.TestHCM
+
+     {color:red}-1 core zombie tests{color}.  There are 1 zombie test(s): 
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-prefix-tree.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-client.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-protocol.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop1-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-examples.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/5674//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> This affects all of the MR tests.  Sandy and I will be looking more into why it just affects this one.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                +1 on alt.v2 patch.
 
 
               </div></li><li><div>
-                Ugh. Just saw this. Thanks lads.
+                Thanks for the reviews folks.  comimtted to 0.95 and trunk.
               </div></li><li><div>
-                | (/) *{color:green}+1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 11s{color} | {color:blue} Docker mode activated. {color} |
-|| || || || {color:brown} Prechecks {color} ||
-| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green}  0m  0s{color} | {color:green} Patch does not have any anti-patterns. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green}  0m  0s{color} | {color:green} The patch appears to include 3 new or modified test files. {color} |
-|| || || || {color:brown} master Compile Tests {color} ||
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  5m  4s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 46s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 17s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 16s{color} | {color:green} branch has no errors when building our shaded downstream artifacts. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 59s{color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 29s{color} | {color:green} master passed {color} |
-|| || || || {color:brown} Patch Compile Tests {color} ||
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  5m 15s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 46s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m 46s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 19s{color} | {color:green} hbase-server: The patch generated 0 new + 315 unchanged - 6 fixed = 315 total (was 321) {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 15s{color} | {color:green} patch has no errors when building our shaded downstream artifacts. {color} |
-| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 10m 29s{color} | {color:green} Patch does not cause any errors with Hadoop 2.7.4 or 3.0.0. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m  7s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 31s{color} | {color:green} the patch passed {color} |
-|| || || || {color:brown} Other Tests {color} ||
-| {color:green}+1{color} | {color:green} unit {color} | {color:green}120m 28s{color} | {color:green} hbase-server in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 23s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black}162m  7s{color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker | Client=17.05.0-ce Server=17.05.0-ce Image:yetus/hbase:b002b0b |
-| JIRA Issue | HBASE-21217 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12941052/HBASE-21217-v2.patch |
-| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  shadedjars  hadoopcheck  hbaseanti  checkstyle  compile  |
-| uname | Linux 85dae2e34597 3.13.0-143-generic #192-Ubuntu SMP Tue Feb 27 10:45:36 UTC 2018 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 7ab77518a2 |
-| maven | version: Apache Maven 3.5.4 (1edded0938998edf8bf061f1ceb3cfdeccf443fe; 2018-06-17T18:33:14Z) |
-| Default Java | 1.8.0_181 |
-| findbugs | v3.1.0-RC3 |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/14485/testReport/ |
-| Max. process+thread count | 5184 (vs. ulimit of 10000) |
-| modules | C: hbase-server U: hbase-server |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/14485/console |
-| Powered by | Apache Yetus 0.7.0   http://yetus.apache.org |
+                Integrated in HBase-TRUNK #4117 (See [https://builds.apache.org/job/HBase-TRUNK/4117/])
+    HBASE-8528 [hadoop2] TestMultiTableInputFormat always hadoop with YARN-129 applied (with Gary Helmling) (Revision 1482561)
 
-
-This message was automatically generated.
-
+     Result = FAILURE
+jmhsieh : 
+Files : 
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/HBaseTestingUtility.java
 
               </div></li><li><div>
-                Let me commit.
-              </div></li><li><div>
-                Pushed to master and branch-2. Thanks [~stack] and [~allan163] for reviewing.
-              </div></li><li><div>
-                {quote}
-There is no FAILED_CLOSE state so we can not tell master that the closing is failed. And I think the only possible way to meet the null region is that, we have already sent the request to RS, and RS has finished the closing, but a retrying rpc call has aleady been sent, and finally it is scheduled after we finish everything, then here we will meet a null region. For this case I think it is fine to just ignore it? Not sure if there are other possible ways to enter here, if so I think there will be bugs...
-{quote}
-Quote from the reviewborad.
-Yes, I have encountered this in ITBLL, that's why I want to change back to CompatRemoteProcedureResolver in branch-2.0 and branch-2.1.  But it is definitely another bug need to reveal and fix.
-              </div></li><li><div>
-                Yes, when calling closeRegion we could throw a NotServingRegionException, so the master could know that the close is useless. But we need to know why master issues the useless close region request...
-              </div></li><li><div>
-                Is there an issue for reenabling CompatRemoteProcedureResolver in branch-2.0 and branch-2.1? Thanks.
-              </div></li><li><div>
-                Results for branch branch-2
-	[build #1300 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1300/]: (x) *{color:red}-1 overall{color}*
-----
-details (if available):
+                Integrated in hbase-0.95 #193 (See [https://builds.apache.org/job/hbase-0.95/193/])
+    HBASE-8528 [hadoop2] TestMultiTableInputFormat always on hadoop with YARN-129 applied (with Gary Helmling) (Revision 1482563)
 
-(/) {color:green}+1 general checks{color}
--- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1300//General_Nightly_Build_Report/]
-
-
-
-
-(x) {color:red}-1 jdk8 hadoop2 checks{color}
--- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1300//JDK8_Nightly_Build_Report_(Hadoop2)/]
-
-
-(/) {color:green}+1 jdk8 hadoop3 checks{color}
--- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1300//JDK8_Nightly_Build_Report_(Hadoop3)/]
-
-
-(/) {color:green}+1 source release artifact{color}
--- See build output for details.
-
-
-(/) {color:green}+1 client integration test{color}
+     Result = SUCCESS
+jmhsieh : 
+Files : 
+* /hbase/branches/0.95/hbase-server/src/test/java/org/apache/hadoop/hbase/HBaseTestingUtility.java
 
               </div></li><li><div>
-                Ping [~allan163], mind opening the issue to upload your patch for branch-2.0 &amp; branch-2.1? Thanks.
-              </div></li><li><div>
-                {quote}
-Ping Allan Yang, mind opening the issue to upload your patch for branch-2.0 &amp; branch-2.1? Thanks.
-{quote}
-Sure, will open a issue later today.
-              </div></li><li><div>
-                Results for branch master
-	[build #511 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/master/511/]: (x) *{color:red}-1 overall{color}*
-----
-details (if available):
+                Integrated in hbase-0.95-on-hadoop2 #99 (See [https://builds.apache.org/job/hbase-0.95-on-hadoop2/99/])
+    HBASE-8528 [hadoop2] TestMultiTableInputFormat always on hadoop with YARN-129 applied (with Gary Helmling) (Revision 1482563)
 
-(/) {color:green}+1 general checks{color}
--- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/master/511//General_Nightly_Build_Report/]
-
-
-
-
-(x) {color:red}-1 jdk8 hadoop2 checks{color}
--- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/master/511//JDK8_Nightly_Build_Report_(Hadoop2)/]
-
-
-(x) {color:red}-1 jdk8 hadoop3 checks{color}
--- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/master/511//JDK8_Nightly_Build_Report_(Hadoop3)/]
-
-
-(/) {color:green}+1 source release artifact{color}
--- See build output for details.
-
-
-(/) {color:green}+1 client integration test{color}
+     Result = FAILURE
+jmhsieh : 
+Files : 
+* /hbase/branches/0.95/hbase-server/src/test/java/org/apache/hadoop/hbase/HBaseTestingUtility.java
 
               </div></li><li><div>
-                Ping [~allan163], any plan to backport this bug in 2.0/2.1 branch?
-              </div></li><li><div>
-                For branch-2.1/branch-2.0, we will just call openRegion and closeRegion directly, IIRC.
-              </div></li><li><div>
-                Do you mean this bug is not applicable to branch-2.0/2.1? Pardon me if wrong....
-              </div></li><li><div>
-                We have HBASE-21237 for branch-2.0/2.1. [~pankaj2461]
-              </div></li><li><div>
-                Got it [~allan163]... thanks for the Jira pointer.
+                Integrated in HBase-TRUNK-on-Hadoop-2.0.0 #530 (See [https://builds.apache.org/job/HBase-TRUNK-on-Hadoop-2.0.0/530/])
+    HBASE-8528 [hadoop2] TestMultiTableInputFormat always hadoop with YARN-129 applied (with Gary Helmling) (Revision 1482561)
+
+     Result = FAILURE
+jmhsieh : 
+Files : 
+* /hbase/trunk/hbase-server/src/test/java/org/apache/hadoop/hbase/HBaseTestingUtility.java
+
               </div></li></ol></div></div></html>

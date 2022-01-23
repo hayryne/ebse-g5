@@ -1,116 +1,215 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 274
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-1594 Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt;
-                </div><div><b>message:</b> PHOENIX-1594 Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt;
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 if UPDATE_CACHE_FREQUENCY is set, always let the server set timestamps
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-3907 Use LATEST_TIMESTAMP when UPDATE_CACHE_FREQUENCY is not zero
+                </div><div><b>message:</b> PHOENIX-3907 Use LATEST_TIMESTAMP when UPDATE_CACHE_FREQUENCY is not zero
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt;
-                </div><div><b>description:</b> I found that underlying scan for query "select count(1) or count(*) from &lt;table&gt;" still project all columns. 
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Use LATEST_TIMESTAMP when UPDATE_CACHE_FREQUENCY is not zero
+                </div><div><b>description:</b> For non transactional tables, currently with UPDATE_CACHE_FREQUENCY, we'll use LATEST_TIMESTAMP *most* of the time, until the cached entity expires, in which case we'll use the server timestamp. This seems a bit strange and inconsistent. Instead (for non transactional tables), we should always use LATEST_TIMESTAMP if UPDATE_CACHE_FREQUENCY is non zero, with the exception of the corner case for UPSERT SELECT and DELETE where the same table is being read and written to (see changes to FromCompiler for PHOENIX-3823).
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                [~tdsilva] - this would be a nice one to get in since the JIRAs associated with PHOENIX-3819 have been checked in. WDYT? Does this change make sense to you?
+              </div></li><li><div>
+                [~jamestaylor]
 
-It should be fast if we use KeyOnlyFilter for this simple query.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> That'd be a pretty serious perf regression (FYI, [~mujtabachohan]). The code that is supposed to use a KeyOnlyFilter is in BaseResultIterators, line 160 (in the constructor):
+You are referring to setting the MetaDataMutationResult mutation time to QueryConstants.UNSET_TIMESTAMP when update cache frequency is set and the cached entity hasn't expired right ? Later on when we create mutations if the timestamp is set to UNSET_TIMESTAMP we use the LATEST_TIMESTAMP.
+
 {code}
-    public BaseResultIterators(QueryPlan plan, Integer perScanLimit) throws SQLException {
-        super(plan.getContext(), plan.getTableRef(), plan.getGroupBy(), plan.getOrderBy(), plan.getStatement().getHint());
-        this.plan = plan;
-        StatementContext context = plan.getContext();
-        TableRef tableRef = plan.getTableRef();
-        PTable table = tableRef.getTable();
-        FilterableStatement statement = plan.getStatement();
-        RowProjector projector = plan.getProjector();
-        physicalTableName = table.getPhysicalName().getBytes();
-        tableStats = useStats() ? new MetaDataClient(context.getConnection()).getTableStats(table) : PTableStats.EMPTY_STATS;
-        Scan scan = context.getScan();
-        // Used to tie all the scans together during logging
-        scanId = UUID.randomUUID().toString();
-        if (projector.isProjectEmptyKeyValue()) {
-            Map&lt;byte [], NavigableSet&lt;byte []&gt;&gt; familyMap = scan.getFamilyMap();
-            // If nothing projected into scan and we only have one column family, just allow everything
-            // to be projected and use a FirstKeyOnlyFilter to skip from row to row. This turns out to
-            // be quite a bit faster.
-            // Where condition columns also will get added into familyMap
-            // When where conditions are present, we can not add FirstKeyOnlyFilter at beginning.
-            if (familyMap.isEmpty() &amp;&amp; context.getWhereCoditionColumns().isEmpty()
-                    &amp;&amp; table.getColumnFamilies().size() == 1) {
-                // Project the one column family. We must project a column family since it's possible
-                // that there are other non declared column families that we need to ignore.
-                scan.addFamily(table.getColumnFamilies().get(0).getName().getBytes());
-                ScanUtil.andFilterAtBeginning(scan, new FirstKeyOnlyFilter());
-            } else {
+ // Do not make rpc to getTable if
+        // 1. table is a system table
+        // 2. table was already resolved as of that timestamp
+        if (table != null &amp;&amp; !alwaysHitServer
+                &amp;&amp; (systemTable || resolvedTimestamp == tableResolvedTimestamp || connection.getMetaDataCache().getAge(tableRef) &lt; table.getUpdateCacheFrequency())) {
+            return new MetaDataMutationResult(MutationCode.TABLE_ALREADY_EXISTS, QueryConstants.UNSET_TIMESTAMP, table);
+        }
 {code}
+
+If the cached entry expired the MetaDataMutationResult mutation time is set to the server timestamp (same as the behavior of tables without  UPDATE_CACHE_FREQUENCY set). I think it makes sense to be consistent and always set the MetaDataMutationResult mutation time to QueryConstants.UNSET_TIMESTAMP if UPDATE_CACHE_FREQUENCY is set (except for the UPSERT SELECT/ DELETE corner case when the alwaysHitServer flag is set to true).
+
+
+              </div></li><li><div>
+                Would you have some spare cycles to take this one, [~tdsilva]? If it's not too difficult, we can target it for 4.11.0.
+              </div></li><li><div>
+                Sure I can pick this one up.
+              </div></li><li><div>
+                [~jamestaylor]
+
+Can you please review?
+
+Thanks,
+Thomas
+              </div></li><li><div>
+                Thanks for the patch, [~tdsilva]. One possible additional consideration is when a query uses CURRENT_DATE(). We typically piggyback on the timestamp we get back from the server as our current date so that we don't have to make another RPC. Can you make sure that we preserve this optimization? You might need to have a member variable in StatementContext that preserves the current date and then in addition, do what you're doing to have the result timestamp always be unset.
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12871300/PHOENIX-3907.patch
+  against master branch at commit bacaba18bd17d54ff6b24fb5e59c6ab0a6ce62f1.
+  ATTACHMENT ID: 12871300
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:red}-1 javadoc{color}.  The javadoc tool appears to have generated 47 warning messages.
+
+    {color:red}-1 release audit{color}.  The applied patch generated 5 release audit warnings (more than the master's current 0 warnings).
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     ./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.UpgradeIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.SortMergeJoinIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.index.MutableIndexFailureIT
+
+Test results: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1000//testReport/
+Release audit warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1000//artifact/patchprocess/patchReleaseAuditWarnings.txt
+Javadoc warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1000//artifact/patchprocess/patchJavadocWarnings.txt
+Console output: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1000//console
+
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I tested the case with multiple CFs. Below are some traces from test case MultiCfQueryExecIT#testConstantCount
+                [~jamestaylor]
 
-{noformat}
-{"timeRange":[0,105],"batch":-1,"startRow":"","stopRow":"","loadColumnFamiliesOnDemand":null,"totalColumns":1,"cacheBlocks":true,"families":{"A":["_0"]},"maxResultSize":-1,"maxVersions":1,"caching":1000}
-{noformat}
+StatementContext.getCurrentTime() sets the current time based on the current table reference. If I modify MetadataClient.updateCache to set the mutation result time to UNSET_TIMESTAMP, then we lose the current date optimization that prevents the rpc. I don't see an easy way to get the statement context in updateCache.
+Instead of modifying update cache, should I just modify MutationState.validate to set the server time stamp to UNSET_TIMESTAMP if UPDATE_CACHE_FREQUENCY is set ? This will then be used to generate the mutations. 
 
-What's the reason we have this condition "table.getColumnFamilies().size() == 1"?
-
+{code}
+-            serverTimeStamp = timestamp;
++            // if UPDATE_CACHE_FREQUENCY is set the mutation result time is UNSET_TIMESTAMP *except* when the cached table expires
++            // so set the server time stamp to UNSET_TIMESTAMP to be consisent
++            serverTimeStamp = table.getUpdateCacheFrequency()!=0 ? QueryConstants.UNSET_TIMESTAMP : timestamp;
+{code}
               </div></li><li><div>
-                When there are multiple CFs, instead of projecting each one of them and having a FirstKeyOnlyFilter, we project only the empty KV (as we'll only look at one store file instead of potentially multiple ones). Is this not what's happening?
+                That seems reasonable, [~tdsilva]. Any holes with the upsert select or delete case where we need the time stamp set? Or if SCN is set? Would another option be to add a currentTime member variable to TableRef and capture the timestamp from the result there? I think you could the PTable there to check the updateCacheFrequency value.
               </div></li><li><div>
-                It seems that's not the case. Here is the scan in UngroupedAggregateRegionObserver#doPostScannerOpen() call. You can see the query projects all columns in the first column family and we don't turn off cacheBlocks either.
+                [~jamestaylor]
 
-{noformat}
-scan {"timeRange":[0,305],"batch":-1,"startRow":"000000000000001","stopRow":"000000000000002",
-"loadColumnFamiliesOnDemand":true,"totalColumns":1,"cacheBlocks":true,
-"families":{"A":["ALL"]},"maxResultSize":-1,"maxVersions":1,"caching":1000}
-{noformat}
+Thanks for the review, I have uploaded a modified patch. 
+              </div></li><li><div>
+                +1. Thanks, [~tdsilva]!
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12871716/PHOENIX-3907-v2.patch
+  against master branch at commit fbe6ee22d8a6bafa325a56ee7282fa77253b7e07.
+  ATTACHMENT ID: 12871716
 
-In the aggregator, I can see the passed in Tuple has two KVs:
-{noformat}
-[000000000000002/A:UNIQUE_USER_COUNT/300/Put/vlen=4/mvcc=7, 000000000000002/A:_0/300/Put/vlen=0/mvcc=7]
-{noformat}
-              </div></li><li><div><div><b>body:</b> Is the table a VIEW over an HBase table? Or a Phoenix TABLE?
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-We don't turn off caching the blocks automatically, but I think there's a JIRA for that. It's somewhat hard to know if you should automatically not cache them. We could infer based on the overall number of bytes from our stats now. You can always add the /*+ NO_CACHE */ hint, though.
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:red}-1 javadoc{color}.  The javadoc tool appears to have generated 50 warning messages.
+
+    {color:red}-1 release audit{color}.  The applied patch generated 5 release audit warnings (more than the master's current 0 warnings).
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     ./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.MutableQueryIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.UpdateCacheAcrossDifferentClientsIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.index.MutableIndexFailureIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.AlterTableWithViewsIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.ViewIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.rpc.UpdateCacheIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.CreateTableIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.AppendOnlySchemaIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.UpgradeIT
+
+     {color:red}-1 core zombie tests{color}.  There are 3 zombie test(s): 	at org.apache.hadoop.hbase.client.TestAdmin2.testGetRegion(TestAdmin2.java:730)
+	at org.apache.hadoop.hbase.namespace.TestNamespaceAuditor.testRestoreSnapshotQuotaExceed(TestNamespaceAuditor.java:838)
+
+Test results: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1014//testReport/
+Release audit warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1014//artifact/patchprocess/patchReleaseAuditWarnings.txt
+Javadoc warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1014//artifact/patchprocess/patchJavadocWarnings.txt
+Console output: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1014//console
+
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                [~jeffreyz] - here's a patch that adds FirstKeyOnlyFilter in more situations. Most of it is just test changes to fix explain plan comparisons where the FirstKeyOnlyFilter is used now but not before. 
+                [~jamestaylor]
 
-Notice for the case you mentioned, only the A column family is projected into the scan and not all column families. We project families rather than individual column qualifiers because we've found HBase performance suffers in this case (~30% if I recall correctly). It's usually faster to just do a next rather than seek to the next column. We do have a hint to override this optimization.
-              </div></li><li><div><div><b>body:</b> Nice. Seems that there are quite a few places benefits from the optimization based on the changes of unit tests.
+I have attached a v3 patch to fix test failures. 
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12871742/PHOENIX-3907-v3.patch
+  against master branch at commit dbd70f56d1926bf94bb444c918c56671c30a41e8.
+  ATTACHMENT ID: 12871742
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:red}-1 javadoc{color}.  The javadoc tool appears to have generated 50 warning messages.
+
+    {color:red}-1 release audit{color}.  The applied patch generated 5 release audit warnings (more than the master's current 0 warnings).
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     ./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.CaseStatementIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.index.MutableIndexFailureIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.OnDuplicateKeyIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.QueryDatabaseMetaDataIT
+
+Test results: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1019//testReport/
+Release audit warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1019//artifact/patchprocess/patchReleaseAuditWarnings.txt
+Javadoc warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1019//artifact/patchprocess/patchJavadocWarnings.txt
+Console output: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1019//console
+
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Thanks for the suggestion. It won't hurt perf, but not sure if it'll help a
-whole lot either. I'll check it in shortly unless I hear otherwise from
-anyone.
-
+                </div></div></li><li><div><div><b>body:</b> Attaching v4 patch with a cleaner fix for the test failure.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                FAILURE: Integrated in Phoenix-master #557 (See [https://builds.apache.org/job/Phoenix-master/557/])
-PHOENIX-1594 Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt; (jtaylor: rev 2a73ba81b93f189fba46cae1360541e2d589e3fb)
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/QueryWithLimitIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/SortMergeJoinIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/TenantSpecificViewIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/HashJoinIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/index/ImmutableIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/QueryTimeoutIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/SequenceIT.java
-* phoenix-core/src/test/java/org/apache/phoenix/compile/QueryCompilerTest.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/index/LocalIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/SubqueryIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/KeyOnlyIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/SubqueryUsingSortMergeJoinIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/index/BaseMutableIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/HashJoinLocalIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/BaseTenantSpecificViewIndexIT.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/BaseViewIT.java
-* phoenix-core/src/test/java/org/apache/phoenix/compile/TenantSpecificViewIndexCompileTest.java
-* phoenix-core/src/test/java/org/apache/phoenix/compile/StatementHintsCompilationTest.java
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/index/SaltedIndexIT.java
-* phoenix-core/src/main/java/org/apache/phoenix/iterate/BaseResultIterators.java
+                +1
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12871879/PHOENIX-3907-v4.patch
+  against master branch at commit 65bd849becbe961bf63c1ac1d88f0cc6a4201931.
+  ATTACHMENT ID: 12871879
 
-              </div></li><li><div>
-                SUCCESS: Integrated in Phoenix-master #558 (See [https://builds.apache.org/job/Phoenix-master/558/])
-PHOENIX-1594 Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt; (jtaylor: rev 6f43d467c6de0ef439bfff8bada90f77a305d9d1)
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/index/GlobalIndexOptimizationIT.java
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-              </div></li><li><div>
-                SUCCESS: Integrated in Phoenix-master #559 (See [https://builds.apache.org/job/Phoenix-master/559/])
-PHOENIX-1594 Using KeyOnlyFilter for simple query of select count(1) from &lt;table&gt; (jtaylor: rev 405cb0f763fe2e01418d3f84cb22f0331337e45b)
-* phoenix-core/src/it/java/org/apache/phoenix/end2end/SubqueryUsingSortMergeJoinIT.java
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
 
-              </div></li><li><div>
-                Bulk close of all issues that has been resolved in a released version. 
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:red}-1 javadoc{color}.  The javadoc tool appears to have generated 50 warning messages.
+
+    {color:red}-1 release audit{color}.  The applied patch generated 5 release audit warnings (more than the master's current 0 warnings).
+
+    {color:red}-1 lineLengths{color}.  The patch introduces the following lines longer than 100:
+    +        MutationPlan plan = compiler.compile(Collections.singletonList(tableRef), emptyCF, null, null, ts);
++        this.upperBoundTimeStamp = table.getUpdateCacheFrequency()!=0 ? QueryConstants.UNSET_TIMESTAMP : upperBoundTimeStamp;
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     ./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.SaltedViewIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.index.MutableIndexFailureIT
+./phoenix-core/target/failsafe-reports/TEST-org.apache.phoenix.end2end.TimezoneOffsetFunctionIT
+
+Test results: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1030//testReport/
+Release audit warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1030//artifact/patchprocess/patchReleaseAuditWarnings.txt
+Javadoc warnings: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1030//artifact/patchprocess/patchJavadocWarnings.txt
+Console output: https://builds.apache.org/job/PreCommit-PHOENIX-Build/1030//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                FAILURE: Integrated in Jenkins build Phoenix-master #1648 (See [https://builds.apache.org/job/Phoenix-master/1648/])
+PHOENIX-3907 Use LATEST_TIMESTAMP when UPDATE_CACHE_FREQUENCY is not (thomas: rev 7cb16d4dd7f5fe11a10dfe4a58eb2bced313b6c1)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/compile/CreateTableCompiler.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/TableRef.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/compile/StatementContext.java
+
               </div></li></ol></div></div></html>

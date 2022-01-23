@@ -1,418 +1,706 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 35
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                call the method 'command' on the specified command
-              </div></li><li><div>
-                and then return the table you just created
-              </div></li><li><div>
-                format_simple_command do
-              </div></li><li><div>
-                   replication_admin.add_peer(@peer_id, '')
-   assert_equal(1, replication_admin.list_peers.length)
-     replication_admin.add_peer(@peer_id, '')
-   assert_equal(1, replication_admin.list_peers.length, 1)
-   replication_admin.remove_peer(@peer_id)
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Revert HBASE-15965 and HBASE-15849.
-                </div><div><b>message:</b> Revert HBASE-15965 and HBASE-15849.
-While it's fine to introduce these format changes in minor version, reverting it from branch-1 after discussion on HBASE-16044.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems
+                </div><div><b>message:</b> HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Shell test changes. Use @shell.command instead directly calling functions in admin.rb and other libraries.
-                </div><div><b>description:</b> Testing by executing a command will cover the exact path users will trigger, so its better then directly calling library functions in tests. Changing the tests to use @shell.command(:&lt;command&gt;, args) to execute them like it's a command coming from shell.
+git-svn-id: https://svn.apache.org/repos/asf/hbase/branches/0.94@1392620 13f79535-47bb-0310-9956-ffa450edef68
 
-Norm change:
-Commands should print the output user would like to see, but in the end, should also return the relevant value. This way:
-- Tests can use returned value to check that functionality works
-- Tests can capture stdout to assert particular kind of output user should see.
-- We do not print the return value in interactive mode and keep the output clean. See Shell.command() function.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> RS starting region open while failing ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems
+                </div><div><b>description:</b> 1. HMaster tries to assign a region to an RS.
+2. HMaster creates a RegionState for this region and puts it into regionsInTransition.
+3. In the first assign attempt, HMaster calls RS.openRegion(). The RS receives the open region request and starts to proceed, with success eventually. However, due to network problems, HMaster fails to receive the response for the openRegion() call, and the call times out.
+4. HMaster attemps to assign for a second time, choosing another RS. 
+5. But since the HMaster's OpenedRegionHandler has been triggered by the region open of the previous RS, and the RegionState has already been removed from regionsInTransition, HMaster finds invalid and ignores the unassigned ZK node "RS_ZK_REGION_OPENING" updated by the second attempt.
+6. The unassigned ZK node stays and a later unassign fails coz RS_ZK_REGION_CLOSING cannot be created.
+{code}
+2012-06-29 07:03:38,870 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Using pre-existing plan for region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568.; plan=hri=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568., src=swbss-hadoop-004,60020,1340890123243, dest=swbss-hadoop-006,60020,1340890678078
+2012-06-29 07:03:38,870 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Assigning region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. to swbss-hadoop-006,60020,1340890678078
+2012-06-29 07:03:38,870 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=M_ZK_REGION_OFFLINE, server=swbss-hadoop-002:60000, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:06:28,882 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENING, server=swbss-hadoop-006,60020,1340890678078, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:06:32,291 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENING, server=swbss-hadoop-006,60020,1340890678078, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:06:32,299 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENED, server=swbss-hadoop-006,60020,1340890678078, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:06:32,299 DEBUG org.apache.hadoop.hbase.master.handler.OpenedRegionHandler: Handling OPENED event for CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. from serverName=swbss-hadoop-006,60020,1340890678078, load=(requests=518945, regions=575, usedHeap=15282, maxHeap=31301); deleting unassigned node
+2012-06-29 07:06:32,299 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:60000-0x2377fee2ae80007 Deleting existing unassigned node for b713fd655fa02395496c5a6e39ddf568 that is in expected state RS_ZK_REGION_OPENED
+2012-06-29 07:06:32,301 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:60000-0x2377fee2ae80007 Successfully deleted unassigned node for region b713fd655fa02395496c5a6e39ddf568 in expected state RS_ZK_REGION_OPENED
+2012-06-29 07:06:32,301 DEBUG org.apache.hadoop.hbase.master.handler.OpenedRegionHandler: The master has opened the region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. that was online on serverName=swbss-hadoop-006,60020,1340890678078, load=(requests=518945, regions=575, usedHeap=15282, maxHeap=31301)
+2012-06-29 07:07:41,140 WARN org.apache.hadoop.hbase.master.AssignmentManager: Failed assignment of CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. to serverName=swbss-hadoop-006,60020,1340890678078, load=(requests=0, regions=575, usedHeap=0, maxHeap=0), trying to assign elsewhere instead; retry=0
+java.net.SocketTimeoutException: Call to /172.16.0.6:60020 failed on socket timeout exception: java.net.SocketTimeoutException: 120000 millis timeout while waiting for channel to be ready for read. ch : java.nio.channels.SocketChannel[connected local=/172.16.0.2:53765 remote=/172.16.0.6:60020]
+        at org.apache.hadoop.hbase.ipc.HBaseClient.wrapException(HBaseClient.java:805)
+        at org.apache.hadoop.hbase.ipc.HBaseClient.call(HBaseClient.java:778)
+        at org.apache.hadoop.hbase.ipc.HBaseRPC$Invoker.invoke(HBaseRPC.java:283)
+        at $Proxy8.openRegion(Unknown Source)
+        at org.apache.hadoop.hbase.master.ServerManager.sendRegionOpen(ServerManager.java:573)
+        at org.apache.hadoop.hbase.master.AssignmentManager.assign(AssignmentManager.java:1127)
+        at org.apache.hadoop.hbase.master.AssignmentManager.assign(AssignmentManager.java:912)
+        at org.apache.hadoop.hbase.master.AssignmentManager.assign(AssignmentManager.java:892)
+        at org.apache.hadoop.hbase.master.handler.ClosedRegionHandler.process(ClosedRegionHandler.java:92)
+        at org.apache.hadoop.hbase.executor.EventHandler.run(EventHandler.java:162)
+        at java.util.concurrent.ThreadPoolExecutor$Worker.runTask(ThreadPoolExecutor.java:886)
+        at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:908)
+        at java.lang.Thread.run(Thread.java:662)
+Caused by: java.net.SocketTimeoutException: 120000 millis timeout while waiting for channel to be ready for read. ch : java.nio.channels.SocketChannel[connected local=/172.16.0.2:53765 remote=/172.16.0.6:60020]
+        at org.apache.hadoop.net.SocketIOWithTimeout.doIO(SocketIOWithTimeout.java:164)
+        at org.apache.hadoop.net.SocketInputStream.read(SocketInputStream.java:155)
+        at org.apache.hadoop.net.SocketInputStream.read(SocketInputStream.java:128)
+        at java.io.FilterInputStream.read(FilterInputStream.java:116)
+        at org.apache.hadoop.hbase.ipc.HBaseClient$Connection$PingInputStream.read(HBaseClient.java:301)
+        at java.io.BufferedInputStream.fill(BufferedInputStream.java:218)
+        at java.io.BufferedInputStream.read(BufferedInputStream.java:237)
+        at java.io.DataInputStream.readInt(DataInputStream.java:370)
+        at org.apache.hadoop.hbase.ipc.HBaseClient$Connection.receiveResponse(HBaseClient.java:541)
+        at org.apache.hadoop.hbase.ipc.HBaseClient$Connection.run(HBaseClient.java:479)
+2012-06-29 07:07:41,142 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: No previous transition plan was found (or we are ignoring an existing plan) for CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. so generated a random one; hri=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568., src=, dest=swbss-hadoop-164,60020,1340888346294; 15 (online=15, exclude=serverName=swbss-hadoop-006,60020,1340890678078, load=(requests=0, regions=575, usedHeap=0, maxHeap=0)) available servers
+2012-06-29 07:07:41,142 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:60000-0x2377fee2ae80007 Creating (or updating) unassigned node for b713fd655fa02395496c5a6e39ddf568 with OFFLINE state
+2012-06-29 07:07:41,145 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Using pre-existing plan for region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568.; plan=hri=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568., src=, dest=swbss-hadoop-164,60020,1340888346294
+2012-06-29 07:07:41,145 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Assigning region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. to swbss-hadoop-164,60020,1340888346294
+2012-06-29 07:07:41,149 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENING, server=swbss-hadoop-164,60020,1340888346294, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:07:41,150 WARN org.apache.hadoop.hbase.master.AssignmentManager: Received OPENING for region b713fd655fa02395496c5a6e39ddf568 from server swbss-hadoop-164,60020,1340888346294 but region was in  the state null and not in expected PENDING_OPEN or OPENING states
+2012-06-29 07:07:41,296 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENING, server=swbss-hadoop-164,60020,1340888346294, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:07:41,296 WARN org.apache.hadoop.hbase.master.AssignmentManager: Received OPENING for region b713fd655fa02395496c5a6e39ddf568 from server swbss-hadoop-164,60020,1340888346294 but region was in  the state null and not in expected PENDING_OPEN or OPENING states
+2012-06-29 07:07:41,302 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_OPENED, server=swbss-hadoop-164,60020,1340888346294, region=b713fd655fa02395496c5a6e39ddf568
+2012-06-29 07:07:41,302 WARN org.apache.hadoop.hbase.master.AssignmentManager: Received OPENED for region b713fd655fa02395496c5a6e39ddf568 from server swbss-hadoop-164,60020,1340888346294 but region was in  the state null and not in expected PENDING_OPEN or OPENING states
+2012-06-29 07:08:38,872 INFO org.apache.hadoop.hbase.master.HMaster: balance hri=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568., src=swbss-hadoop-006,60020,1340890678078, dest=swbss-hadoop-008,60020,1340891085175
+2012-06-29 07:08:38,872 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Starting unassignment of region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. (offlining)
+2012-06-29 07:08:47,875 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Sent CLOSE to serverName=swbss-hadoop-006,60020,1340890678078, load=(requests=0, regions=0, usedHeap=0, maxHeap=0) for region CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568.
+...
+2012-06-29 08:04:37,681 INFO org.apache.hadoop.hbase.master.AssignmentManager: Regions in transition timed out:  CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. state=PENDING_CLOSE, ts=1340926468331, server=null
+2012-06-29 08:04:37,681 INFO org.apache.hadoop.hbase.master.AssignmentManager: Region has been PENDING_CLOSE for too long, running forced unassign again on region=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568.
+2012-06-29 08:04:47,681 INFO org.apache.hadoop.hbase.master.AssignmentManager: Regions in transition timed out:  CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568. state=PENDING_CLOSE, ts=1340926468331, server=null
+2012-06-29 08:04:47,682 INFO org.apache.hadoop.hbase.master.AssignmentManager: Region has been PENDING_CLOSE for too long, running forced unassign again on region=CDR_STATS_TRAFFIC,13184390567|20120508|17||2|3|913,1337256975556.b713fd655fa02395496c5a6e39ddf568.
+{code}
 
-Bugs found due to this change:
-- Uncovered bug in major_compact.rb with this approach. It was calling admin.majorCompact() which doesn't exist but our tests didn't catch it since they directly tested admin.major_compact()
-- Enabled TestReplicationShell. If it's bad, flaky infra will take care of it.
+
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                | (/) *{color:green}+1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} rubocop {color} | {color:blue} 0m 2s {color} | {color:blue} rubocop was not available. {color} |
-| {color:blue}0{color} | {color:blue} ruby-lint {color} | {color:blue} 0m 2s {color} | {color:blue} Ruby-lint was not available. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green} 0m 0s {color} | {color:green} The patch appears to include 4 new or modified test files. {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 3m 16s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 18s {color} | {color:green} master passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 8s {color} | {color:green} master passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 14s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 13s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} Patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 25m 44s {color} | {color:green} Patch does not cause any errors with Hadoop 2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.7.1. {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 17s {color} | {color:green} the patch passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 8s {color} | {color:green} the patch passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 6m 36s {color} | {color:green} hbase-shell in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 8s {color} | {color:green} Patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 37m 33s {color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12808156/HBASE-15965.master.001.patch |
-| JIRA Issue | HBASE-15965 |
-| Optional Tests |  asflicense  javac  javadoc  unit  rubocop  ruby_lint  |
-| uname | Linux asf907.gq1.ygridcore.net 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 70762fa |
-| Default Java | 1.7.0_79 |
-| Multi-JDK versions |  /home/jenkins/tools/java/jdk1.8.0:1.8.0 /usr/local/jenkins/java/jdk1.7.0_79:1.7.0_79 |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/2120/testReport/ |
-| modules | C: hbase-shell U: hbase-shell |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/2120/console |
-| Powered by | Apache Yetus 0.2.1   http://yetus.apache.org |
-
-
-This message was automatically generated.
-
-
+                Think a good option can be checking if the region has been assigned successfully already when dealing with the RPC failure, so that there is no need to start another attempt.
               </div></li><li><div>
-                Tested locally too.
-Found couple of bugs.
-- major_compact
-- replication peer's toString threw null pointer exception if there were no column families.
+                Add handling of SocketTimeoutException in assign().
+1. return if region is already opened on this RS.
+2. try assigning on the same RS again otherwise.
+              </div></li><li><div><div><b>body:</b> -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12534181/HBASE-6299.patch
+  against trunk revision .
 
-[~stack] have a quick look? 
-              </div></li><li><div>
-                | (/) *{color:green}+1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} rubocop {color} | {color:blue} 0m 0s {color} | {color:blue} rubocop was not available. {color} |
-| {color:blue}0{color} | {color:blue} ruby-lint {color} | {color:blue} 0m 0s {color} | {color:blue} Ruby-lint was not available. {color} |
-| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green} 0m 0s {color} | {color:green} Patch does not have any anti-patterns. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green} 0m 0s {color} | {color:green} The patch appears to include 5 new or modified test files. {color} |
-| {color:blue}0{color} | {color:blue} mvndep {color} | {color:blue} 0m 9s {color} | {color:blue} Maven dependency ordering for branch {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 2m 48s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 47s {color} | {color:green} master passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 29s {color} | {color:green} master passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 49s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 26s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 0m 55s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 44s {color} | {color:green} master passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 26s {color} | {color:green} master passed with JDK v1.7.0_79 {color} |
-| {color:blue}0{color} | {color:blue} mvndep {color} | {color:blue} 0m 10s {color} | {color:blue} Maven dependency ordering for patch {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 32s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 37s {color} | {color:green} the patch passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 37s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 29s {color} | {color:green} the patch passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 29s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 48s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 25s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} Patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 25m 24s {color} | {color:green} Patch does not cause any errors with Hadoop 2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.7.1. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 1m 12s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 43s {color} | {color:green} the patch passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 26s {color} | {color:green} the patch passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 0m 56s {color} | {color:green} hbase-client in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 6m 35s {color} | {color:green} hbase-shell in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 14s {color} | {color:green} Patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 46m 40s {color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12808185/HBASE-15965.master.002.patch |
-| JIRA Issue | HBASE-15965 |
-| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  hadoopcheck  hbaseanti  checkstyle  compile  rubocop  ruby_lint  |
-| uname | Linux asf907.gq1.ygridcore.net 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 70762fa |
-| Default Java | 1.7.0_79 |
-| Multi-JDK versions |  /home/jenkins/tools/java/jdk1.8.0:1.8.0 /usr/local/jenkins/java/jdk1.7.0_79:1.7.0_79 |
-| findbugs | v3.0.0 |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/2121/testReport/ |
-| modules | C: hbase-client hbase-shell U: . |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/2121/console |
-| Powered by | Apache Yetus 0.2.1   http://yetus.apache.org |
+    +1 @author.  The patch does not contain any @author tags.
 
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
 
-This message was automatically generated.
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
 
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
 
-              </div></li><li><div>
-                | (/) *{color:green}+1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} rubocop {color} | {color:blue} 0m 1s {color} | {color:blue} rubocop was not available. {color} |
-| {color:blue}0{color} | {color:blue} ruby-lint {color} | {color:blue} 0m 1s {color} | {color:blue} Ruby-lint was not available. {color} |
-| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green} 0m 0s {color} | {color:green} Patch does not have any anti-patterns. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:green}+1{color} | {color:green} test4tests {color} | {color:green} 0m 0s {color} | {color:green} The patch appears to include 5 new or modified test files. {color} |
-| {color:blue}0{color} | {color:blue} mvndep {color} | {color:blue} 0m 10s {color} | {color:blue} Maven dependency ordering for branch {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 3m 8s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 35s {color} | {color:green} master passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 33s {color} | {color:green} master passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 50s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 25s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 0m 58s {color} | {color:green} master passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 45s {color} | {color:green} master passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 27s {color} | {color:green} master passed with JDK v1.7.0_79 {color} |
-| {color:blue}0{color} | {color:blue} mvndep {color} | {color:blue} 0m 10s {color} | {color:blue} Maven dependency ordering for patch {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 33s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 43s {color} | {color:green} the patch passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 43s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 30s {color} | {color:green} the patch passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 30s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 49s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 27s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} Patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 26m 18s {color} | {color:green} Patch does not cause any errors with Hadoop 2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.7.1. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 1m 15s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 45s {color} | {color:green} the patch passed with JDK v1.8.0 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 27s {color} | {color:green} the patch passed with JDK v1.7.0_79 {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 0m 59s {color} | {color:green} hbase-client in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 6m 37s {color} | {color:green} hbase-shell in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 15s {color} | {color:green} Patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 48m 12s {color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12808504/HBASE-15965.master.003.patch |
-| JIRA Issue | HBASE-15965 |
-| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  hadoopcheck  hbaseanti  checkstyle  compile  rubocop  ruby_lint  |
-| uname | Linux asf900.gq1.ygridcore.net 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
-| git revision | master / 3d7840a |
-| Default Java | 1.7.0_79 |
-| Multi-JDK versions |  /home/jenkins/tools/java/jdk1.8.0:1.8.0 /usr/local/jenkins/java/jdk1.7.0_79:1.7.0_79 |
-| findbugs | v3.0.0 |
-|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/2125/testReport/ |
-| modules | C: hbase-client hbase-shell U: . |
-| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/2125/console |
-| Powered by | Apache Yetus 0.2.1   http://yetus.apache.org |
+    -1 javac.  The applied patch generated 5 javac compiler warnings (more than the trunk's current 4 warnings).
 
+    -1 findbugs.  The patch appears to introduce 7 new Findbugs (version 1.3.9) warnings.
 
-This message was automatically generated.
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
 
+     -1 core tests.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.master.TestSplitLogManager
 
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-Trunk_matrix #1001 (See [https://builds.apache.org/job/HBase-Trunk_matrix/1001/])
-HBASE-15965 - Testing by executing a command will cover the exact path (appy: rev 15c03fd1c97c271aca6dc30feab35ec0c9f8edbe)
-* hbase-shell/src/main/ruby/shell/commands/show_peer_tableCFs.rb
-* hbase-shell/src/main/ruby/shell/commands/major_compact.rb
-* hbase-shell/src/main/ruby/shell/commands/list_namespace_tables.rb
-* hbase-shell/src/test/ruby/hbase/visibility_labels_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/get_peer_config.rb
-* hbase-shell/src/main/ruby/hbase/table.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate.rb
-* hbase-shell/src/main/ruby/shell/commands/balance_rsgroup.rb
-* hbase-shell/src/main/ruby/shell.rb
-* hbase-shell/src/main/ruby/shell/commands/locate_region.rb
-* hbase-shell/src/main/ruby/shell/commands/create.rb
-* hbase-shell/src/test/java/org/apache/hadoop/hbase/client/TestReplicationShell.java
-* hbase-shell/src/main/ruby/shell/commands/list_peers.rb
-* hbase-shell/src/main/ruby/shell/commands/list_peer_configs.rb
-* hbase-shell/src/main/ruby/shell/commands/is_enabled.rb
-* hbase-shell/src/test/ruby/test_helper.rb
-* hbase-shell/src/main/ruby/shell/commands.rb
-* hbase-shell/src/test/ruby/hbase/replication_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate_preserve.rb
-* hbase-shell/src/main/ruby/shell/commands/exists.rb
-* hbase-shell/src/main/ruby/shell/commands/get_auths.rb
-* hbase-shell/src/main/ruby/hbase/admin.rb
-* hbase-shell/src/test/ruby/hbase/admin_test.rb
-* hbase-client/src/main/java/org/apache/hadoop/hbase/replication/ReplicationPeerConfig.java
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2308//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2308//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2308//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2308//console
 
-              </div></li><li><div>
-                SUCCESS: Integrated in HBase-1.4 #198 (See [https://builds.apache.org/job/HBase-1.4/198/])
-HBASE-15965 - Testing by executing a command will cover the exact path (appy: rev c2b4c6f6375346b5cf76a53efdcb36ea6239a30f)
-* hbase-shell/src/test/ruby/test_helper.rb
-* hbase-shell/src/test/java/org/apache/hadoop/hbase/client/TestReplicationShell.java
-* hbase-shell/src/main/ruby/shell/commands/show_peer_tableCFs.rb
-* hbase-shell/src/main/ruby/hbase/admin.rb
-* hbase-shell/src/main/ruby/shell/commands/create.rb
-* hbase-shell/src/main/ruby/shell/commands/list_peer_configs.rb
-* hbase-shell/src/main/ruby/shell/commands/get_peer_config.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate.rb
-* hbase-shell/src/test/ruby/hbase/replication_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands.rb
-* hbase-shell/src/main/ruby/shell.rb
-* hbase-shell/src/main/ruby/shell/commands/list_peers.rb
-* hbase-shell/src/main/ruby/shell/commands/list_namespace_tables.rb
-* hbase-shell/src/main/ruby/hbase/table.rb
-* hbase-shell/src/main/ruby/shell/commands/exists.rb
-* hbase-shell/src/main/ruby/shell/commands/is_enabled.rb
-* hbase-shell/src/test/ruby/hbase/visibility_labels_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/locate_region.rb
-* hbase-shell/src/main/ruby/shell/commands/get_auths.rb
-* hbase-shell/src/test/ruby/hbase/admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate_preserve.rb
-
-              </div></li><li><div>
-                Reverted from branch-1. Discussion [here|https://issues.apache.org/jira/browse/HBASE-16044?focusedCommentId=15347364&amp;page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-15347364].
-              </div></li><li><div>
-                SUCCESS: Integrated in HBase-1.4 #257 (See [https://builds.apache.org/job/HBase-1.4/257/])
-Revert HBASE-15965 and HBASE-15849. While it's fine to introduce these (appy: rev 48492ec7fd72a89ac67b2ef834ccfa8021fbadd5)
-* hbase-shell/src/main/ruby/shell/commands/delete_all_snapshot.rb
-* hbase-shell/src/main/ruby/shell/commands.rb
-* hbase-shell/src/main/ruby/shell/commands/get_peer_config.rb
-* hbase-shell/src/main/ruby/shell/commands/list.rb
-* hbase-shell/src/main/ruby/shell/commands/list_replicated_tables.rb
-* hbase-shell/src/test/ruby/test_helper.rb
-* hbase-shell/src/test/ruby/hbase/replication_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/drop_namespace.rb
-* hbase-shell/src/main/ruby/shell/commands/update_config.rb
-* hbase-shell/src/test/ruby/hbase/admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/create_namespace.rb
-* hbase-shell/src/main/ruby/shell/commands/remove_peer_tableCFs.rb
-* hbase-shell/src/test/ruby/shell/shell_test.rb
-* hbase-shell/src/main/ruby/shell/commands/add_labels.rb
-* hbase-shell/src/main/ruby/shell/commands/list_procedures.rb
-* hbase-shell/src/main/ruby/shell/commands/locate_region.rb
-* hbase-shell/src/main/ruby/shell/commands/drop.rb
-* hbase-shell/src/main/ruby/shell/commands/normalize.rb
-* hbase-shell/src/main/ruby/shell/commands/scan.rb
-* hbase-shell/src/main/ruby/shell/commands/describe_namespace.rb
-* hbase-shell/src/main/ruby/shell/commands/close_region.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate_preserve.rb
-* hbase-shell/src/main/ruby/shell/commands/wal_roll.rb
-* hbase-shell/src/main/ruby/shell/commands/splitormerge_enabled.rb
-* hbase-shell/src/main/ruby/shell/commands/catalogjanitor_enabled.rb
-* hbase-shell/src/main/ruby/shell/commands/get_table.rb
-* hbase-shell/src/main/ruby/hbase/table.rb
-* hbase-shell/src/main/ruby/shell/commands/incr.rb
-* hbase-shell/src/main/ruby/shell/commands/create.rb
-* hbase-shell/src/main/ruby/shell/commands/delete_snapshot.rb
-* hbase-shell/src/main/ruby/shell/commands/alter_namespace.rb
-* hbase-shell/src/main/ruby/shell/commands/disable.rb
-* hbase-shell/src/main/ruby/shell/commands/is_enabled.rb
-* hbase-shell/src/main/ruby/shell/commands/list_table_snapshots.rb
-* hbase-shell/src/main/ruby/shell/commands/get.rb
-* hbase-shell/src/main/ruby/shell/commands/assign.rb
-* hbase-shell/src/main/ruby/shell/commands/snapshot.rb
-* hbase-shell/src/main/ruby/shell/commands/flush.rb
-* hbase-shell/src/main/ruby/shell/commands/add_peer.rb
-* hbase-shell/src/main/ruby/shell/commands/list_peer_configs.rb
-* hbase-shell/src/main/ruby/shell/commands/enable.rb
-* hbase-shell/src/main/ruby/shell/commands/alter_async.rb
-* hbase-shell/src/main/ruby/shell/commands/revoke.rb
-* hbase-shell/src/main/ruby/shell/commands/append_peer_tableCFs.rb
-* hbase-shell/src/main/ruby/shell/commands/show_peer_tableCFs.rb
-* hbase-shell/src/main/ruby/shell/commands/alter.rb
-* hbase-shell/src/main/ruby/shell/commands/truncate.rb
-* hbase-shell/src/main/ruby/shell/commands/list_labels.rb
-* hbase-shell/src/main/ruby/shell/commands/normalizer_switch.rb
-* hbase-shell/src/main/ruby/shell/commands/count.rb
-* hbase-shell/src/main/ruby/shell/commands/abort_procedure.rb
-* hbase-shell/src/main/ruby/shell/commands/balancer.rb
-* hbase-shell/src/main/ruby/shell/commands/user_permission.rb
-* hbase-shell/src/main/ruby/shell/commands/move.rb
-* hbase-shell/src/main/ruby/shell/commands/deleteall.rb
-* hbase-shell/src/main/ruby/shell/commands/compact.rb
-* hbase-shell/src/main/ruby/shell/commands/compact_rs.rb
-* hbase-shell/src/main/ruby/shell/commands/list_quotas.rb
-* hbase-shell/src/main/ruby/shell/commands/update_peer_config.rb
-* hbase-shell/src/main/ruby/shell/commands/enable_peer.rb
-* hbase-shell/src/test/java/org/apache/hadoop/hbase/client/TestReplicationShell.java
-* hbase-shell/src/main/ruby/shell/commands/delete_table_snapshots.rb
-* hbase-shell/src/main/ruby/shell/commands/balance_switch.rb
-* hbase-shell/src/main/ruby/shell/commands/list_namespace_tables.rb
-* hbase-shell/src/main/ruby/shell/commands/split.rb
-* hbase-shell/src/main/ruby/shell/commands/put.rb
-* hbase-shell/src/main/ruby/shell.rb
-* hbase-shell/src/main/ruby/shell/commands/merge_region.rb
-* hbase-shell/src/main/ruby/shell/commands/set_peer_tableCFs.rb
-* hbase-shell/src/main/ruby/shell/commands/splitormerge_switch.rb
-* hbase-shell/src/main/ruby/shell/commands/clone_snapshot.rb
-* hbase-shell/src/main/ruby/shell/commands/major_compact.rb
-* hbase-shell/src/main/ruby/shell/commands/normalizer_enabled.rb
-* hbase-shell/src/main/ruby/shell/commands/describe.rb
-* hbase-shell/src/main/ruby/shell/commands/balancer_enabled.rb
-* hbase-shell/src/main/ruby/shell/commands/list_peers.rb
-* hbase-shell/src/main/ruby/shell/commands/grant.rb
-* hbase-shell/src/main/ruby/shell/commands/catalogjanitor_switch.rb
-* hbase-shell/src/main/ruby/shell/commands/set_visibility.rb
-* hbase-shell/src/main/ruby/shell/commands/trace.rb
-* hbase-shell/src/main/ruby/shell/commands/catalogjanitor_run.rb
-* hbase-shell/src/main/ruby/shell/commands/append.rb
-* hbase-shell/src/main/ruby/shell/commands/enable_table_replication.rb
-* hbase-shell/src/main/ruby/hbase/admin.rb
-* hbase-shell/src/main/ruby/shell/formatter.rb
-* hbase-shell/src/main/ruby/shell/commands/disable_table_replication.rb
-* hbase-shell/src/main/ruby/shell/commands/restore_snapshot.rb
-* hbase-shell/src/main/ruby/shell/commands/disable_peer.rb
-* hbase-shell/src/main/ruby/shell/commands/remove_peer.rb
-* hbase-shell/src/main/ruby/shell/commands/delete.rb
-* hbase-shell/src/main/ruby/shell/commands/clear_auths.rb
-* hbase-shell/src/main/ruby/shell/commands/unassign.rb
-* hbase-shell/src/main/ruby/shell/commands/update_all_config.rb
-* hbase-shell/src/main/ruby/shell/commands/show_filters.rb
-* hbase-shell/src/main/ruby/shell/commands/set_auths.rb
-* hbase-shell/src/main/ruby/shell/commands/exists.rb
-* hbase-shell/src/main/ruby/shell/commands/list_snapshots.rb
-* hbase-shell/src/main/ruby/shell/commands/is_disabled.rb
-* hbase-shell/src/main/ruby/shell/commands/get_auths.rb
-* hbase-shell/src/test/ruby/hbase/visibility_labels_admin_test.rb
-* hbase-shell/src/main/ruby/shell/commands/list_namespace.rb
-* hbase-shell/src/test/ruby/shell/formatter_test.rb
-
-              </div></li><li><div><div><b>body:</b> bq. We do not print the return value in interactive mode and keep the output clean.
-
-Hi [~Appy], can we reconsider this change? In our case, we take advantage of the fact that hbase shell is really a JRuby REPL, and use the return values of some commands on the shell. For example,
-
-{code}
-# Disable tmp_* tables
-list.select { |t| t.start_with? 'tmp' }.each { |t| disable t }
-{code}
-
-Actually I was thinking of further extending the return values to contain more information, e.g. {{list_snapshot}} returning not only names but also creation times, etc. It'll make the command extra useful when you want to do some ad-hoc operations on the shell. But I do agree that for most commands, the return values are irrelevant and make the output unnecessarily verbose.
-
-How about if we add an extra set of "query" commands (e.g. {{get_tables}} or maybe {{tables?}}) that return values regardless of interactivity? If you like the idea I can write up a PoC patch for it.
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> [~junegunn] 
-The idea here is that *interactive* are user-facing things and might change substantially between releases to improve the user experience. See it as functionality + formatting.
-In contrast, *non-interactive* are meant to be used when building scripts using hbase shell's output.
+                </div></div></li><li><div><div><b>body:</b> Good stuff Maryann.
 
-You should be able to get the return value using -n (non-interactive) flag.
+Your patch looks good as bandaid till we figure means of regionservers signaling the master they are working on a region if its taking &gt; socket timeout to open a region.
 
-bq. Actually I was thinking of further extending the return values to contain more information
-Every change [breaks someone's workflow|https://xkcd.com/1172/]. Changing return value to contain more information *will* break someone else's workflow (who's manually parsing shell output). The idea above is, let's at least give users a more stable way of building on top of shell by removing their dependency on how shell format's data.
-
-bq. How about if we add an extra set of "query" commands (e.g. get_tables or maybe tables?) that return values regardless of interactivity?
-That approach requires duplicating classes and we over 100 commands, not good from dev perspective. It'll be a mess from user perspective too. Imaging about 200 commands, some of which are basically just like others. I don't feel that extra set of commands is the right way to design this because there will be naming consistency issues, extra maintenance cost, etc. And then comes the issue of compatibility guarantees. Ideally, stuff users use to build their own scripts should have better compat guarantees. It's far easier to have different compat guarantees for two different modes than different compat guarantees for different commands.
-So i'd really like to not go this path.
-
-I'm more inclined to two mode approach, because it'll make things far easier for users. If you see a problem or a case not being handled, lets discuss it and come up with even better solution.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> [~Appy]
-I was reminded of the same xkcd strip when I first ran into this :)
-
-bq. You should be able to get the return value using -n (non-interactive) flag.
-
-Yes, but it's quite useful to be able to *incrementally explore* the data interactively on the REPL. Internally, we've been using a customized version of the shell with a few extra commands that allow us to explore the status of the cluster without having to write verbose Java code with Admin API. One such command is {{regions}}, and this is an example of what we do when things happen.
+I notice in the regionserver though that if we send over an open on a region its already opening, it does the following:
 
 {code}
-# See the number of regions
-regions.count
-
-# See the number of regions whose localities are below 50%
-regions.select { |r| r[:locality] &lt; 50 }
-
-# Pretty-print those regions grouped by their tables
-require 'pp'
-pp regions.select { |r| r[:locality] &lt; 50 }.group_by { |r| r[:table] }
-
-# Flush and major compact regions that match the criteria
-regions.select { |r| r[:locality] &lt; 50 &amp;&amp; r[:files] &gt; 2 }.each { |r| flush r[:name]; major_compact r[:name] }
+  protected void checkIfRegionInTransition(HRegionInfo region,
+      String currentAction) throws RegionAlreadyInTransitionException {
+    byte[] encodedName = region.getEncodedNameAsBytes();
+    if (this.regionsInTransitionInRS.containsKey(encodedName)) {
+      boolean openAction = this.regionsInTransitionInRS.get(encodedName);
+      // The below exception message will be used in master.
+      throw new RegionAlreadyInTransitionException("Received:" + currentAction +
+        " for the region:" + region.getRegionNameAsString() +
+        " ,which we are already trying to " +
+        (openAction ? OPEN : CLOSE)+ ".");
+    }
+  }
 {code}
 
-If I had to use {{-n}} flag, I'll have to re-run hbase shell multiple times. There's nothing wrong with harnessing the power of REPL.
+i.e. it throws a RegionAlreadyInTransitionException to avoid queuing another open.... which if I follow things properly will result in:
 
-bq. Changing return value to contain more information will break someone else's workflow
+{code}
+      LOG.info("Unable to communicate with the region server in order" +
+          " to assign regions", e);
+{code}
 
-Yes, the concern led me to the idea of introducing new commands instead of changing the return values of the existing ones.
+... and our just exiting the open.
 
-bq. That approach requires duplicating classes and we over 100 commands
+The region open will just carry on until it succeeds or until the timeout monitor monitor kicks in and assigns it elsewhere.
 
-I think we have a misunderstanding here. I was not suggesting that we should replicate every one of the commands, but to add just a handful of new ones (tables, snapshots, regions, servers, etc.) under a new command group named something like QUERY or INSPECTION whose members are supposed to return values with clear semantics. They aren't for side-effects, they are not responsible for formatting and printing the output, they should just return values that can be used by the user programmatically even in "interactive" mode. I don't disagree with suppressing the return values of the commands in other groups for cleaner output, but the commands in this group are solely for their return values, so we make an exception. What do you think?
+Should your patch handle this case and perhaps give out a nicer message than the above?
                 </div><div><b>label:</b> code-design
-                </div></div></li></ol></div></div></html>
+                </div></div></li><li><div>
+                stack, thank you for pointing this out. I was thinking the innermost assign() would handle RegionAlreadyInTransitionException and return, in the code block as follows:
+{code}
+        if (t instanceof RemoteException) {
+          t = ((RemoteException) t).unwrapRemoteException();
+          if (t instanceof RegionAlreadyInTransitionException) {
+            String errorMsg = "Failed assignment in: " + plan.getDestination()
+                + " due to " + t.getMessage();
+            LOG.error(errorMsg, t);
+            return;
+          }
+        }
+{code}
+I just looked again at HRegionServer.openRegion(), and found that RegionAlreadyInTransitionException is wrapped as ServiceException:
+{code}
+      } catch (RegionAlreadyInTransitionException rie) {
+        LOG.warn("Region is already in transition", rie);
+        if (isBulkAssign) {
+          builder.addOpeningState(RegionOpeningState.OPENED);
+        } else {
+          throw new ServiceException(rie);
+        }
+{code}
+But i don't see why in assign() HMaster does not unwrap RemoteException and then ServiceException as well. And since RegionAlreadyInTransitionException is always wrapped, i don't see at what situation the first code block will be called.
+
+I might be missing something or need a closer look?
+              </div></li><li><div>
+                @Maryann:
+Take a look at ServerManager.sendRegionOpen():
+{code}
+      OpenRegionResponse response = admin.openRegion(null, request);
+      return ResponseConverter.getRegionOpeningState(response);
+    } catch (ServiceException se) {
+      throw ProtobufUtil.getRemoteException(se);
+{code}
+              </div></li><li><div>
+                Thank you, Zhihong! then i suppose the exception handling should be modified as:
+{code}
+          if (t instanceof RegionAlreadyInTransitionException) {
+            String errorMsg = "Failed assignment in: " + plan.getDestination()
+                + " due to " + t.getMessage();
+            LOG.error(errorMsg, t);
+            return;
+          }
+{code}
+              </div></li><li><div>
+                What version of HBase did you use when you collected the log in the body of this JIRA ?
+              </div></li><li><div>
+                it happened on a 0.90 cluster. and i checked trunk code and assume the issue still exists.
+              </div></li><li><div><div><b>body:</b> It looks to me like we have same issue in trunk.  Your suggested fix looks right Maryann.  Put up a patch and I'll have a go at making a unit test for it.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Make handling of RegionAlreadyInTransitionException work.
+              </div></li><li><div>
+                @Maryann
+We just checked over here in 0.94.
+{code}
+if (t instanceof RegionAlreadyInTransitionException) {
+            String errorMsg = "Failed assignment in: " + plan.getDestination()
+                + " due to " + t.getMessage();
+            LOG.error(errorMsg, t);
+            return;
+          }
+{code}
+This piece of code is correct.  If we directly check instancof it doesn't match.  Thanks..
+              </div></li><li><div>
+                bq. This piece of code is correct. If we directly check instancof it doesn't match. Thanks..
+
+Is it correct or incorrect Ram?  I'm not sure going by the above.
+              </div></li><li><div>
+                Am very sorry for not making it clear.
+{code}
+if (t instanceof RegionAlreadyInTransitionException) {
+            String errorMsg = "Failed assignment in: " + plan.getDestination()
+                + " due to " + t.getMessage();
+            LOG.error(errorMsg, t);
+            return;
+          }
+{code}
+The above piece of code is correct.  The RegionAlreadyInTransition is of type RemoteException.  So we need to unwrap it.  
+In the current patch 
+{code}
+if (t instanceof RegionAlreadyInTransitionException) {
++          String errorMsg = "Failed assignment in: " + plan.getDestination()
++              + " due to " + t.getMessage();
++          LOG.error(errorMsg, t);
++          return;
++        }
+{code}
+This is done.  It will not work.  We just did a small verification of this.  
+              </div></li><li><div><div><b>body:</b> -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12535045/HBASE-6299-v2.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    -1 javac.  The applied patch generated 5 javac compiler warnings (more than the trunk's current 4 warnings).
+
+    -1 findbugs.  The patch appears to introduce 7 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.io.hfile.TestForceCacheImportantBlocks
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2318//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2318//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2318//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2318//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> @Maryann/Stack
+I can tell one scenario where this patch will lead to inconsistency.  
+In the patch
+{code}
+else {
++            // The destination region server is probably processing the region open, so it
++            // might be safer to try this region server again to avoid having two region
++            // servers open the same region.
++            LOG.warn("Call openRegion() to " + plan.getDestination() +
++                " has timed out when trying to assign " + region.getRegionNameAsString() +
++                ". Trying to assign to this region server again; retry=" + i, t);
++            state.update(RegionState.State.OFFLINE);
++            continue;
++          }
+{code}
+Now because the RS is already opening i tend to assign it to same RS and i update the inmemory state to OFFLINE.  At that time the RS has moved the znode from OFFLINE to OPENING or OPENINIG to OPENED.  Now there is a check in handleRegion
+{code}
+          if (regionState == null ||
+              (!regionState.isPendingOpen() &amp;&amp; !regionState.isOpening())) {
+            LOG.warn("Received OPENING for region " +
+                prettyPrintedRegionName +
+                " from server " + data.getOrigin() + " but region was in " +
+                " the state " + regionState + " and not " +
+                "in expected PENDING_OPEN or OPENING states");
+            return;
+          }
+{code}
+
+So the master skips the transition.  Now any way as we are trying out the assignment to same RS, we will either get RegionAlreadyInTransistion or sometimes even ALREADY_OPENED.
+If i get ALREADY_OPENED we are handling it correctly by adding to this.regions.  
+But if i get RegionAlreadyInTransistion  we just skip the assign next time.  Now in the RS side the region could have been made online by this time but the master is not aware of this.
+
+One more thing is 
+{code}
++        else if (t instanceof java.net.SocketTimeoutException) {
++          if (this.regionsInTransition.get(region.getEncodedName()) == null
++              &amp;&amp; plan.getDestination().equals(getRegionServerOfRegion(region))) {
+{code}
+Here the plan could be cleared on regionOnline if RIT is cleared?
+
+Ideally over in HBASE-6060 we were trying to see how good is the retry option in assign. Sometimes the retry option and SSH were causing double assignments which we were trying to solve.
+Here, Can we have an option to shutdown the RS incase of sockettimeout by the master so that atleast we are sure that the SSH will take care of ssignment?
+
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Agree, ramkrishna! You've made a good point here. My original idea was to directly return in the "else" branch, and leave it to the TimeoutMonitor to assign this region if the RS did not open the region. I changed to the current version, thinking to bring the assign retrial earlier. But regarding the region in transition problem you pointed out, the original "return" solution looks better.
+{code}
+else {
++            // The destination region server is probably processing the region open, so it
++            // might be safer to try this region server again to avoid having two region
++            // servers open the same region.
++            LOG.error("Call openRegion() to " + plan.getDestination() +
++                " has timed out when trying to assign " + region.getRegionNameAsString() +
++                ".", t);
++            return;
++          }
+{code}
+And if we are considering removing the assign retry in HBASE-6060, problems like this one and the one in HBASE-5816 can be avoided.
+Think triggering SSH in case of SocketTimeout should be a different problem. There are several places in HMaster where we should consider whether to start SSH, but currently only RegionServerTracker will start SSH. Shall we open another JIRA entry to discuss this issue?
+              </div></li><li><div>
+                @Maryann
+bq.And if we are considering removing the assign retry in HBASE-6060
+Assign retry was a point discussed over there, but still not concluded on removing it.
+bq.Shall we open another JIRA entry to discuss this issue?
+Yes...sure...Stack, Jon and others have started to work on issues related to Assignments recently.  
+              </div></li><li><div>
+                You are right Ram.  Good one.
+
+So we should not set RegionState back to OFFLINE in this case; just update the time on it... if it has not been changed.
+
+Shutdown of RS seems extreme on socket timeout.  Hopefully we don't have to do that.  In particular, I'm thinking socket timeout could be easy when we give regionserver a bulk assign and cluster is busy.
+              </div></li><li><div>
+                @stack but assign() checks RegionState OFFLINE at the beginning of each attempt, and not setting it OFFLINE might cause master to abort, as in HBASE-5816:
+{code}
+    for (int i = 0; i &lt; this.maximumAssignmentAttempts; i++) {
+      int versionOfOfflineNode = -1;
+      if (setOfflineInZK) {
+        // get the version of the znode after setting it to OFFLINE.
+        // versionOfOfflineNode will be -1 if the znode was not set to OFFLINE
+        versionOfOfflineNode = setOfflineInZooKeeper(state, hijack);
+{code}
+
+{code}
+  int setOfflineInZooKeeper(final RegionState state,
+      boolean hijack) {
+    // In case of reassignment the current state in memory need not be
+    // OFFLINE. 
+    if (!hijack &amp;&amp; !state.isClosed() &amp;&amp; !state.isOffline()) {
+      String msg = "Unexpected state : " + state + " .. Cannot transit it to OFFLINE.";
+      this.master.abort(msg, new IllegalStateException(msg));
+      return -1;
+    }
+{code}
+              </div></li><li><div>
+                Retries shouldn't do that code path.  Dont' you think?  We set it OFFLINE once.  If its other than OFFLINE, then we shouldn't be processing it?
+              </div></li><li><div>
+                Yes, agree! 
+              </div></li><li><div>
+                And i'm thinking to move this "setOfflineInZK" logic into forceRegionStateToOffline(). what do you think?
+              </div></li><li><div>
+                Whatever you think Maryann.
+
+I can see us checking the znode version each time through the retries after first setting it to OFFLINE and abandoning the retries if the znode version has changed on us.
+
+When do we not have the setOfflineInZK set?  Seems odd not setting it OFFLINE.
+              </div></li><li><div>
+                Currently we don't check concurrent "double" assignment, while it can happen quite easily after HBASE-5396.
+{code}
+    RegionState state = addToRegionsInTransition(region,
+        hijack);
+    synchronized (state) {
+      assign(region, state, setOfflineInZK, forceNewPlan, hijack);
+    }
+{code}
+We now set RegionState OFFLINE in addToRegionsInTransition(), and set ZK node OFFLINE after we get into the critical section. Why don't we set these two OFFLINE together in addToRegionsInTransition() and after getting into the critical section check if RegionState is OFFLINE?
+
+And with "double" assignment, we go directly with assignment() without checking its current RegionState in addToRegionsInTransition() with calls forceRegionStateToOffline(). and forceRegionStateToOffline() simply "force" a RegionState Offline.
+{code}
+      RegionState state = this.regionsInTransition.get(encodedName);
+      if (state == null) {
+        state = new RegionState(region, RegionState.State.OFFLINE);
+        this.regionsInTransition.put(encodedName, state);
+      } else {
+        // If we are reassigning the node do not force in-memory state to OFFLINE.
+        // Based on the znode state we will decide if to change in-memory state to
+        // OFFLINE or not. It will be done before setting znode to OFFLINE state.
+
+        // We often get here with state == CLOSED because ClosedRegionHandler will
+        // assign on its tail as part of the handling of a region close.
+        if (!hijack) {
+          LOG.debug("Forcing OFFLINE; was=" + state);
+          state.update(RegionState.State.OFFLINE);
+        }
+      }
+{code}
+With this piece of code, we normally see logs like "Forcing OFFLINE; was=regionName state=CLOSED" with load balance. but in "double" assignment, we can see "Forcing OFFLINE; was=regionName state=OPEN". Should we ensure the state is CLOSED or OFFLINE before proceeding to assignment?
+              </div></li><li><div>
+                @Mary Is HBASE-5396 committed?
+
+bq. We now set RegionState OFFLINE in addToRegionsInTransition(), and set ZK node OFFLINE after we get into the critical section. Why don't we set these two OFFLINE together in addToRegionsInTransition() and after getting into the critical section check if RegionState is OFFLINE?
+
+I see after doing an OFFLINE to RIT, we'll then synchronize on the OFFLINE RegionState.  I'm not sure what synchronize does.  I suppose it prevents double assign (bulk assign doesn't do any such sync)?  I'm not sure what the lock on an encoded name String does in forceRegionStateToOffline does either?  I'm not sure it actually works preventing our doing an forceRegionStateToOffline on same region at same time.
+
+I like the idea of trying to make the setting of in-memory OFFLINE state and zk state happen in the one place.  We'd do it synchronously?  Or async and not move forward w/ the assign until we got the callback?  Or, should we distingush in-memory OFFLINE state from confirmed OFFLINE state that is also up in zk?
+
+I hate that 'hijack' argument.  Somehow we're supposed to make these methods do the right thing but then also make it so all can be just overridden.
+              </div></li><li><div>
+                bq. I'm not sure what the lock on an encoded name String does in forceRegionStateToOffline does either?
+
+Ignore the above.  This should work.
+              </div></li><li><div>
+                bq. I'm not sure what synchronize does. I suppose it prevents double assign
+The interesting thing is we check RegionState is OFFLINE or CLOSED before setting OFFLINE in zk and abort if the check fails; while we allow any RegionState before setting RegionState OFFLINE. And since this synchronize on RegionState does not guard the whole process (state change from PEND_OPEN to OPENED), double assignment is not prevented at all, though there's some check in setOfflineInZookeeper, but only when hijack=true.
+So far i've seen two error cases with double assign:
+1. HBASE-5816: The second assign comes in almost at the same time with the first assignment,but gets locked by sychronized(state). After the first assignment succeeds with sendRegionOpen() and exits the synchronized block, the second assignment goes into the block and calls setOfflineInZookeeper() which fails the "RegionState Offline" check and leads to master abort.
+2. The second assignment kicks in after the first assignment succeeded and deleted the ZK node but before regionOnline() is called (which removes the region from AM.regionsInTransition and adds the region to AM.regions). The second assignment starts a normal assign process, setting RegionState OFFLINE, setting ZK OFFLINE, and calls sendRegionOpen() to the same dest RS. Then, when the first assignment calls AM.regionOnline(), this region get removed from AM.regionsInTranistion. This is a double assignment to the RS. if RS chooses to cleanUpFailedOpen() as in 0.90, this region will be served nowhere and does not even exist in master's regionsInTransition; if RS chooses to proceed on with openRegion() as in trunk, master will get RS events "OPENING", "OPENED" related to NO RegionState, as in HBASE-6300.
+I can see we check if ZK node exists in setOfflineInZookeeper to prevent double assignment, but this check is only effective when hijack=true.
+Is it possible that we can do something in an earlier stage to prevent double assignment? like in forceRegionStateToOffline()?
+
+bq. @Mary Is HBASE-5396 committed?
+No... but explicitly calling assign() from HBaseAdmin can cause the same problem.
+              </div></li><li><div>
+                bq. Is it possible that we can do something in an earlier stage to prevent double assignment? like in forceRegionStateToOffline()?
+
+Yes.  Lets try.  I was going to try and write up a reproduction of the bugs you describe above in a harness so can play with them in isolation rather than have to blow up someone's world.
+              </div></li><li><div>
+                [~maryannxue]
+You have any updated patch for this? Can we provide one updated patch for this issue ?
+              </div></li><li><div><div><b>body:</b> Considering a live RS would most likely eventually get to the openRegion() request and process, it might be good just to return on SocketTimeoutException, for SocketTimeoutException indicates an uncertain state in the assign process, with potential race conditions. And this can happen if a RS is temporarily running out of IPC handlers, or if the RS's response is lost on the line.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                updated the patch as HBASE-6299-v3.patch
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12544974/HBASE-6299-v3.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    -1 javac.  The patch appears to cause mvn compile goal to fail.
+
+    -1 findbugs.  The patch appears to cause Findbugs (version 1.3.9) to fail.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed unit tests in .
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2857//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2857//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                @Maryann
+Thanks for the patch.  This what we just discussed over in HBASe-6438.
+Pls take a look at that patch also.  We could actually merge both if you feel it is fine and commit them once others review it.
+              </div></li><li><div>
+                Do we still need to unwrap the exception?
+              </div></li><li><div><div><b>body:</b> nit:
+{code}
++        else if (t instanceof java.net.SocketTimeoutException 
+{code}
+'else' keyword is not needed above.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                @Lars the original unwrap should not work.
+@Ted please review the patch.
+@ramkrishna How about we apply this fix first and then update the patch for HBASE-6438? for as i can see HBASE-6438 is about another problem but the patch includes my old fix.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12545092/HBASE-6299-v3.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    -1 javac.  The patch appears to cause mvn compile goal to fail.
+
+    -1 findbugs.  The patch appears to cause Findbugs (version 1.3.9) to fail.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+     
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2864//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2864//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> @Maryann
+For Sockettimeout unwrap is not needed.  But for RITExcepiton we may need that.  As far as i have seen we need to unwrap the remote exception to know the actual exception. But SocketTimeOut does not come under that.  (Reason for this i have not digged in).:)
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                @ramkrishna, updated the patch. misunderstood the exception handling in HBaseClient. thank you for pointing this out!
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12545102/HBASE-6299-v3.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    -1 javac.  The patch appears to cause mvn compile goal to fail.
+
+    -1 findbugs.  The patch appears to cause Findbugs (version 1.3.9) to fail.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+     
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2866//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2866//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                @Maryann:
+Latest patch looks good.
+
+In the future, please increase revision number for newer patches.
+
+Thanks
+              </div></li><li><div>
+                The unwrap not being needed for Sockettimeout makes sense, since it is actually a local exception at the client (*it* timed out, rather than the server having some problem that it passed on).
+Anyway, no longer an issue in v3 anyway.
+
+v3 looks good. +1
+
+              </div></li><li><div>
+                +1 on this small, narrowly-scoped patch.
+
+[~ram_krish] Is this patch ok w/ you?
+              </div></li><li><div>
+                Yes Stack.  +1 on this.
+              </div></li><li><div>
+                v3 rotted. Here is v4 which applies to trunk.  Is this in the right place MaryAnn?  Thanks.
+              </div></li><li><div><div><b>body:</b> -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12546000/6299v4.txt
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    -1 javadoc.  The javadoc tool appears to have generated 139 warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    -1 findbugs.  The patch appears to introduce 7 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+     
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop1-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2912//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> There are some hanging tests in the hadoop QA build.
++1 on patch otherwise.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Retry
+              </div></li><li><div><div><b>body:</b> -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12546076/6299v4.txt
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 hadoop2.0.  The patch compiles against the hadoop 2.0 profile.
+
+    -1 javadoc.  The javadoc tool appears to have generated 139 warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    -1 findbugs.  The patch appears to introduce 7 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+     
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop1-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/2916//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Here is what I committed after running all unit tests locally.
+              </div></li><li><div>
+                Committed to trunk.  Thanks for the patch Maryann.
+              </div></li><li><div>
+                Committed to 0.94 too.
+              </div></li><li><div>
+                Integrated in HBase-0.94 #501 (See [https://builds.apache.org/job/HBase-0.94/501/])
+    HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Revision 1392620)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated in HBase-TRUNK-on-Hadoop-2.0.0 #202 (See [https://builds.apache.org/job/HBase-TRUNK-on-Hadoop-2.0.0/202/])
+    HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Revision 1392617)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated in HBase-TRUNK #3401 (See [https://builds.apache.org/job/HBase-TRUNK/3401/])
+    HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Revision 1392617)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.94-security #58 (See [https://builds.apache.org/job/HBase-0.94-security/58/])
+    HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Revision 1392620)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated to 0.92 as well.
+              </div></li><li><div>
+                Integrated in HBase-0.92 #593 (See [https://builds.apache.org/job/HBase-0.92/593/])
+    HBASE-6299 RS starting region open while failing ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Maryann) (Revision 1393217)
+
+     Result = SUCCESS
+tedyu : 
+Files : 
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.94-security-on-Hadoop-23 #8 (See [https://builds.apache.org/job/HBase-0.94-security-on-Hadoop-23/8/])
+    HBASE-6299 RS starts region open while fails ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Revision 1392620)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.92-security #143 (See [https://builds.apache.org/job/HBase-0.92-security/143/])
+    HBASE-6299 RS starting region open while failing ack to HMaster.sendRegionOpen() causes inconsistency in HMaster's region state and a series of successive problems (Maryann) (Revision 1393217)
+
+     Result = FAILURE
+tedyu : 
+Files : 
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Fix up after bulk move overwrote some 0.94.2 fix versions w/ 0.95.0 (Noticed by Lars Hofhansl)
+              </div></li></ol></div></div></html>

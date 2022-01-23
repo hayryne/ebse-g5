@@ -1,92 +1,61 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 272
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
-                </div><div><b>message:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Get max possible key value
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-992: Replace hTable.getRowOrBefore with ReverseScan to get maxKey in StatsManagerImpl
+                </div><div><b>message:</b> PHOENIX-992: Replace hTable.getRowOrBefore with ReverseScan to get maxKey in StatsManagerImpl
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> During restart RS that hosts SYSTEM.CATALOG table may get stuck
-                </div><div><b>description:</b> Sometimes when a cluster has restarted the regions that belong to SYSTEM.CATALOG and other system tables on the same RS may be stuck in RiT. 
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Replace hTable.getRowOrBefore with ReverseScan to get maxKey in StatsManagerImpl
+                </div><div><b>description:</b> Below is the java doc of the function in HBase and we should remove it ASAP
+
+{noformat}
+   * @deprecated As of version 0.92 this method is deprecated without
+   * replacement.   
+   * getRowOrBefore is used internally to find entries in hbase:meta and makes
+   * various assumptions about the table (which are true for hbase:meta but not
+   * in general) to be efficient.
+{noformat}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                That's well reproduced on 5.x branch, but may (should) affect master branch under certain circumstances. The SYSTEM.CATALOG region get stuck during open operation because there are 2 concurrent open region threads that are trying to load system tables. 
-Loading sequence:
-Thread 1:
-MetaDataEndpointImpl -&gt; PhoenixDatabaseMetaData -- (trying to load QueryConstants)
-Thread 2:
-MetaDataRegionObserver -&gt; QueryConstants -&gt; TableProperty -&gt; SQLExceptionCode -&gt; (trying to load PhoenixDatabaseMetaData)
-Since only one thread is capable to load class and second thread is already loading QueryConstants and first thread is loading PhoenixDatabaseMetaData , we have a dead lock. 
-We can break this by removing the dependency between SQLExceptionCode and PhoenixDatabaseMetaData.
+                +1 on this idea, as our dependency on this method is minimal as you've pointed out. Would this be for 4.0 only, or is this broken for 0.94 too? Should we file an HBase bug as well?
+              </div></li><li><div>
+                [~giacomotaylor] The issue may in 3.0 as well but my understanding that ReverseScan isn't in 0.94 branch so there is no good way to replace it.
 
-
-              </div></li><li><div><div><b>body:</b> [~rajeshbabu], [~elserj] the fix is even simpler than I expected.
-[~jamestaylor] can you please take a look. Actually, I think that we even may replace all those calls for MetaDataUtil.decodeHBaseVersionAsString(VersionUtil.encodeVersion(...)) with the string constants to eliminate calls of other classes and reduce dependencies between classes that have static initializers. 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Thanks, [~sergey.soldatov]. I'd rather stick with the constants (as it ensures consistency - these are used in multiple places - and makes the code easier to read). But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
+Here is the patch which is using reverse scan to get the maxKey of a table. 
+              </div></li><li><div>
+                +1
+              </div></li><li><div><div><b>body:</b> getRowOrBefore shouldn't be used and has been deprecated long enough, HBase should yank it from the API, but I wouldn't expect that to happen in 0.94. 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                {quote}But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
-{quote}
-That sounds like a good idea. No strong feelings from me where they get put :)
+                Thanks [~giacomotaylor] for the review! All tests passed locally with small tweaks on the number of parallel scans(more parallels) which may mean previous maxKey is smaller. If no objections, I'll commit v2 patch tomorrow. Thanks.  
               </div></li><li><div>
-                Great find, [~sergey.soldatov]. Let's move all these version constants to MetaDataProtocol since that's where other version info is (and it won't have outside dependencies). Will you be working up a patch?
+                +1
               </div></li><li><div>
-                [~jamestaylor] sounds reasonable. Will do it shortly. 
+                There is one difference though wrt performance (in using reverse scan vs HTable.getRowOrBefore())
+The HTable.getRowOrBefore() will do one parse of KVs within a HFile block.
+
+The use of reverse scan(as in the patch) will do parse within an HFile block 2 times.
+1st time for the seek to last row when the reverse scanner is opened.
+The next() call will return the last KV but will a move to the previous KV. This in effect will do a parse of KVs in the HFile block again.
+
+Just telling the difference.
               </div></li><li><div>
-                +1. Thanks, [~sergey.soldatov]!
+                +1. Thanks!
               </div></li><li><div>
-                [~jamestaylor] Thanks! Committed to 4.x, 5x. branches.
+                Thanks for all the review &amp; comments! I've integrated the fix into branch 4.0 &amp; master. 
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build Phoenix-4.x-HBase-1.3 #147 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-1.3/147/])
-PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 24af1040591e088a9b4722ae825762d331d102c2)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+                FAILURE: Integrated in Phoenix-hadoop2 #2 (See [https://builds.apache.org/job/Phoenix-hadoop2/2/])
+PHOENIX-992: Replace hTable.getRowOrBefore with ReverseScan to get maxKey in StatsManagerImpl (jzhong: rev dff13fe6c16da9e6f70421b292bf64a0422b4ebf)
+* phoenix-core/src/main/java/org/apache/phoenix/query/StatsManagerImpl.java
+* phoenix-core/src/it/java/org/apache/phoenix/end2end/TenantSpecificViewIndexIT.java
+* phoenix-core/src/it/java/org/apache/phoenix/end2end/BaseTenantSpecificViewIndexIT.java
 
               </div></li><li><div>
-                ABORTED: Integrated in Jenkins build Phoenix-4.x-HBase-0.98 #1908 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-0.98/1908/])
-PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev e6f9ce0352dbf4f5b1a2d086c1c6068426afc1ac)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+                SUCCESS: Integrated in Phoenix #228 (See [https://builds.apache.org/job/Phoenix/228/])
+PHOENIX-992: Replace hTable.getRowOrBefore with ReverseScan to get maxKey in StatsManagerImpl (jzhong: rev dff13fe6c16da9e6f70421b292bf64a0422b4ebf)
+* phoenix-core/src/it/java/org/apache/phoenix/end2end/BaseTenantSpecificViewIndexIT.java
+* phoenix-core/src/main/java/org/apache/phoenix/query/StatsManagerImpl.java
+* phoenix-core/src/it/java/org/apache/phoenix/end2end/TenantSpecificViewIndexIT.java
 
               </div></li><li><div>
-                FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1892 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1892/])
-PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 614c57d91ba11bd8109dac769860e0186c8752bf)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
-
-              </div></li><li><div>
-                FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1930 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1930/])
-PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev d79c30023af47f32e2dac9d871aa75265cebc34f)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
-
+                Bulk close of all issues that has been resolved in a released version. 
               </div></li></ol></div></div></html>

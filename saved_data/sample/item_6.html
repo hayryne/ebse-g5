@@ -1,50 +1,88 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 6
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 marker size
- previous unfiltered size
+                 sleep until any schema migrations have finished
               </div></li><li><div>
-                 Skip row size
- previous unfiltered size
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Add row size to sstable format for faster skipping
-                </div><div><b>message:</b> Add row size to sstable format for faster skipping
+                 We don't wait, because we're going to actually try to work on
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix the fat client.
+                </div><div><b>message:</b> Fix the fat client.
+Patch by Carl Yeksigian, reviewed by brandonwilliams for CASSANDRA-5378
 
-patch by slebresne; reviewed by benedict for CASSANDRA-10378
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Fat Client: No longer works in 1.2
+                </div><div><b>description:</b> The current client only example doesn't compile. After doing some updates, the fat client still won't work, mainly because the schema is not being pushed to the fat client.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Make skipping more efficient
-                </div><div><b>description:</b> Following on from the impact of CASSANDRA-10322, we can improve the efficiency of our calls to skipping methods. CASSANDRA-10326 is showing our performance to be in-and-around the same ballpark except for seeks into the middle of a large partition, which suggests (possibly) that the higher density of data we're storing may simply be resulting in a more significant CPU burden as we have more data to skip over (and since CASSANDRA-10322 improves performance here really dramatically, further improvements are likely to be of similar benefit).
-
-I propose doing our best to flatten the skipping of macro data items into as few skip invocations as necessary. One way of doing this would be to introduce a special {{skipUnsignedVInts(int)}} method, that can efficiently skip a number of unsigned vints. Almost the entire body of a cell and row consist of vints now, each data component with their own special {{skipX}} method that invokes {{readUnsignedVint}}. This would permit more efficient despatch.
-
-We could also potentially avoid the construction of a new {{Columns}} instance for each row skip, since all we need is an iterator over the columns, and share the temporary space used for storing them, which should further reduce the GC burden for skipping many rows.
+I've made changes to the client to support CQL3 commands, to the ServiceManager to wait until a migration has completed before starting the client, and to the MigrationManager to not try to pull schemas from a fat client.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                I wonder if a simple solution wouldn't be to store the size of the row as first thing after the clustering so we can skip it all easily. We can do it only for sstable and using a vint, it will almost
-always cost us just 1 byte and since, as you say, we do a shitload of row skipping within an index block so it might be worth it.
+                Was actually developing against trunk for this patch, so the fix version should be 2.0.
+
+I'm fixing it for 1.2.4 as well, but this patch doesn't apply cleanly.
               </div></li><li><div>
-                I would be in favour of that, as we could at the same time encode the _prior_ row's size as well, and this would permit us scanning both forwards and backwards.
+                This patch is applied against the 1.2 branch - the unclean file wasn't needed.
               </div></li><li><div>
-                I agree. And I might have some time to give that a shot to it in the next few days if your plate is full (just assign me if that's the case).
+                Committed, thanks!
               </div></li><li><div>
-                I pushed a quick patch implementing the idea above [here|https://github.com/pcmanus/cassandra/commits/10378]. The result on point queries can be point on [this graph|http://cstar.datastax.com/graph?stats=399e6124-616e-11e5-b8f9-42010af0688f&amp;metric=op_rate&amp;operation=3_user&amp;smoothing=1&amp;show_aggregates=true&amp;xmin=0&amp;xmax=152.68&amp;ymin=0&amp;ymax=110790.9]: basically, we get way much closer to 2.2 on those queries.
+                http://buildbot.datastax.com:8020/builders/cassandra-1.2/builds/179/steps/shell/logs/stdio StorageServiceClientTest is failing, can you take a look?
               </div></li><li><div>
-                Marking this for RC2 as this is a very simple fix that get us a fairly good improvement, and it's a file format change so it's probably to get it in 3.0 proper if possible.
-              </div></li><li><div><div><b>body:</b> * The {{previousUnfilteredSize}} is not propagated to {{serializedRowBodySize}} in {{serializedSize}}
-* A static method for deciding if we have an extension byte would be nice
-* {{skipRowBody}} and {{skipMarkerBody}} have unused parameters
+                This fixes the test.
+              </div></li><li><div>
+                Committed as well, thanks.
+              </div></li><li><div>
+                This broke a dtests, namely cql_tests.py:TestCQL.bug_5240_test.
+
+The reason is that the patch modifies SelectStatement.java and call CFMetadata.getKeyName(), but that method should not be called from CQL3 ever. I'm not sure I understand why fixing the fat client would involve making any kind of change in SelectStatement tbh.
+              </div></li><li><div>
+                The change to select statement is because the fat client can't use the CFS as it doesn't have the data. So, the only things that we have instead is the metadata. Since CQL3 is the way that most clients will want to interact with the service, I thought it made sense to try to update those statements to not use the CFS; any direction on how to fix this?
+              </div></li><li><div><div><b>body:</b> Well looking at that code, what was the rational of adding the offending line was added in the first place:
+{noformat}
++                indexedNames.add(cfm.getKeyName());
+{noformat}
+Seems to me it could just be removed.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Thanks. Pushed an additional commit to the branch to address those.
+                If we don't have that, we won't be able to validate a query against the row key.
 
-bq. A static method for deciding if we have an extension byte would be nice
+That is, if the schema is:
+{code}
+CREATE COLUMNFAMILY standard1 ( id ascii PRIMARY KEY , name ascii , value blob ) ;
+SELECT * FROM standard1 WHERE id='abc';
+{code}
 
-There was a {{isExtended()}} method already, though I added a {{readExtendedFlags}} that does the reading conditionally as that's probably cleaner. Or did I misunderstood what you meant?
+That select statement will not be validated, as no column is indexed, but the row key is. It'll throw the "No indexed columns present in by-columns clause with Equal operator" exception.
               </div></li><li><div>
-                I was referring to [this|https://github.com/pcmanus/cassandra/commit/60f311dbea3315ee61b9169d3fbb425dd3ff76c6#diff-c06541855022eca5fd794dd24ff02f89R221]. Not essential, but feel free to ninja on commit.
+                I'm not sure what you are talking about. The example above have always worked and does not require the row key to be added to the indexedNames (which is an addition of this patch). The row key is "primarily" indexed but it's not indexed by a secondary index. And adding a secondary index on the row key is not something supported (largely because it would be useless).
+
+So anyway, I have removed that line in commit 69f05a704aafa90f2151db721312f3c5907abb2f if only because that restore the behavior of before that patch and let all cql dtests pass. If you still think there is a problem, please open a separate issue with a test case showing the problem you are talking about. 
               </div></li><li><div>
-                Committed, thanks.
+                The fix for the test breaks the fat client 5378-v2.txt
 
-bq. I was referring to [this|https://github.com/pcmanus/cassandra/commit/60f311dbea3315ee61b9169d3fbb425dd3ff76c6#diff-c06541855022eca5fd794dd24ff02f89R221].
+It can no longer get the schema from the non-fat clients and instead throws:
 
-Make sense, ninja-added on commit.
+{code}
+java.lang.NullPointerException
+	at org.apache.cassandra.service.MigrationManager.maybeScheduleSchemaPull(MigrationManager.java:123)
+	at org.apache.cassandra.service.MigrationManager.onAlive(MigrationManager.java:98)
+	at org.apache.cassandra.gms.Gossiper.markAlive(Gossiper.java:773)
+	at org.apache.cassandra.gms.Gossiper.handleMajorStateChange(Gossiper.java:816)
+	at org.apache.cassandra.gms.Gossiper.applyStateLocally(Gossiper.java:901)
+	at org.apache.cassandra.gms.GossipDigestAck2VerbHandler.doVerb(GossipDigestAck2VerbHandler.java:50)
+	at org.apache.cassandra.net.MessageDeliveryTask.run(MessageDeliveryTask.java:56)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.runTask(ThreadPoolExecutor.java:886)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:908)
+	at java.lang.Thread.run(Thread.java:662)
 
+{code}
+
+Can we put the change back in or somehow fix this NPE?
+              </div></li><li><div>
+                The point of the second patch was to prevent us from using the file system. This means that the migration manager probably needs to be able to operate exclusively in memory.
+
+I'll take a look at this issue later today.
+              </div></li><li><div>
+                I'm attaching a fix that adds back the Schema.instance.updateVersion(), but prevents writing out to disk by that call.
+
+This fixes the test, and the startup of the fat client.
+              </div></li><li><div>
+                Marking Patch Available.
+              </div></li><li><div>
+                Looks like I ninja'd this exact patch in right after committing the original, to fix the test.
               </div></li></ol></div></div></html>

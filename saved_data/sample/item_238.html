@@ -1,68 +1,48 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 238
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> IGNITE-4767: rollback exception hides the origin exception (e.g. commit): Suppressing or logging rollback exceptions instead of hiding the origin exception
-                </div><div><b>message:</b> IGNITE-4767: rollback exception hides the origin exception (e.g. commit): Suppressing or logging rollback exceptions instead of hiding the origin exception
-Fixes #1599
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> IGNITE-5479 - Move constant
+                </div><div><b>message:</b> IGNITE-5479 - Move constant
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ignite-4767
-                </div><div><b>body:</b> Suppressing or logging rollback exceptions instead of hiding the origin exception
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> ignite-4767
-                </div><div><b>body:</b> Suppressing or logging rollback exceptions instead of hiding the origin exception
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> rollback exception hides the origin exception (e.g. commit)
-                </div><div><b>description:</b> There is too much code places like:
-{noformat}
-try {
-	return txFuture.get();
-}
-catch (IgniteCheckedException e) {
-	tx.rollbackAsync();
-
-	throw e;
-}
-{noformat}
-where an error upon rollback hides the actual exception {{e}}.
-
-This should be implemented in the way like try-with-resources does:
-{noformat}
-try {
-	return txFuture.get();
-}
-catch (IgniteCheckedException e1) {
-	try {
-		tx.rollbackAsync();
-	}
-	catch (Throwable inner) {
-		e.addSuppressed(inner);
-	}
-
-	throw e;
-}
-{noformat}
-
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> PersistentStoreConfiguration improvements
+                </div><div><b>description:</b> Improve {{PersistentStoreConfiguration}} to be consistent with other configuration classes:
+* {{LockWaitTime}} - should be {{long}} and in milliseconds
+* {{getCheckpointingPageBufferSize}} should return {{long}} instead of {{Long}}
+* {{WalFlushFrequency}} - should be {{long}} and in milliseconds
+* {{WalFsyncDelay}}  - should be {{long}} and in milliseconds. Add javadoc.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Testing done, please review
-https://github.com/apache/ignite/pull/1599/files
-              </div></li><li><div>
-                Hi, [~ein],
+                Agree on all but:
+ - getCheckpointPageBufferSize - this unique long is used to determine the default setting override.
+ - fsync delay should be fine-grained enough to wait less than a millisecond because fsync latency itself may be 0.5 ms. Will rename this method to getWalFsyncDelayNanos to emphasize the different time unit
+              </div></li><li><div><div><b>body:</b> Agree on fsync delay.
 
-I've checked the change and it seems to be OK.
-In the same time e.getSuppressed() is never called. Is it indended to be logged into apache log throught printStackTrace. Is suppressed exception logged automatically or any additional change is required?
+Do not agree on page buffer size. Internally we may maintain a nullable value, but user-facing method must be {{long}} (otherwise it is inconsistent and confusing; setter and getter should be of same type).
 
-One more question, could you please share the link to TC run? Was it in Ignite20Tests?
+Can we do this?
+{code}
+public long getCheckpointingPageBufferSize() {
+    return checkpointingPageBufSize == null ? DFLT_CHECKPOINTING_PAGE_BUFFER_SIZE : checkpointingPageBufSize;
+}
+{code}
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> This does not work: we need Long to distinguish between the following two cases:
+{code}
+    new PersistentStoreConfiguration(); // Ignite will automatically adjust checkpoint buffer size
+{code}
+and
+{code}
+   new PersistentStoreConfiguration().setCheckpointPageBufferSize(someValue); // Ignite will NOT adjust the checkpoint buffer size even if someValue == DEFAULT_VALUE
+{code}
 
-              </div></li><li><div>
-                Hi, [~dpavlov],
+This can be solved by adding a flag isDefaultPageBufferSize on PersistentStoreConfiguration, but the approach with Long looks more clear to me. What do you think?
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> What is the point of {{DFLT_CHECKPOINTING_PAGE_BUFFER_SIZE}} then? The actual value is never used, we just use a reference comparison?
 
-Suppressed exceptions will be automatically logged when stack trace is printed. Actually we should not worry about it.
-
-I've found only this TC run in history, related to the 1599 PR
-http://195.239.208.174/viewType.html?buildTypeId=IgniteTests_IgniteCache3&amp;tab=buildTypeStatusDiv&amp;branch_IgniteTests=pull%2F1599%2Fhead
-
-Testing was done 2 months ago after merging with the master, I think Ignite20Tests was not present at that time.
-              </div></li><li><div>
-                I've restarted tests for 2.0 group using RunAll chain: 
-http://ci.ignite.apache.org/project.html?projectId=Ignite20Tests&amp;branch_Ignite20Tests=pull%2F1599%2Fhead
-              </div></li><li><div>
-                Merged to master
+Let's change both setter and getter to {{Long}}, default to null, and state in the Javadoc that {{null}} means "automatic buffer size".
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                [~ptupitsyn] Can you please review the .NET part? The branch name is ignite-5479
+              </div></li><li><div><div><b>body:</b> I'm still not sure why {{DFLT_CHECKPOINTING_PAGE_BUFFER_SIZE}} exists. Also, on the second thought, null values are inconvenient for the user, so maybe we should switch to {{long}} and use {{0}} as "automatic".
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Merged to ignite-2.1
               </div></li></ol></div></div></html>

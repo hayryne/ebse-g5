@@ -1,67 +1,216 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 28
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao)
-                </div><div><b>message:</b> HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 set param null to reduce memory pressure
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes OOM (Guanghao Zhang)
+                </div><div><b>message:</b> HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes OOM (Guanghao Zhang)
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> [Shell] Record table property SPLITS_FILE in descriptor
-                </div><div><b>description:</b> When I check the properties of HBase table on Web UI, some tables have SPLITS_FILE property but some don't.  In fact, those tables pre-split correctly but this property is not stored in .tableinfo in HDFS. But some table do, that's a little weird. 
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Decrease RpcServer.callQueueSize before writeResponse causes OOM
+                </div><div><b>description:</b> In RpcServer, we use {{callQueueSizeInBytes}} to avoid queuing too many calls which causes OOM. But in {{CallRunner.run}}, we decrease it before send the response back. And even after calling {{sendResponseIfReady}}, the call object could stay in our heap for a long time if we can not write out the response(That's why we need a Responder thread...). This makes it possible that the actual size of all call object in heap is larger than {{maxQueueSizeInBytes}} and causes OOM.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> One possible way to fix this is to decrease call queue size after we write out the whole response. And in fact, the param field of a call object is useless when we want to write response, so maybe we could set it null to reduce memory pressure?
 
-Knowing SPLITS_FILE helps us to compare the backup table in different cluster with the original one.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                We usually use Ruby script to create tables. I think we can add this property to HTableDescriptor object when creating tables. Then .tableinfo stores this value and HBase could display correctly on Web UI.
-              </div></li><li><div>
-                Patch for trunk.
-              </div></li><li><div>
-                Please have a look. [~stack] [~lhofhansl]
-              </div></li><li><div>
-                Patch for 0.94.
-              </div></li><li><div>
-                +1
-
-Patch is harmless and if it helps you manage your environment [~tobe] that's good enough reason to include this IMO.
-
-Going to commit to 0.94+ in a little while unless objection.  
-              </div></li><li><div>
-                Fine with that, but I'm wondering how "some tables have SPLITS_FILE property". any idea how they got this assigned? Because I don't see anything anywhere setting this.
-              </div></li><li><div><div><b>body:</b> Thank [~apurtell] and the new title is much better :-)
-
-[~jmspaggi] We will not see this property in newer tables. Can't find any code to set it, either.
+Suggestions are welcomed. Thanks.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Committed to 0.94+ except 0.96
+                Did you see this happening, or theoretical by reading code? Just asking.
               </div></li><li><div>
-                FAILURE: Integrated in HBase-1.0 #109 (See [https://builds.apache.org/job/HBase-1.0/109/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev cbd21dd9c18d26eccfd971bebdb9a9c459b8f1b9)
-* hbase-shell/src/main/ruby/hbase/admin.rb
+                We hit this recently, but only happens on our legacy 94 clusters. And we found that there is another bug in 0.94.
+
+In 0.94, when we can not write back the whole response at the first place, we will attach the call to the channel's SelectionKey, and never detach it. So if we have lots of connections whose selection key is attached with a call, and the call's param field is large(this usually happens when replication is enabled) then we will run into OOM.
+
+So for hbase 0.98+, I think this is only theoretical. It could only happen if a client keeps sending large put request but never receives the response. Let's modify the priority. :)
+              </div></li><li><div><div><b>body:</b> bq.And in fact, the param field of a call object is useless when we want to write response, so maybe we could set it null to reduce memory pressure?
+Ya once the request processing is over and only response write is pending, there is no point in keeping this. We can nullify them early.  That is any way helps only. +1 for doing that.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Upload a little fix. Set the param null when send response.
+              </div></li><li><div>
+                We observed an OOM case in our production cluster. Table A in source cluster has 500+ regions but it only has 1 region in slave cluster.  Then the mr job write a lot data in source cluster. It replicate to slave cluster and all data write to one regionserver. Then the regionserver crashed by OOM. One fix is to decrease RpcServer.callQueueSize when the responder wirte out the response really. Another fix is nullify the param early. Upload a little fix for this and set the param null when send response.
+              </div></li><li><div>
+                +1.
+              </div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 18s {color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 2m 41s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 34s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 43s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 13s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 1m 39s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 25s {color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 43s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 34s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 34s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 43s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 13s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 24m 11s {color} | {color:green} Patch does not cause any errors with Hadoop 2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.7.1. {color} |
+| {color:green}+1{color} | {color:green} hbaseprotoc {color} | {color:green} 0m 12s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 1m 45s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 26s {color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 78m 14s {color} | {color:red} hbase-server in the patch failed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 12s {color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 114m 5s {color} | {color:black} {color} |
+\\
+\\
+|| Reason || Tests ||
+| Timed out junit tests | org.apache.hadoop.hbase.client.TestFromClientSide |
+|   | org.apache.hadoop.hbase.client.TestScannerTimeout |
+|   | org.apache.hadoop.hbase.client.TestRestoreSnapshotFromClientWithRegionReplicas |
+|   | org.apache.hadoop.hbase.client.TestMobCloneSnapshotFromClient |
+|   | org.apache.hadoop.hbase.client.TestMobSnapshotCloneIndependence |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=1.11.2 Server=1.11.2 Image:yetus/hbase:7bda515 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12828420/HBASE-16165.patch |
+| JIRA Issue | HBASE-16165 |
+| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  hadoopcheck  hbaseanti  checkstyle  compile  |
+| uname | Linux e96e8bf3e301 3.13.0-92-generic #139-Ubuntu SMP Tue Jun 28 20:42:26 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
+| git revision | master / 4c6a98b |
+| Default Java | 1.8.0_101 |
+| findbugs | v3.0.0 |
+| unit | https://builds.apache.org/job/PreCommit-HBASE-Build/3546/artifact/patchprocess/patch-unit-hbase-server.txt |
+| unit test logs |  https://builds.apache.org/job/PreCommit-HBASE-Build/3546/artifact/patchprocess/patch-unit-hbase-server.txt |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/3546/testReport/ |
+| modules | C: hbase-server U: hbase-server |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/3546/console |
+| Powered by | Apache Yetus 0.3.0   http://yetus.apache.org |
+
+
+This message was automatically generated.
+
 
               </div></li><li><div>
-                SUCCESS: Integrated in HBase-0.94-security #513 (See [https://builds.apache.org/job/HBase-0.94-security/513/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev 817c2aac1fee86c98c402abced5c6736fbdc2540)
-* src/main/ruby/hbase/admin.rb
+                +1.
+              </div></li><li><div>
+                This should be commited to all active branches.
+
+[~mantonov] Is it safe to be commited to branch-1.3? A trivial change. Thanks.
+              </div></li><li><div>
+                Go for it [~Apache9] Bug fix.
+              </div></li><li><div>
+                HBASE-16165.patch can be used for master, branch-1.4, branch-1.3 and branch-1.2. HBASE-16165-branch-1.1.patch can be used for branch-1.1 and 0.98.
+              </div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 15s {color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 11m 15s {color} | {color:green} branch-1.1 passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 33s {color} | {color:green} branch-1.1 passed with JDK v1.8.0_101 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 34s {color} | {color:green} branch-1.1 passed with JDK v1.7.0_111 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 31s {color} | {color:green} branch-1.1 passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 21s {color} | {color:green} branch-1.1 passed {color} |
+| {color:red}-1{color} | {color:red} findbugs {color} | {color:red} 1m 52s {color} | {color:red} hbase-server in branch-1.1 has 80 extant Findbugs warnings. {color} |
+| {color:red}-1{color} | {color:red} javadoc {color} | {color:red} 0m 35s {color} | {color:red} hbase-server in branch-1.1 failed with JDK v1.8.0_101. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 33s {color} | {color:green} branch-1.1 passed with JDK v1.7.0_111 {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 42s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 35s {color} | {color:green} the patch passed with JDK v1.8.0_101 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 35s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 35s {color} | {color:green} the patch passed with JDK v1.7.0_111 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 35s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 20s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 11m 57s {color} | {color:green} The patch does not cause any errors with Hadoop 2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.1 2.6.2 2.6.3 2.7.1. {color} |
+| {color:green}+1{color} | {color:green} hbaseprotoc {color} | {color:green} 0m 15s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 2m 4s {color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} javadoc {color} | {color:red} 0m 26s {color} | {color:red} hbase-server in the patch failed with JDK v1.8.0_101. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 32s {color} | {color:green} the patch passed with JDK v1.7.0_111 {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 96m 27s {color} | {color:green} hbase-server in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 35s {color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 131m 43s {color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=1.11.2 Server=1.11.2 Image:yetus/hbase:date2016-09-15 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12828570/HBASE-16165-branch-1.1.patch |
+| JIRA Issue | HBASE-16165 |
+| Optional Tests |  asflicense  javac  javadoc  unit  findbugs  hadoopcheck  hbaseanti  checkstyle  compile  |
+| uname | Linux e2bd05fb664f 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/patchprocess/precommit/personality/hbase.sh |
+| git revision | branch-1.1 / ff91437 |
+| Default Java | 1.7.0_111 |
+| Multi-JDK versions |  /usr/lib/jvm/java-8-oracle:1.8.0_101 /usr/lib/jvm/java-7-openjdk-amd64:1.7.0_111 |
+| findbugs | v3.0.0 |
+| findbugs | https://builds.apache.org/job/PreCommit-HBASE-Build/3555/artifact/patchprocess/branch-findbugs-hbase-server-warnings.html |
+| javadoc | https://builds.apache.org/job/PreCommit-HBASE-Build/3555/artifact/patchprocess/branch-javadoc-hbase-server-jdk1.8.0_101.txt |
+| javadoc | https://builds.apache.org/job/PreCommit-HBASE-Build/3555/artifact/patchprocess/patch-javadoc-hbase-server-jdk1.8.0_101.txt |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/3555/testReport/ |
+| modules | C: hbase-server U: hbase-server |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/3555/console |
+| Powered by | Apache Yetus 0.3.0   http://yetus.apache.org |
+
+
+This message was automatically generated.
+
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-0.98 #456 (See [https://builds.apache.org/job/HBase-0.98/456/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev 8fd4ec4628c5c62791da6a030a7cc8b415062c43)
-* hbase-shell/src/main/ruby/hbase/admin.rb
+                Will commit shortly.
+              </div></li><li><div>
+                Pushed to all active branches.
+
+Thanks [~zghaobac] for the patch, and thanks all for reviewing.
+
+Next time consider using 'git format-patch' to generate the patch, then I could apply it simplely with 'git am' and also retain your auther information. [~zghaobac]
+              </div></li><li><div>
+                SUCCESS: Integrated in Jenkins build HBase-1.2-JDK8 #24 (See [https://builds.apache.org/job/HBase-1.2-JDK8/24/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 2f0a00670af6d697b91f6cb4e853757eada22063)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in HBase-0.94 #1403 (See [https://builds.apache.org/job/HBase-0.94/1403/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev 817c2aac1fee86c98c402abced5c6736fbdc2540)
-* src/main/ruby/hbase/admin.rb
+                FAILURE: Integrated in Jenkins build HBase-1.3-JDK8 #17 (See [https://builds.apache.org/job/HBase-1.3-JDK8/17/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev e9a5c60d139dd12cd5d395ef80344591242842c5)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-0.94-JDK7 #172 (See [https://builds.apache.org/job/HBase-0.94-JDK7/172/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev 817c2aac1fee86c98c402abced5c6736fbdc2540)
-* src/main/ruby/hbase/admin.rb
+                FAILURE: Integrated in Jenkins build HBase-1.4 #419 (See [https://builds.apache.org/job/HBase-1.4/419/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 91d03697d93bce227f27af863a6427e661ac511c)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-TRUNK #5408 (See [https://builds.apache.org/job/HBase-TRUNK/5408/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev c55ecba0719ff1029316836f87b8ca56e57b88a6)
-* hbase-shell/src/main/ruby/hbase/admin.rb
+                FAILURE: Integrated in Jenkins build HBase-1.2-JDK7 #28 (See [https://builds.apache.org/job/HBase-1.2-JDK7/28/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 2f0a00670af6d697b91f6cb4e853757eada22063)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in HBase-0.98-on-Hadoop-1.1 #430 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/430/])
-HBASE-11754 [Shell] Record table property SPLITS_FILE in descriptor (chendihao) (apurtell: rev 8fd4ec4628c5c62791da6a030a7cc8b415062c43)
-* hbase-shell/src/main/ruby/hbase/admin.rb
+                SUCCESS: Integrated in Jenkins build HBase-1.1-JDK8 #1868 (See [https://builds.apache.org/job/HBase-1.1-JDK8/1868/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 31a2f04e996cf4022530e89f090ac770f8e1c9dd)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-1.3-JDK7 #17 (See [https://builds.apache.org/job/HBase-1.3-JDK7/17/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev e9a5c60d139dd12cd5d395ef80344591242842c5)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-Trunk_matrix #1626 (See [https://builds.apache.org/job/HBase-Trunk_matrix/1626/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 4faa8ea934ba5d9cc8ea4eb0d1e64a38a5e6dc7d)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-1.1-JDK7 #1783 (See [https://builds.apache.org/job/HBase-1.1-JDK7/1783/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev 31a2f04e996cf4022530e89f090ac770f8e1c9dd)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-0.98-matrix #402 (See [https://builds.apache.org/job/HBase-0.98-matrix/402/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev efd1ba157a13f18113ca9cb9aca5f76e6df1209b)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build HBase-0.98-on-Hadoop-1.1 #1275 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/1275/])
+HBASE-16165 Decrease RpcServer.callQueueSize before writeResponse causes (zhangduo: rev efd1ba157a13f18113ca9cb9aca5f76e6df1209b)
+* (edit) hbase-server/src/main/java/org/apache/hadoop/hbase/ipc/RpcServer.java
 
               </div></li></ol></div></div></html>

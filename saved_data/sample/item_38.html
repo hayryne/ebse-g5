@@ -1,312 +1,161 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 38
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 make sure its just over; verify it'll split
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-13412 Region split decisions should have jitter
-                </div><div><b>message:</b> HBASE-13412 Region split decisions should have jitter
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-669  MultiRegion transactions with Optimistic Concurrency Control; disable test that doesn't pass yet
+                </div><div><b>message:</b> HBASE-669  MultiRegion transactions with Optimistic Concurrency Control; disable test that doesn't pass yet
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Region split decisions should have jitter
-                </div><div><b>description:</b> Whenever a region splits it causes lots of IO (compactions are queued for a while). Because of this it's important to make sure that well distributed tables don't have all of their regions split at exactly the same time.
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/hbase/trunk@686663 13f79535-47bb-0310-9956-ffa450edef68
 
-This is basically the same as our compaction jitter.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> MultiRegion transactions with Optimistic Concurrency Control
+                </div><div><b>description:</b> We have a need for ACID transactions across tables. This issue is about adding transactions which span multiple regions.  We do not envision many competing writes, and will be read-dominated in general. This makes Optimistic Concurrency Control (OCC) seem like the way to go.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Use ThreadLocalRandom rather than make your own?
+                This is my current, in-progress, attempt:
 
-Having regions split at different sizes is going to confuse operators?
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12723391/HBASE-13412.patch
-  against master branch at commit 057499474c346b28ad5ac3ab7da420814eba547d.
-  ATTACHMENT ID: 12723391
+HRegions keep track of read and write sets for each transaction. 
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+To decide if we commit transaction A, we check for overlap between the read set of A and the write set of all transactions that were commited since A started. If there is overlap, then we must abort. If not the we can commit this transaction without conflict (in the given region).
 
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
+Client-side we keep track of all the regions involved in a transaction. When the client asks to commit, we ask all participating regions if it is ok to commit. If so we commit, otherwise we abort.
 
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
+This patch contains a few simple tests to communicate the API.
 
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+Still missing are Write Ahead Logs (WALs) on clientside and integrating with the HRegion's log. 
 
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
+I would appreciate high-level review/feedback on:
+- clientside API
+-  implications of this OCC approach on the rest of hbase
+- general implementation approach. Currently I'm subclassing to keep my changes isolated, but this may not be best. EG, I have subclasses of HRegionServer that do both transactions and secondary indexes. How do I get both? A mixin/AOP approach may work better here...
 
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
 
-    {color:green}+1 checkstyle{color}.  The applied patch does not increase the total number of checkstyle errors
 
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
+              </div></li><li><div><div><b>body:</b> Current version:
 
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+Added StressTestTransactions which tries to do a lot of conflicting transactions. This was useful in finding some subtle issues with synchronization and the commit protocol, and gives me some confidence that everything is working properly.
 
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+still TODO:
+ - integrate with regionserver's WAL
+ - come up with global transaction log solution. This log is only read when there has been a failure during the commit process: Regionservers are holding a COMMIT_PENDING transaction (they voted to commit, but have not heard the final, global solution) and never hear back the client. Or a regionserver crashes, restarts, looks at his WAL and sees entries for a transaction, but no final decision (commit or abort). 
 
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+I have a simple interface for the transaction logger client, and I'm considering implementations in hdfs, zookeeper, or a specialized transaction server backed by hdfs. A pure hdfs implementation is attractive because it requires no additional infrastructure/servers, however performance will not be good as we will just be writing lots of small, short lived files. (All we need is ability to get unique transactionId's, and map between transactionId's and transaction state)
 
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-                       org.apache.hadoop.hbase.regionserver.TestRegionSplitPolicy
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/13583//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/13583//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/13583//artifact/patchprocess/checkstyle-aggregate.html
-
-  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/13583//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> [~stack] Not a fan of ThreadLocals. These tend to hang around. You concerned about the overhead of creating one?
-[~eclark] Is the logic correct?
-{code}
-+    double sizeJitter = conf.getDouble("hbase.hregion.max.filesize.jitter", 0.02D);
-+    this.desiredMaxFileSize = (long)(desiredMaxFileSize * (RANDOM.nextFloat() - 0.5D) * sizeJitter);
-{code}
-
-You mean:
-{code}
-+    double sizeJitter = conf.getDouble("hbase.hregion.max.filesize.jitter", 0.02D);
-+    this.desiredMaxFileSize += (long)(desiredMaxFileSize * (RANDOM.nextFloat() - 0.5D) * sizeJitter);
-{code}
-(note the +=)
+So now I'm leaning toward a special-purpose server which could run alongside the master...
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                bq. stack Not a fan of ThreadLocals. These tend to hang around. You concerned about the overhead of creating one?
+                Couple of quick comments in no particular order after cursory read (so some of the questions might be extra dumb):
+ 
++ The client runs the delete edits to invalidate the transaction?  (By replaying the edits out of the client-side WAL)?  If so, can it be done regionserver side?  If client lease expires or client cancels the transaction, the regionserver does the undo operations?
++ Good stuff making HTable, etc. subclassable.  If you want to do these changes as a separate patch, I'll just commit it so you don't have to reproduce it in this and your secondary index patch.  Make an issue.
++ On, feedback regards how to have more than one regionserver implementation -- transactional and secondary indices -- I think yeah, probably has to be some mixin factility.  I can see this transactional stuff eventually making it into core.
++ I don't get the global transaction log doohickey.  Why not just have regionservers just discard COMMIT_PENDING if lease times out or on restart, comes across a COMMIT_PENDING replaying?
++ We're trying to get zookeeper into the mix tout-de-suite.  Then you wouldn't have to do a custom server?
++ Classes are missing licenses.  Some of those that have them, have 2007 as date.
++ On '// FIXME, not sure why this is needed, but copied over from HTable', you want to use Arrays.toArray or some such? (I ain't sure why its there either)
++ Why pass transaction state when doing scan/get reads?
++ Add a package info under client transactional that explains what this feature is, how it works and how to use it (will help others get invovled).
++ TransctionalState on server side should inherit from the client TransactionState?  They have mostly same enums?
++ I applied your getBytes.toInt ...HBASE-676 (thanks)
 
-This suggestion is a mistake on my part. I misunderstood. Please ignore.
-              </div></li><li><div><div><b>body:</b> You are correct the logic is missing the +.... Just a typo.
-Patch coming with tests.
+
+
+
+
+
+              </div></li><li><div>
+                I basically followed the original OCC paper with modifications for a distributed commit protocol (because we have multiple parties involved). That paper is available here: http://www.seas.upenn.edu/~zives/cis650/papers/opt-cc.pdf 
+
+&gt; The client runs the delete edits to invalidate the transaction? 
+
+No, we don't apply the edits until after the global commit decision has been made. As they come into the regionserver they are WAL'ed and stored with the transaction state until a commit.
+
+&gt; I don't get the global transaction log doohickey. Why not just have regionservers just discard COMMIT_PENDING if lease times out or on restart, comes across a COMMIT_PENDING replaying?
+
+This is to handle the case where we voted to commit and then either regionserver or the client dies. Its possible that the client told everyone else to commit, so if we disregarded our part of the transaction the we loose the AC from ACID.
+
++ We're trying to get zookeeper into the mix tout-de-suite. Then you wouldn't have to do a custom server?
+
+Yeah, that would be ideal.
+
+&gt; Why pass transaction state when doing scan/get reads?
+We need this to check for conflicts. If we read a row that was later written (in a transaction that committed in the meantime) the we have to abort the read transaction.
+
+&gt; TransctionalState on server side should inherit from the client TransactionState? They have mostly same enums?
+
+Yeah this probably makes sense. 
+
+Thanks for review.
+
+              </div></li><li><div>
+                &gt; On '// FIXME, not sure why this is needed, but copied over from HTable', you want to use Arrays.toArray or some such? (I ain't sure why its there either)
+
+Why can't we just 'return values;'? Seems to me all the following code does is make a copy of the values array:
+
+&lt;code&gt;
+
+    if (values != null) {
+      ArrayList&lt;Cell&gt; cellValues = new ArrayList&lt;Cell&gt;();
+      for (int i = 0 ; i &lt; values.length; i++) {
+        cellValues.add(values[i]);
+      }
+      return cellValues.toArray(new Cell[values.length]);
+    }
+    return null;
+
+&lt;/code&gt;
+
+maybe thats just remains of a past, no longer needed conversion? 
+              </div></li><li><div>
+                I committed change that just returns 'values'.  Thanks.
+              </div></li><li><div><div><b>body:</b> This patch includes an attempt at integrating with the HLog
+
+We add log messages from transaction operations START, WRITE, COMMIT, and ABORT.
+
+transactional writes are written to the HLog as they are received (before the commit decision has been made). When we actually decide to commit, we just write the COMMIT message to the log, and the apply all of the BatchUpdates *without* logging them.
+
+To restore from the log we scan though, keeping track of all the WRITES for a given transactionId, and when we see the COMMIT message we go ahead and apply the writes. If we don't see a COMMIT or ABORT message, the we have to go to the transaction log to see what happened to the transaction.
+
+So this means that in order to restore a transaction, we need to look at all of the log entries for the transaction. To ensure this, we need to fiddle with the commitSequenceId that is written as we flush to the HLog. When we flush, we need to use the minimum sequence Id from the START messages from all transactions that are currently pending. That way when we go to recover we will have all those pending transaction's log messages...
+
+Adding this behavior was kinda messy because:
+- HLog recover takes place in each HStore, but I need to recover at the region level (because transactions cross stores). This means the HLog is being scanned once for each HStore which seems ineffecient. I added a hook for the region to do it's log recovery that I use in TransactionalRegion.
+- HLog/HLogEdit/HLogKey are not easily subclassable. 
+- Log writing concerns are in HLog, while reading is in HStore.
+- Log recovery took place in the constructor of HRegion. I put this in an initialize() method for the HRegion so that HRegion's subclass constructors can run before they process a log.
+- startSequence fiddling as described above
+
+I have a test to make sure that reading/writing from the log works, but to have any confidence in this I need to test in the broader context where hregion is driving the writes. So I'd like to bring up a cluster, do some operations, be sure that some stuff was not flushed, bring down a regionserver hard, and bring it back up such that it recovers from log. I did not see any such tests of the current WAL.... 
+
+Would really appreciate a review of this approach from someone more familiar with logging/flushing process than I.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Latest patch. Testing of hlog recovery. 
+              </div></li><li><div>
+                updated version applies to trunk, fixes a few bugs in prev version
+              </div></li><li><div>
+                newest version. Fixes bug when reading from cells that have been previously written from the same transaction.
+              </div></li><li><div><div><b>body:</b> I tried to apply last patch Clint. Fails in HTable.  I'd like to commit this.  It has a bunch of unit tests so its at least basically working.  Blocker is lack of package documentation.  Please add a package.html (see thrift package for example) or a package-info.java (e.g. mapred package) that explains what this is all about with pointer to the OCC paper and a basic howto on what configuration is needed to make a transactional hbase float.  Thanks Clint.
                 </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> Patch without the embarrassing typo :-)
-Also fixed the test to account for jitter. Submitting to see if any other tests rely on exact number for splits.
-                </div><div><b>label:</b> documentation
                 </div></div></li><li><div>
-                Hamcrest sometimes works and other times doesn't.
-Seems like an issue with ordering of classpath of test dependencies. So this doesn't use hamcrest at all.
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12723503/HBASE-13412-v1.patch
-  against master branch at commit 8c740f43093671cfd4cc2b1052d8556e0d492c13.
-  ATTACHMENT ID: 12723503
+                Attaching current version: a few fixes, documentation, and cleanup.
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+I think this is ready for commit. The main remaining issue is correctly recovering from the HLog in event of crash. After this patch is applied, I'll create a new JIRA to track that work.
 
-    {color:green}+1 tests included{color}.  The patch appears to include 4 new or modified tests.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-                {color:red}-1 checkstyle{color}.  The applied patch generated 1922 checkstyle errors (more than the master's current 1921 errors).
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-                       org.apache.hadoop.hbase.regionserver.TestRegionSplitPolicy
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/13588//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/13588//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/13588//artifact/patchprocess/checkstyle-aggregate.html
-
-                Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/13588//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12723505/HBASE-13412-v2.patch
-  against master branch at commit 8c740f43093671cfd4cc2b1052d8556e0d492c13.
-  ATTACHMENT ID: 12723505
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 4 new or modified tests.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-                {color:red}-1 checkstyle{color}.  The applied patch generated 1922 checkstyle errors (more than the master's current 1921 errors).
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in .
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/13589//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/13589//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/13589//artifact/patchprocess/checkstyle-aggregate.html
-
-                Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/13589//console
-
-This message is automatically generated.
-              </div></li><li><div><div><b>body:</b> Patch to make checkstyle happy.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12723532/HBASE-13412-v3.patch
-  against master branch at commit 8c740f43093671cfd4cc2b1052d8556e0d492c13.
-  ATTACHMENT ID: 12723532
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 4 new or modified tests.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 checkstyle{color}.  The applied patch does not increase the total number of checkstyle errors
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in .
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/13590//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/13590//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/13590//artifact/patchprocess/checkstyle-aggregate.html
-
-  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/13590//console
-
-This message is automatically generated.
-              </div></li><li><div><div><b>body:</b> bq.Having regions split at different sizes is going to confuse operators?
-Since regions split on the size of a single store file it's already pretty hard to tell exactly when a region will split. So I don't think that adding a little more uncertainty around the timing of an already background process is too awful. Though it is configurable if someone would ever want to turn it off.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Ok. +1. Test is a little anemic but will do.
+Running full tests now...
               </div></li><li><div>
-                Thanks for review. I'll try and get a better test for this together.
+                +1. I have been using this without any issues for the past few weeks.
               </div></li><li><div>
-                FAILURE: Integrated in HBase-1.1 #374 (See [https://builds.apache.org/job/HBase-1.1/374/])
-HBASE-13412 Region split decisions should have jitter (eclark: rev bbdd50b9c5ad958bfb56f21ef2fdbc057de22f54)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
+                Committed (fixed up a few of the licenses -- said 2007 -- and added on to TestHLogRecover).
+
+Thanks for the sweet new feature Clint.
+              </div></li><li><div>
+                &gt; Clint Morgan - 17/Aug/08 12:18 PM
+&gt; Attaching current version: a few fixes, documentation, and cleanup.
+&gt;
+&gt; I think this is ready for commit. The main remaining issue is correctly recovering from the HLog in event
+&gt; of crash.
+
+How would this recovery be different from HBASE-728 combined with HBASE-698 ?
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-TRUNK #6355 (See [https://builds.apache.org/job/HBase-TRUNK/6355/])
-HBASE-13412 Region split decisions should have jitter (eclark: rev b6756b39c2ff5675f96a6e82dc4d68ec437f01c4)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
+                When replaying a hlog, we need to track transaction start, write, commit, and abort messages and react appropriately. This contrasts with the normal logic of simply replaying HLog edits at the hstore level. I have this logic in place (see changes to HLog, HLogEdit, HLogKey), but have not fully tested it. There are a couple of tricky/sublte issues there that I'm not sure I've gotten right. EG, the min sequence number that we have to look at for recovery is not simply that of the last flush. Rather it depends on the min seq numbers of the start messages of pending transactions at the time of hlog flush...
 
-              </div></li><li><div>
-                hey [~eclark] --  this patch may have made trunk flakey.  3 of the last 4 last the jenkins builds [1] [2] [3] hitting TestRegionSplitPolicy.testIncreasingToupperBoundRegionSplitPolicy failures.  
-
-I've run local and it is flakey, and after reverting locally it seems to pass consistently. 
-
-[1] https://builds.apache.org/view/H-L/view/HBase/job/HBase-TRUNK/6356/testReport/
-[2]https://builds.apache.org/view/H-L/view/HBase/job/HBase-TRUNK/6357/testReport/
-[3]https://builds.apache.org/view/H-L/view/HBase/job/HBase-TRUNK/6358/testReport/
-
-
-              </div></li><li><div>
-                Yep looking now.
-              </div></li><li><div>
-                I think it is a test problem 
-
-Based on :
-
-{code}
-Mockito.doReturn((long)(maxSplitSize * 1.025 + 1)).when(mockStore).getSize();
-{code}
-
-
-{code}
-   double jitter = conf.getDouble("hbase.hregion.max.filesize.jitter", 0.25D);
-   this.desiredMaxFileSize += (long)(desiredMaxFileSize * (RANDOM.nextFloat() - 0.5D) * jitter);
-{code}
-
-I think 1.025 should be 1.25.
-              </div></li><li><div>
-                with the addendum patch, the failing unit test passed for me 5x in a row.
-              </div></li><li><div>
-                You guys found this too. Let me close HBASE-13432. Thanks.
-              </div></li><li><div>
-                [~eclark] - look good to you?  
-              </div></li><li><div>
-                lgtm thanks. Sorry I didn't catch this the first time.
-              </div></li><li><div>
-                Want me to commit or are you?
-              </div></li><li><div>
-                I got it.
-              </div></li><li><div>
-                I've committed the addendum to branch-1 and master.
-              </div></li><li><div>
-                Thanks for the help [~jmhsieh] and [~ndimiduk]
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-TRUNK #6360 (See [https://builds.apache.org/job/HBase-TRUNK/6360/])
-HBASE-13412 ADDENDUM Region split decisions should have jitter (jmhsieh: rev e2a90a71143f480621ccd935a0b9477d7ee4016f)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-1.1 #381 (See [https://builds.apache.org/job/HBase-1.1/381/])
-HBASE-13412 ADDENDUM Region split decisions should have jitter (jmhsieh: rev c2bfddac136008ca1be00031aaf83f6f35792476)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-
-              </div></li><li><div>
-                Both the original commit and addendum picked back to 0.98 cleanly and the new test passes repeatedly (ran it 10 times)
-
-This change introduces a new configuration parameter and a behavioral change for ConstantSizeRegionSplitPolicy and policies that inherit from it. The change is desirable (it's the raison d'etre of this issue) but to alleviate any compatibility concerns I committed an addendum to 0.98 only that will not apply jitter unless the new configuration parameter is explicitly set.
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-0.98 #983 (See [https://builds.apache.org/job/HBase-0.98/983/])
-HBASE-13412 Region split decisions should have jitter (apurtell: rev d19b5cdae378bcbaa5e7b248359d6251d115ed83)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev ee725689641d6e61146cb3be77e3f29fa5f54606)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev dfc066ee83243695b27231af2a0be5cddefa4fb1)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-0.98-on-Hadoop-1.1 #935 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/935/])
-HBASE-13412 Region split decisions should have jitter (apurtell: rev d19b5cdae378bcbaa5e7b248359d6251d115ed83)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev ee725689641d6e61146cb3be77e3f29fa5f54606)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev dfc066ee83243695b27231af2a0be5cddefa4fb1)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-
-              </div></li><li><div>
-                Hadoop 1 doesn't have Configuration#getDouble, use floats instead to fix the Hadoop 1 build.
-              </div></li><li><div>
-                FAILURE: Integrated in HBase-0.98 #985 (See [https://builds.apache.org/job/HBase-0.98/985/])
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev 06e0e47cab8cab09725dd850a65264f2f2317465)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-
-              </div></li><li><div>
-                SUCCESS: Integrated in HBase-0.98-on-Hadoop-1.1 #936 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/936/])
-HBASE-13412 ADDENDUM Region split decisions should have jitter (apurtell: rev 06e0e47cab8cab09725dd850a65264f2f2317465)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/regionserver/TestRegionSplitPolicy.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/regionserver/ConstantSizeRegionSplitPolicy.java
-
-              </div></li><li><div>
-                Closing issues released in 1.1.0.
+Also, if we crash at just the right time, we could have committed pieces of a transaction in other regions, but not have the commit message in the log for this region. In this case, we need to lookup the transaction state (commited/aborted) in a global transaction log. I'd like to put this global transaction log in Zookeper when its in the mix.
               </div></li></ol></div></div></html>

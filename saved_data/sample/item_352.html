@@ -1,85 +1,954 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 352
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> fix: remove redundant import class (#2110)
-                </div><div><b>message:</b> fix: remove redundant import class (#2110)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [Feature] JVM parameter optimization , related issue #3370 (#3373)
+                </div><div><b>message:</b> [Feature] JVM parameter optimization , related issue #3370 (#3373)
+
+* [Feature] JVM parameter optimization , related issue #3370
+
+* [Feature] JVM parameter optimization , related issue #3370
+
+Co-authored-by: qiaozhanwei &lt;qiaozhanwei@analysys.com.cn&gt;
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [Feature] JVM parameter optimization
+                </div><div><b>body:</b> **Describe the feature**
+JVM parameter optimization
+
+**Is your feature request related to a problem? Please describe.**
+
+4G heap memory and default young generation size
+within 30s of starting, there will be one Minor GC and two Full GCs
+
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+reasoning:
+If the old age is full, causing Full GC, then it is unlikely that the old age will be zero after Full GC, which is relatively small.
+Then there is the metadata area. Visually, MU uses a lot, so adjust the size of the metadata area.
+The metadata area mainly stores the description information and static variables of some classes. If there are more reflections, this area can be increased appropriately
+It is recommended to 256MB or 512M. Considering the user's machine memory, set 128M temporarily, which is smaller
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+After the optimization is started, there is no Full GC
+ S0C S1C S0U S1U EC EU OC OU MC MU CCSC CCSU YGC YGCT FGC FGCT GCT
+209664.0 209664.0 0.0 51195.2 1677824.0 1584070.1 2097152.0 0.0 43136.0 41916.0 5760.0 5425.1 1 0.071 0 0.000 0.071
+
+
+Worker starts 20 processes, Linux memory takes up 1.530g, an average of about 78MB each, one process
+ PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+ 7782 root 20 0 13.638g 1.530g 23908 S 0.0 1.2 0:56.66 java
+
+ Check the JVM memory at this time, and there is no change
+
+
+Example:
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+ 
+-------------------------------------------------- ------------------------------------------
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 14 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+-------------------------------------------------- ------------------------------------------
+2G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 7 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+
+For the JDBC result set, there are 1000. According to the test of the task instance table, there are an average of 4 task instance result sets, each time in 30s.
+Each time young gc old age increases by 1M
+The new generation is about 30M per second
+
+
+
+
+Master JVM optimization
+
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+3~4 process examples
+-------------------------------------------------- ------------------------------------------
+The new generation is about 40M per second
+Perform a minor gc once in 40s, and the old age will increase by about 1M after each minor gc
+
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+The new generation has been around 500M per second
+Perform a minor gc once in 3s, and the old generation will increase by about 1M after each minor gc
+
+
+Api Server
+-------------------------------------------------- ------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSize -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/opt/oom"
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+Minor gc occurs once in about 30 minutes
+
+summary
+-------------------------------------------------- -------------------------------------------
+recommended that the heap memory of Master Server is 4g
+recommended that the heap memory of Worker Server is 2g
+recommended that the heap memory of Api Server is 1g
+recommended that the heap memory of Alert Server is 1g
+recommended that the heap memory of Logger Server is 1g
+
+--------------------------------------------中文解释---------------------------------------------------------------
+worker JVM优化
+
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g  -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+4g
+s0 108MB
+s1 108MB
+
+eden 865MB
+
+old 3014MB
+
+metaspace 41MB
+
+
+启动完30s内，就会发生一次Minor GC和两次Full GC
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+推理：
+如果要是老年代满了，引起Full GC，那老年代也不太可能Full GC之后，OU为零，可能性比较小
+然后就是元数据区了，目测MU使用很多，所以调整一下元数据区域大小，
+元数据区域主要存放的是一些类的描述信息和静态变量，如果反射比较多，这个区域可以适当的增大
+建议256MB或者512M，考虑到用户机器内存，姑且设置128M，小一点
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+优化后启动之后，无Full GC
+ S0C       S1C    S0U    S1U      EC       EU        OC            OU       MC     MU       CCSC   CCSU     YGC     YGCT    FGC    FGCT     GCT   
+209664.0 209664.0  0.0   51195.2 1677824.0 1584070.1 2097152.0     0.0     43136.0 41916.0 5760.0 5425.1      1    0.071   0      0.000    0.071
+
+
+worker 启动20个进程，linux内存占用1.530g，平均每个78MB左右，一个进程
+ PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND                                                         
+ 7782 root      20   0 13.638g 1.530g  23908 S   0.0  1.2   0:56.66 java 
+
+ 此时查看JVM内存，并没有变化
+
+
+示例：
+--------------------------------------------------------------------------------------------
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+ 
+--------------------------------------------------------------------------------------------
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+14分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+--------------------------------------------------------------------------------------------
+2G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+7分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+
+对于JDBC结果集合，有1000条，根据任务实例表测试的，平均有4个任务实例结果集，30s一次yong gc
+每次young gc老年代增加1M
+新生代30M左右每秒
+
+
+
+
+Master JVM优化
+
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+--------------------------------------------------------------------------------------------
+
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+3~4个流程实例
+
+--------------------------------------------------------------------------------------------
+每秒新生代曾40M左右
+40s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+每秒新生代曾500M左右
+3s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+Api Server
+--------------------------------------------------------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=/opt/oom"
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+30分钟左右发生一次minor gc
+
+总结
+---------------------------------------------------------------------------------------------
+建议Master Server的堆内存是4g
+建议Worker Server的堆内存是2g
+建议Api Server的堆内存是1g
+建议Alert Server的堆内存是1g
+建议Logger Server的堆内存是1g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>title:</b> [Feature] JVM parameter optimization
+                </div><div><b>body:</b> **Describe the feature**
+JVM parameter optimization
+
+**Is your feature request related to a problem? Please describe.**
+
+4G heap memory and default young generation size
+within 30s of starting, there will be one Minor GC and two Full GCs
+
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+reasoning:
+If the old age is full, causing Full GC, then it is unlikely that the old age will be zero after Full GC, which is relatively small.
+Then there is the metadata area. Visually, MU uses a lot, so adjust the size of the metadata area.
+The metadata area mainly stores the description information and static variables of some classes. If there are more reflections, this area can be increased appropriately
+It is recommended to 256MB or 512M. Considering the user's machine memory, set 128M temporarily, which is smaller
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+After the optimization is started, there is no Full GC
+ S0C S1C S0U S1U EC EU OC OU MC MU CCSC CCSU YGC YGCT FGC FGCT GCT
+209664.0 209664.0 0.0 51195.2 1677824.0 1584070.1 2097152.0 0.0 43136.0 41916.0 5760.0 5425.1 1 0.071 0 0.000 0.071
+
+
+Worker starts 20 processes, Linux memory takes up 1.530g, an average of about 78MB each, one process
+ PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+ 7782 root 20 0 13.638g 1.530g 23908 S 0.0 1.2 0:56.66 java
+
+ Check the JVM memory at this time, and there is no change
+
+
+Example:
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+ 
+-------------------------------------------------- ------------------------------------------
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 14 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+-------------------------------------------------- ------------------------------------------
+2G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 7 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+
+For the JDBC result set, there are 1000. According to the test of the task instance table, there are an average of 4 task instance result sets, each time in 30s.
+Each time young gc old age increases by 1M
+The new generation is about 30M per second
+
+
+
+
+Master JVM optimization
+
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+3~4 process examples
+-------------------------------------------------- ------------------------------------------
+The new generation is about 40M per second
+Perform a minor gc once in 40s, and the old age will increase by about 1M after each minor gc
+
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+The new generation has been around 500M per second
+Perform a minor gc once in 3s, and the old generation will increase by about 1M after each minor gc
+
+
+Api Server
+-------------------------------------------------- ------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSize -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/opt/oom"
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+Minor gc occurs once in about 30 minutes
+
+summary
+-------------------------------------------------- -------------------------------------------
+recommended that the heap memory of Master Server is 4g
+recommended that the heap memory of Worker Server is 2g
+recommended that the heap memory of Api Server is 1g
+recommended that the heap memory of Alert Server is 1g
+recommended that the heap memory of Logger Server is 1g
+
+--------------------------------------------中文解释---------------------------------------------------------------
+worker JVM优化
+
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g  -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+4g
+s0 108MB
+s1 108MB
+
+eden 865MB
+
+old 3014MB
+
+metaspace 41MB
+
+
+启动完30s内，就会发生一次Minor GC和两次Full GC
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+推理：
+如果要是老年代满了，引起Full GC，那老年代也不太可能Full GC之后，OU为零，可能性比较小
+然后就是元数据区了，目测MU使用很多，所以调整一下元数据区域大小，
+元数据区域主要存放的是一些类的描述信息和静态变量，如果反射比较多，这个区域可以适当的增大
+建议256MB或者512M，考虑到用户机器内存，姑且设置128M，小一点
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+优化后启动之后，无Full GC
+ S0C       S1C    S0U    S1U      EC       EU        OC            OU       MC     MU       CCSC   CCSU     YGC     YGCT    FGC    FGCT     GCT   
+209664.0 209664.0  0.0   51195.2 1677824.0 1584070.1 2097152.0     0.0     43136.0 41916.0 5760.0 5425.1      1    0.071   0      0.000    0.071
+
+
+worker 启动20个进程，linux内存占用1.530g，平均每个78MB左右，一个进程
+ PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND                                                         
+ 7782 root      20   0 13.638g 1.530g  23908 S   0.0  1.2   0:56.66 java 
+
+ 此时查看JVM内存，并没有变化
+
+
+示例：
+--------------------------------------------------------------------------------------------
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+ 
+--------------------------------------------------------------------------------------------
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+14分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+--------------------------------------------------------------------------------------------
+2G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+7分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+
+对于JDBC结果集合，有1000条，根据任务实例表测试的，平均有4个任务实例结果集，30s一次yong gc
+每次young gc老年代增加1M
+新生代30M左右每秒
+
+
+
+
+Master JVM优化
+
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+--------------------------------------------------------------------------------------------
+
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+3~4个流程实例
+
+--------------------------------------------------------------------------------------------
+每秒新生代曾40M左右
+40s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+每秒新生代曾500M左右
+3s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+Api Server
+--------------------------------------------------------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=/opt/oom"
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+30分钟左右发生一次minor gc
+
+总结
+---------------------------------------------------------------------------------------------
+建议Master Server的堆内存是4g
+建议Worker Server的堆内存是2g
+建议Api Server的堆内存是1g
+建议Alert Server的堆内存是1g
+建议Logger Server的堆内存是1g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
                 </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [BUG] Remove redundant import class
-                </div><div><b>body:</b> Command.java
+                </div></div></li><li><div><div><b>title:</b> [Feature] JVM parameter optimization
+                </div><div><b>body:</b> **Describe the feature**
+JVM parameter optimization
 
-`import com.sun.org.apache.regexp.internal.RE;`
+**Is your feature request related to a problem? Please describe.**
 
-The class is unused and cannot be built in jdk11.
+4G heap memory and default young generation size
+within 30s of starting, there will be one Minor GC and two Full GCs
+
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+reasoning:
+If the old age is full, causing Full GC, then it is unlikely that the old age will be zero after Full GC, which is relatively small.
+Then there is the metadata area. Visually, MU uses a lot, so adjust the size of the metadata area.
+The metadata area mainly stores the description information and static variables of some classes. If there are more reflections, this area can be increased appropriately
+It is recommended to 256MB or 512M. Considering the user's machine memory, set 128M temporarily, which is smaller
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+After the optimization is started, there is no Full GC
+ S0C S1C S0U S1U EC EU OC OU MC MU CCSC CCSU YGC YGCT FGC FGCT GCT
+209664.0 209664.0 0.0 51195.2 1677824.0 1584070.1 2097152.0 0.0 43136.0 41916.0 5760.0 5425.1 1 0.071 0 0.000 0.071
+
+
+Worker starts 20 processes, Linux memory takes up 1.530g, an average of about 78MB each, one process
+ PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+ 7782 root 20 0 13.638g 1.530g 23908 S 0.0 1.2 0:56.66 java
+
+ Check the JVM memory at this time, and there is no change
+
+
+Example:
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+ 
+-------------------------------------------------- ------------------------------------------
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 14 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+-------------------------------------------------- ------------------------------------------
+2G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 7 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+
+For the JDBC result set, there are 1000. According to the test of the task instance table, there are an average of 4 task instance result sets, each time in 30s.
+Each time young gc old age increases by 1M
+The new generation is about 30M per second
+
+
+
+
+Master JVM optimization
+
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+3~4 process examples
+-------------------------------------------------- ------------------------------------------
+The new generation is about 40M per second
+Perform a minor gc once in 40s, and the old age will increase by about 1M after each minor gc
+
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+The new generation has been around 500M per second
+Perform a minor gc once in 3s, and the old generation will increase by about 1M after each minor gc
+
+
+Api Server
+-------------------------------------------------- ------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSize -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/opt/oom"
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+Minor gc occurs once in about 30 minutes
+
+summary
+-------------------------------------------------- -------------------------------------------
+recommended that the heap memory of Master Server is 4g
+recommended that the heap memory of Worker Server is 2g
+recommended that the heap memory of Api Server is 1g
+recommended that the heap memory of Alert Server is 1g
+recommended that the heap memory of Logger Server is 1g
+
+--------------------------------------------中文解释---------------------------------------------------------------
+worker JVM优化
+
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g  -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+4g
+s0 108MB
+s1 108MB
+
+eden 865MB
+
+old 3014MB
+
+metaspace 41MB
+
+
+启动完30s内，就会发生一次Minor GC和两次Full GC
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+推理：
+如果要是老年代满了，引起Full GC，那老年代也不太可能Full GC之后，OU为零，可能性比较小
+然后就是元数据区了，目测MU使用很多，所以调整一下元数据区域大小，
+元数据区域主要存放的是一些类的描述信息和静态变量，如果反射比较多，这个区域可以适当的增大
+建议256MB或者512M，考虑到用户机器内存，姑且设置128M，小一点
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+优化后启动之后，无Full GC
+ S0C       S1C    S0U    S1U      EC       EU        OC            OU       MC     MU       CCSC   CCSU     YGC     YGCT    FGC    FGCT     GCT   
+209664.0 209664.0  0.0   51195.2 1677824.0 1584070.1 2097152.0     0.0     43136.0 41916.0 5760.0 5425.1      1    0.071   0      0.000    0.071
+
+
+worker 启动20个进程，linux内存占用1.530g，平均每个78MB左右，一个进程
+ PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND                                                         
+ 7782 root      20   0 13.638g 1.530g  23908 S   0.0  1.2   0:56.66 java 
+
+ 此时查看JVM内存，并没有变化
+
+
+示例：
+--------------------------------------------------------------------------------------------
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+ 
+--------------------------------------------------------------------------------------------
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+14分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+--------------------------------------------------------------------------------------------
+2G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+7分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+
+对于JDBC结果集合，有1000条，根据任务实例表测试的，平均有4个任务实例结果集，30s一次yong gc
+每次young gc老年代增加1M
+新生代30M左右每秒
+
+
+
+
+Master JVM优化
+
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+--------------------------------------------------------------------------------------------
+
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+3~4个流程实例
+
+--------------------------------------------------------------------------------------------
+每秒新生代曾40M左右
+40s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+每秒新生代曾500M左右
+3s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+Api Server
+--------------------------------------------------------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=/opt/oom"
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+30分钟左右发生一次minor gc
+
+总结
+---------------------------------------------------------------------------------------------
+建议Master Server的堆内存是4g
+建议Worker Server的堆内存是2g
+建议Api Server的堆内存是1g
+建议Alert Server的堆内存是1g
+建议Logger Server的堆内存是1g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                </div></div></li><li><div><div><b>title:</b> [Feature] JVM parameter optimization
+                </div><div><b>body:</b> **Describe the feature**
+JVM parameter optimization
+
+**Is your feature request related to a problem? Please describe.**
+
+4G heap memory and default young generation size
+within 30s of starting, there will be one Minor GC and two Full GCs
+
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+reasoning:
+If the old age is full, causing Full GC, then it is unlikely that the old age will be zero after Full GC, which is relatively small.
+Then there is the metadata area. Visually, MU uses a lot, so adjust the size of the metadata area.
+The metadata area mainly stores the description information and static variables of some classes. If there are more reflections, this area can be increased appropriately
+It is recommended to 256MB or 512M. Considering the user's machine memory, set 128M temporarily, which is smaller
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+After the optimization is started, there is no Full GC
+ S0C S1C S0U S1U EC EU OC OU MC MU CCSC CCSU YGC YGCT FGC FGCT GCT
+209664.0 209664.0 0.0 51195.2 1677824.0 1584070.1 2097152.0 0.0 43136.0 41916.0 5760.0 5425.1 1 0.071 0 0.000 0.071
+
+
+Worker starts 20 processes, Linux memory takes up 1.530g, an average of about 78MB each, one process
+ PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+ 7782 root 20 0 13.638g 1.530g 23908 S 0.0 1.2 0:56.66 java
+
+ Check the JVM memory at this time, and there is no change
+
+
+Example:
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+ 
+-------------------------------------------------- ------------------------------------------
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 14 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+-------------------------------------------------- ------------------------------------------
+2G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+
+The new generation is about 2M per second
+
+Perform minor gc once every 7 minutes, survivor 40~50M, enter the old age without dynamic age judgment, without full gc
+
+
+For the JDBC result set, there are 1000. According to the test of the task instance table, there are an average of 4 task instance result sets, each time in 30s.
+Each time young gc old age increases by 1M
+The new generation is about 30M per second
+
+
+
+
+Master JVM optimization
+
+4G heap memory
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:Bytes=128Enabled -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=dump.hprof"
+-------------------------------------------------- ------------------------------------------
+Start a process every 5s, 20 tasks, each task sleep 10s
+t_ds_task_instance 40 tasks are running
+3~4 process examples
+-------------------------------------------------- ------------------------------------------
+The new generation is about 40M per second
+Perform a minor gc once in 40s, and the old age will increase by about 1M after each minor gc
+
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+The new generation has been around 500M per second
+Perform a minor gc once in 3s, and the old generation will increase by about 1M after each minor gc
+
+
+Api Server
+-------------------------------------------------- ------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSize -XX:LargePageSize +UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/opt/oom"
+
+Start a process every 1s, 20 tasks, each task sleep 10s
+t_ds_process_instance 80 process instances
+
+Minor gc occurs once in about 30 minutes
+
+summary
+-------------------------------------------------- -------------------------------------------
+recommended that the heap memory of Master Server is 4g
+recommended that the heap memory of Worker Server is 2g
+recommended that the heap memory of Api Server is 1g
+recommended that the heap memory of Alert Server is 1g
+recommended that the heap memory of Logger Server is 1g
+
+--------------------------------------------中文解释---------------------------------------------------------------
+worker JVM优化
+
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g  -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+4g
+s0 108MB
+s1 108MB
+
+eden 865MB
+
+old 3014MB
+
+metaspace 41MB
+
+
+启动完30s内，就会发生一次Minor GC和两次Full GC
+ S0C    S1C	   S0U    S1U      EC       EU        OC         OU       MC     MU      CCSC   CCSU       YGC     YGCT     FGC     FGCT     GCT   
+110720.0 110720.0  0.0   48623.7 886080.0 607260.9 3086784.0     0.0     42276.0 41076.2 5676.0 5418.5      1      0.066     2      0.305    0.370
+
+推理：
+如果要是老年代满了，引起Full GC，那老年代也不太可能Full GC之后，OU为零，可能性比较小
+然后就是元数据区了，目测MU使用很多，所以调整一下元数据区域大小，
+元数据区域主要存放的是一些类的描述信息和静态变量，如果反射比较多，这个区域可以适当的增大
+建议256MB或者512M，考虑到用户机器内存，姑且设置128M，小一点
+-XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m
+
+优化后启动之后，无Full GC
+ S0C       S1C    S0U    S1U      EC       EU        OC            OU       MC     MU       CCSC   CCSU     YGC     YGCT    FGC    FGCT     GCT   
+209664.0 209664.0  0.0   51195.2 1677824.0 1584070.1 2097152.0     0.0     43136.0 41916.0 5760.0 5425.1      1    0.071   0      0.000    0.071
+
+
+worker 启动20个进程，linux内存占用1.530g，平均每个78MB左右，一个进程
+ PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND                                                         
+ 7782 root      20   0 13.638g 1.530g  23908 S   0.0  1.2   0:56.66 java 
+
+ 此时查看JVM内存，并没有变化
+
+
+示例：
+--------------------------------------------------------------------------------------------
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+ 
+--------------------------------------------------------------------------------------------
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+14分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+--------------------------------------------------------------------------------------------
+2G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+每秒新生代曾2M左右
+
+7分钟进行一次minor gc，survivor 40~50M，无动态年龄判断进入老年代，没有full gc
+
+
+对于JDBC结果集合，有1000条，根据任务实例表测试的，平均有4个任务实例结果集，30s一次yong gc
+每次young gc老年代增加1M
+新生代30M左右每秒
+
+
+
+
+Master JVM优化
+
+4G堆内存
+export DOLPHINSCHEDULER_OPTS="-server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=dump.hprof"
+
+--------------------------------------------------------------------------------------------
+
+每5s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_task_instance 40个任务在运行
+3~4个流程实例
+
+--------------------------------------------------------------------------------------------
+每秒新生代曾40M左右
+40s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+每秒新生代曾500M左右
+3s进行一次minor gc，每次minor gc之后老年代增加1M左右
+
+
+Api Server
+--------------------------------------------------------------------------------------------
+export DOLPHINSCHEDULER_OPTS="-server -Xms1g -Xmx1g -Xmn500m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=128m  -Xss512k -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:LargePageSizeInBytes=128m -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=70 -XX:+PrintGCDetails -Xloggc:gc.log -XX:+HeapDumpOnOutOfMemoryError  -XX:HeapDumpPath=/opt/oom"
+
+每1s启动一个流程，20个任务，每个任务sleep 10s
+t_ds_process_instance 80个流程实例
+
+30分钟左右发生一次minor gc
+
+总结
+---------------------------------------------------------------------------------------------
+建议Master Server的堆内存是4g
+建议Worker Server的堆内存是2g
+建议Api Server的堆内存是1g
+建议Alert Server的堆内存是1g
+建议Logger Server的堆内存是1g
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> Hi,
+Have we tested G1 with CMS?
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>body:</b> &gt; Hi,
+&gt; Have we tested G1 with CMS?
+
+No，in my opinion . G1 suite for large JVM memory, such as 16G or more, currently dolphinscheduler simply JVM memory will not be set so large
+Generally small memory is now ParNew + CMS
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [BUG] Remove redundant import class
-                </div><div><b>body:</b> Command.java
-
-`import com.sun.org.apache.regexp.internal.RE;`
-
-The class is unused and cannot be built in jdk11.
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> fix: remove redundant import class #2109
-                </div><div><b>body:</b> Command.java
-
-`import com.sun.org.apache.regexp.internal.RE;`
-
-The class is unused and cannot be built in jdk11.
-                </div></div></li><li><div><div><b>title:</b> fix: remove redundant import class #2109
-                </div><div><b>body:</b> Command.java
-
-`import com.sun.org.apache.regexp.internal.RE;`
-
-The class is unused and cannot be built in jdk11.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> fix: remove redundant import class #2109
-                </div><div><b>body:</b> Command.java
-
-`import com.sun.org.apache.regexp.internal.RE;`
-
-The class is unused and cannot be built in jdk11.
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                # [Codecov](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110?src=pr&amp;el=h1) Report
-&gt; :exclamation: No coverage uploaded for pull request base (`dev@0e1dd8d`). [Click here to learn what that means](https://docs.codecov.io/docs/error-reference#section-missing-base-commit).
-&gt; The diff coverage is `n/a`.
-
-[![Impacted file tree graph](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110/graphs/tree.svg?width=650&amp;token=bv9iXXRLi9&amp;height=150&amp;src=pr)](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110?src=pr&amp;el=tree)
-
-```diff
-@@          Coverage Diff           @@
-##             dev    #2110   +/-   ##
-======================================
-  Coverage       ?   29.68%           
-  Complexity     ?     1609           
-======================================
-  Files          ?      336           
-  Lines          ?    17821           
-  Branches       ?     2250           
-======================================
-  Hits           ?     5291           
-  Misses         ?    11976           
-  Partials       ?      554
-```
-
-
-
-------
-
-[Continue to review full report at Codecov](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110?src=pr&amp;el=continue).
-&gt; **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
-&gt; `Δ = absolute &lt;relative&gt; (impact)`, `ø = not affected`, `? = missing data`
-&gt; Powered by [Codecov](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110?src=pr&amp;el=footer). Last update [0e1dd8d...a780682](https://codecov.io/gh/apache/incubator-dolphinscheduler/pull/2110?src=pr&amp;el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).
-
-              </div></li><li><div>
-                SonarCloud Quality Gate failed.
-
-[&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/bug.png' alt='Bug' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=BUG) [&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/RatingBadge/A.png' alt='A' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=BUG) [0 Bugs](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=BUG)  
-[&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/vulnerability.png' alt='Vulnerability' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=VULNERABILITY) [&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/RatingBadge/A.png' alt='A' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=VULNERABILITY) [0 Vulnerabilities](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=VULNERABILITY) (and [&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/security_hotspot.png' alt='Security Hotspot' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=SECURITY_HOTSPOT) [1 Security Hotspot](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=SECURITY_HOTSPOT) to review)  
-[&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/code_smell.png' alt='Code Smell' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=CODE_SMELL) [&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/RatingBadge/A.png' alt='A' width='16' height='16' /&gt;](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=CODE_SMELL) [97 Code Smells](https://sonarcloud.io/project/issues?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;resolved=false&amp;types=CODE_SMELL)
-
-[&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/CoverageChart/0.png' alt='19.8%' width='16' height='16' /&gt;](https://sonarcloud.io/component_measures?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;metric=new_coverage&amp;view=list) [19.8% Coverage](https://sonarcloud.io/component_measures?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;metric=new_coverage&amp;view=list)  
-[&lt;img src='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/Duplications/3.png' alt='1.2%' width='16' height='16' /&gt;](https://sonarcloud.io/component_measures?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;metric=new_duplicated_lines_density&amp;view=list) [1.2% Duplication](https://sonarcloud.io/component_measures?id=apache-dolphinscheduler&amp;pullRequest=2110&amp;metric=new_duplicated_lines_density&amp;view=list)
-
-
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                </div></div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

@@ -1,6 +1,8 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 301
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 buffered reader
+              </div></li><li><div>
                  Licensed to the Apache Software Foundation (ASF) under one
  or more contributor license agreements.  See the NOTICE file
  distributed with this work for additional information
@@ -18,1119 +20,351 @@
  specific language governing permissions and limitations
  under the License.
               </div></li><li><div>
-                 expand the sequence column
+                not support
               </div></li><li><div>
-                 query has sequence col
+                EOF
               </div></li><li><div>
-                 if has sequence column, the higher version need to merge the lower versions
+                 if requested length is larger than the capacity of buffer, do not
+ need to copy the character into local buffer.
               </div></li><li><div>
-                 dst sequence column larger than src, don't need to update
+                 namespace doris
               </div></li><li><div>
-                 publish version success
+                 fill the buffer
               </div></li><li><div>
-                 Tuple 1
+                 retry for new content
               </div></li><li><div>
-                 check meta has this tablet
+                 requested bytes missed the local buffer
               </div></li><li><div>
-                 check dir exist
+                 EOF
               </div></li><li><div>
-                 check sequence column already exist in the rollup schema
+                 Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
               </div></li><li><div>
-                 d. if base index has sequence column for unique_keys, rollup should add the sequence column
-              </div></li><li><div>
-                 add the sequence column
-              </div></li><li><div>
-                 check sequence column
-              </div></li><li><div>
-                 check olapTable schema and sequenceCol
-              </div></li><li><div>
-                 check source sequence column is in parsedColumnExprList or Table base schema
-              </div></li><li><div>
-                 no sequence column in load and table schema
-              </div></li><li><div>
-                 analyse sequence column
-              </div></li><li><div>
-                 add sequence column at last
-              </div></li><li><div>
-                 sequence column is value column with REPLACE aggregate type
-              </div></li><li><div>
-                 sequence col is the hidden column
-              </div></li><li><div>
-                 This is common prefix for function column
-              </div></li><li><div>
-                 sequence column name
-              </div></li><li><div>
-                 check whether the OlapTable has sequenceCol
-              </div></li><li><div>
-                 columnExprs has sequence column, don't need to generate the sequence column
-              </div></li><li><div>
-                 add expr for sequence column
-              </div></li><li><div>
-                 add columnExpr for sequence column
-              </div></li><li><div>
-                 add expr for sequence column
-              </div></li><li><div>
-                 there is no "source_sequence" column in the Table
-              </div></li><li><div>
-                 sequence column, it's hidden column
-              </div></li><li><div>
-                 sequence column, it's visible column for user, it's equals to the hidden column
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Support sequence column for UNIQUE_KEYS Table (#4256)
-                </div><div><b>message:</b> Support sequence column for UNIQUE_KEYS Table (#4256)
-
-* add sequence  col
-
-Co-authored-by: yangwenbo6 &lt;yangwenbo3@jd.com&gt;
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Proposal] Doris support version column for REPLACE aggregate type
-                </div><div><b>body:</b> ### BackGround
-Doris currently use REPLACE to update data, but the replacement order cannot be guaranteed for the data import of the same batch. The user needs to guarantee that there is no same key column in the imported data of the same batch to guarantee the replacement order, which is very inconvenient for the user. To solve this problem, we can use a **version** column to specify the replacement order.
-
-### Goal
-The user specifies a **version column** when creating the table. Doris relies on this column to update the data of REPLACE type. The larger version column data can REPLACE the data of the smaller version column, while the data of the smaller version column cannot REPLACE the larger version column data.
-
-### Create Table Interface
-```
-CREATE TABLE `test` (
-`id` bigint(20) NOT NULL,
-`date` date NOT NULL,
-`group_id` bigint(20) NOT NULL,
-`version` int MAX NOT NULL,
-`keyword` varchar(128) REPLACE NOT NULL,
-`clicks` bigint(20) SUM NULL DEFAULT "0" ,
-`cost` bigint(20) SUM NULL DEFAULT "0" 
-) ENGINE=OLAP
-AGGREGATE KEY(`id`, `date`, `group_id`)
-DISTRIBUTED BY HASH(`id`) BUCKETS 16
-PROPERTIES (
-  "replace_version_column" = "version"
-);
-```
-When creating a table, the user simply adds the **replace_version_column** attribute in PROPERTIES to identify the version column, which requires a MAX aggregation type to ensure that only the largest version column is retained for the same key column.
-
-### Query 
-When a user's query does not contain the REPLACE column, the original logic follows. When a user's query contains REPLACE columns, BE needs to extend the Version column on which the REPLACE column depends, and compare the value column when it is aggregated. These operations can be done by extending **Reader return columns**, and in FE，the **isPreAggregation** is OFF because of the REPLACE column is value column in StorageEngine
-，which means the storage engine needs to aggregate the data before returning to scan node，so we can guarantee that the same key columns will be aggregated in Reader.
-
-
-### Compaction
-Base and Cumulative Compaction use Reader to aggregate data, and it use all tablet columns as return columns, so similar to the query processing, we can use Reader for replace based on version columns.
-
-### Load
-With the same batch of data load, Doris uses one or more **MemTable**.  We need to ensure that the same key column in one MemTable, columns of REPLACE type are replaced with version column, while the data in different MemTable is not guaranteed in LOAD because Query and Compaction guarantee the order of replacement.
-
-### RollUp
-If rollup contains a column of REPLACE type, we need the user to add the Replace version column or extend the column automatically.
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                How to generate the value of the `version` column? Is is auto generated? Or it has to be in the user's origin load data?
-              </div></li><li><div>
-                &gt; How to generate the value of the `version` column? Is is auto generated? Or it has to be in the user's origin load data?
-
-it's user's origin load  data
-              </div></li><li><div>
-                I suggest that the columns used for keeping order should not exist in the create table statement, but as a hidden column. When creating a unique table, add a property such as sequence=true, so that be can automatically add a hidden one after the key column. The hidden key column is only used for sorting, so that it can be used as a sorting basis when doing compaction and read. A column may be configed as a sequence column during load
-              </div></li><li><div>
-                &gt; I suggest that the columns used for keeping order should not exist in the create table statement, but as a hidden column. When creating a unique table, add a property such as sequence=true, so that be can automatically add a hidden one after the key column. The hidden key column is only used for sorting, so that it can be used as a sorting basis when doing compaction and read. A column may be configed as a sequence column during load
-
-+1.
-
-The only function of the `version` column is to retain the order information of the data in the business logic. So if the `version` column appears in the table schema explicitly, we cannot control the user's query behavior for this column.
-              </div></li><li><div>
-                According to @morningman @yangzhg 's suggest, I made some corrections
-## name
-use `sequence` column instead of `version` column  for user understand easy.
-
-## Create table
-Use UNIQUE_KEYS instead of AGG_KEYS. Because sequence column is a hidden column,  there is no need to create a `version` column with MAX AGG_TYPE.
-
-```
-CREATE TABLE `test_1` (
-`pin_id` bigint(20) NOT NULL COMMENT "",
-`date` date NOT NULL COMMENT "",
-`group_id` bigint(20) NOT NULL COMMENT "",
-`keyword` varchar(128)  NOT NULL
-) ENGINE=OLAP
-UNIQUE KEY(`pin_id`, `date`, `group_id`)
-PROPERTIES (
-  "function_column.sequence_type" = "int"
-);
-```
-like such example, user need to add `sequence_type` to Identify the sequence column type. It only support the Integer types (int, bigint, largeint) and  time types(date, datetime). User can't query the `sequence_column` hidden in table ,  but can add one column which value is equal to `sequence_column`.  like this
-```
-CREATE TABLE `test_2` (
-`pin_id` bigint(20) NOT NULL COMMENT "",
-`date` date NOT NULL COMMENT "",
-`group_id` bigint(20) NOT NULL COMMENT "",
-`sequence_visiable` int NOT NULL,
-`keyword` varchar(128)  NOT NULL
-) ENGINE=OLAP
-UNIQUE KEY(`pin_id`, `date`, `group_id`)
-PROPERTIES (
-"function_column.sequence_type" = "int"
-);
-```
-Column names are not necessarily "sequence_visiable", this is just an example. The user ensures that the values are same by specifying parameters at LOAD time
-
-## LOAD
-### Stream Load
-`curl --location-trusted -u root -H "columns: pin_id,date,group_id,source_sequence,keyword"  -H "function_column.sequence_col: source_sequence" -T test_load  http://127.0.01:8030/api/test/test_1/_stream_load`
-
-### Broker Load
-```
-LOAD LABEL test.test11
-(
-    DATA INFILE("hdfs://path/to/load_file")
-    INTO TABLE `test_1`
-    FORMAT AS "parquet"
-    (pin_id,date,group_id,source_sequence,keyword)
-    ORDER BY source_sequence
-) with BROKER broker_name (...)
-```
-
-### Routine Load
-```
-CREATE ROUTINE LOAD test_1_job ON test_1
-COLUMNS TERMINATED BY ",",
-(pin_id,date,group_id,source_sequence,keyword)
-ORDER BY source_sequence
-PROPERTIES
-(
-    "desired_concurrent_number"="3",
-    "max_batch_interval" = "30",
-    "max_batch_rows" = "1000000",
-    "max_batch_size" = "509715200"
-) FROM KAFKA
-(
-    "kafka_broker_list" = "...",
-    "kafka_topic" = "...",
-    "property.client.id" = "...",
-    "property.group.id" = "..."
-);
-```
-
-I added a parameter `sequence_col` to identify the source data for the sequence column at load,  because it's hidden column, user need to identify the source column in `columns_mapping`. 
-
-For table `test_2` which has column `sequence_visiable`, user can set "sequence_col" = "sequence_visiable" at properties,  which means the hidden column "sequence_col" is same with the "sequence_visiable" in table, user can query the the column "sequence_visiable" instead of "sequence_col"
-              </div></li><li><div>
-                If user create `sequence_visible` column in table, does it still has a hidden sequence column?
-In my point, it should has.
-              </div></li><li><div>
-                &gt; If user create `sequence_visible` column in table, does it still has a hidden sequence column?
-&gt; In my point, it should has.
-
-yes, it has.  
-              </div></li><li><div><div><b>body:</b> I think it's better to handle the problem in load.
-If you want to preserve the ordering, you can speculate the behavior in the load command.
-CreateTable should not catch this logic, otherwise it's confused to people to understand the create table.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> 
-
-&gt; I think it's better to handle the problem in load.
-&gt; If you want to preserve the ordering, you can speculate the behavior in the load command.
-&gt; CreateTable should not catch this logic, otherwise it's confused to people to understand the create table.
-
-If a sequence column is generated during the Load command phase, we need to consider the case where the user first load and specified a sequence column and then did not, or did not specify a sequence column the first time and then specified a sequence column.  This will make the analysis of the load phase more complicated
-
+                 Read 
+              </div></li><li><div><div><b>comment:</b>  Buffered Reader
+ Add a cache layer between the caller and the file reader to reduce the 
+ times of calls to the read function to speed up. 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                &gt; &gt; I think it's better to handle the problem in load.
-&gt; &gt; If you want to preserve the ordering, you can speculate the behavior in the load command.
-&gt; &gt; CreateTable should not catch this logic, otherwise it's confused to people to understand the create table.
-&gt; 
-&gt; If a sequence column is generated during the Load command phase, we need to consider the case where the user first load and specified a sequence column and then did not, or did not specify a sequence column the first time and then specified a sequence column. This will make the analysis of the load phase more complicated
-
-I think it's a problem about stable sort. If we can ensure the data received lately been flushed lately.
-It seems can solve the problem rightly? 
+                 If the reader need the file size, set it when construct FileReader.
+ There is no other way to set the file size.
               </div></li><li><div>
-                &gt; &gt; &gt; I think it's better to handle the problem in load.
-&gt; &gt; &gt; If you want to preserve the ordering, you can speculate the behavior in the load command.
-&gt; &gt; &gt; CreateTable should not catch this logic, otherwise it's confused to people to understand the create table.
-&gt; &gt; 
-&gt; &gt; 
-&gt; &gt; If a sequence column is generated during the Load command phase, we need to consider the case where the user first load and specified a sequence column and then did not, or did not specify a sequence column the first time and then specified a sequence column. This will make the analysis of the load phase more complicated
-&gt; 
-&gt; I think it's a problem about stable sort. If we can ensure the data received lately been flushed lately.
-&gt; It seems can solve the problem rightly?
-
-yes, it's a problem about stable sort,  I don't understand this "data received lately been flushed lately."  . I think the node responsible for flush data does not guarantee orderly receipt of data，for example, the Broker Load will scan in multiple BE at the same time and send to the corresponding node, so that the order of sending data in the same key column cannot be guaranteed, and the results will be different even if the same source data is loaded multiple times
+                 Seek to the end of the file
               </div></li><li><div>
-                @Youngwb Sorry, I am busy  to forget to reply you. If you add version to data, how to prevent the data lately read with small version?
+                 Seek to a wrong position
               </div></li><li><div>
-                &gt; how to prevent the data lately read with small version?
+                 Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
-The small version cannot replace the data with bigger version,  it will compare the version column(or sequence column) when the key columns are the same.
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
               </div></li><li><div>
-                My problem is how to set version in source data in HDFS?
-If two records have the same key but belongs to different files.
-The version is assigned by load or be assigned in files in HDFS before load?
+                 end namespace doris
               </div></li><li><div>
-                &gt; My problem is how to set version in source data in HDFS?
-&gt; If two records have the same key but belongs to different files.
-&gt; The version is assigned by load or be assigned in files in HDFS before load?
-
-This Version column is a column in the source data and is specified by the user at load time 
+                 Seek to the beginning of the file
               </div></li><li><div>
-                I see it. You want to replace the recored according to the the version specified by user's application.
-If we add a replace property in load command, can we use it to do replace behavior without creating a special table?
+                 buffered_reader_test_file.txt 45 bytes
               </div></li><li><div>
-                &gt; I see it. You want to replace the recored according to the the version specified by user's application.
-&gt; If we add a replace property in load command, can we use it to do replace behavior without creating a special table?
-
-I need to specify the type of sequence column in the create table statement, and If I create a sequence column during the load phase, this columns-adding schema change operation will complicate the load
-
-
+                 if requested length is larger than the capacity of buffer, do not
+ need to copy the character into local buffer.
               </div></li><li><div>
-                How about discuss it using WeChat. It may be efficient.
-My WeChat : 15652918147
-              </div></li><li><div>
-                有两个场景，麻烦看下：
-1、是否支持Aggregate表？即表中有replace(replace_if_not_null)聚合模式以及其他聚合模式。
-2、如果表中有多个replace/replace_if_not_null列，不同列的更新版本是不同的。这类的如何支持？是否要针对列做版本
+                 buffered_reader_test_file 950 bytes
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [optimize] Optimize spark load/broker load reading parquet format file (#3878)
+                </div><div><b>message:</b> [optimize] Optimize spark load/broker load reading parquet format file (#3878)
 
-如表字段为key1, v1(replace）, v2(replace_if_not_null)
-几行数据（默认为大的覆盖小的，如v1.2 可以替换v1.0、v1.1）
-k1, v1.1, (NULL)  =&gt; 表数据为k1, v1.1, null
-k1, v1.0, v2.1   =&gt; 表数据为 k1, v1.1, v2.1
-k1, v1.3, v2.0  =&gt; 表数据为 k1, v1.3, v2.1
-这个的背景是不同的字段的版本时间不同（业务上一般拿数据生产时间作为版本，不同的字段由于在多个数据流计算，导致生产时间不一致）
+Add BufferedReader for reading parquet file via broker
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [optimize] Optimize spark load/broker load reading parquet format file
+                </div><div><b>body:</b> Currently, broker load support reading parquet file from remote, and soon we will use parquet file as be's loading source in spark load.
 
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+But due to the seperated metadata (file meta/column meta/page header...) location of parquet file, broker reader need frequently seek to get data, which leads to a lot of RPCs.  And large amount of RPCs will lead to huge network costs in cross-data-center scene.
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+You can see a big gap of cost in the parquet reading below between non-cross-data-center and cross-data-center scene.
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+(The rpc times means how many times per broker seeks during loading)
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+**spark load**
+|cross-center|rpc times|load time|data size|
+|----|----|----|----|
+|No|15014|60s|560m|
+|Yes|16817|2h|560m|
+|No|169766|8min|5.8G|
+|Yes|150476|14h|5.8G|
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+---
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+**broker load**
+|cross-center|rpc times|load time|data size|
+|----|----|----|----|
+|No|51780|2min|250m|
+|Yes|51413|42min|250m|
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+As a proposal, **I suggest to add a cache buffer array in broker reader reading process.** 
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+**Illustration:**
+When a broker about to seek for a position and get data from remote parquet file, try reading with this position in the cache buffer array. Once the expected data hits the cache buffer array,  then we don't bother to read data from remote parquet file.
+
+Our final purpose is to reduce the number of rpc times as much as we could, so I make some testing to validate. 
+
+**Test:**
+The test data I used is ssb lineorder, the target table is unpartitioned with 8 buckets.
+
+| Field            | Type        | Null | Key   | Default | Extra   |
+|----|----|----|----|----|----|
+| lo_orderkey      | BIGINT      | Yes  | true  | N/A     |         |
+| lo_linenumber    | BIGINT      | Yes  | true  | N/A     |         |
+| lo_custkey       | INT         | Yes  | true  | N/A     |         |
+| lo_partkey       | INT         | Yes  | true  | N/A     |         |
+| lo_suppkey       | INT         | Yes  | true  | N/A     |         |
+| lo_orderdate     | INT         | Yes  | true  | N/A     |         |
+| lo_orderpriotity | VARCHAR(16) | Yes  | false | N/A     | REPLACE |
+| lo_shippriotity  | INT         | Yes  | false | N/A     | SUM     |
+| lo_quantity      | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_extendedprice | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_ordtotalprice | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_discount      | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_revenue       | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_supplycost    | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_tax           | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_commitdate    | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_shipmode      | VARCHAR(11) | Yes  | false | N/A     | REPLACE |
+
+---
+
+**spark load**
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|16817|2h|560m|N/A|
+|Yes|613|3min|560m|128k|
+|Yes|529|3min|560m|512k|
+|Yes|285|3min|560m|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|15014|60s|560m|N/A|
+|No|634|33s|560m|128k|
+|No|526|29s|560m|512k|
+|No|423|27s|560m|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|150476|14h|5.8g|N/A|
+|Yes|6547|45min|5.8g|128k|
+|Yes|5670|37min|5.8g|512k|
+|Yes|5598|41min|5.8g|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|169766|8min|5.8g|N/A|
+|No|6773|5min|5.8g|128k|
+|No|5667|4min|5.8g|512k|
+|No|5879|5min|5.8g|1m|
+
+---
+
+**broker load**
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|51413|42min|250m|N/A|
+|Yes|1873|20min|250m|512k|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|51780|2min|250m|N/A|
+|No|1798|55s|250m|512k|
+
+It can be seen that whether it is cross-data-center or not, adding the cache buffer array can reduce the number of RPC and improve the loading performance.
+
+May be there still improve space in the Cache Policy, such as LRU-cache or someting else, we should try that gradually later.
 
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+                </div></div></li><li><div><div><b>title:</b> [optimize] Optimize spark load/broker load reading parquet format file
+                </div><div><b>body:</b> Currently, broker load support reading parquet file from remote, and soon we will use parquet file as be's loading source in spark load.
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+But due to the seperated metadata (file meta/column meta/page header...) location of parquet file, broker reader need frequently seek to get data, which leads to a lot of RPCs.  And large amount of RPCs will lead to huge network costs in cross-data-center scene.
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+You can see a big gap of cost in the parquet reading below between non-cross-data-center and cross-data-center scene.
 
-                </div></div></li><li><div><div><b>title:</b> Support sequence column for UNIQUE_KEYS Table
-                </div><div><b>body:</b> For #3930 
+(The rpc times means how many times per broker seeks during loading)
 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                how about checking sequence_col_idx != -1 instead of _has_sequence_col
+**spark load**
+|cross-center|rpc times|load time|data size|
+|----|----|----|----|
+|No|15014|60s|560m|
+|Yes|16817|2h|560m|
+|No|169766|8min|5.8G|
+|Yes|150476|14h|5.8G|
+
+---
+
+**broker load**
+|cross-center|rpc times|load time|data size|
+|----|----|----|----|
+|No|51780|2min|250m|
+|Yes|51413|42min|250m|
+
+As a proposal, **I suggest to add a cache buffer array in broker reader reading process.** 
+
+**Illustration:**
+When a broker about to seek for a position and get data from remote parquet file, try reading with this position in the cache buffer array. Once the expected data hits the cache buffer array,  then we don't bother to read data from remote parquet file.
+
+Our final purpose is to reduce the number of rpc times as much as we could, so I make some testing to validate. 
+
+**Test:**
+The test data I used is ssb lineorder, the target table is unpartitioned with 8 buckets.
+
+| Field            | Type        | Null | Key   | Default | Extra   |
+|----|----|----|----|----|----|
+| lo_orderkey      | BIGINT      | Yes  | true  | N/A     |         |
+| lo_linenumber    | BIGINT      | Yes  | true  | N/A     |         |
+| lo_custkey       | INT         | Yes  | true  | N/A     |         |
+| lo_partkey       | INT         | Yes  | true  | N/A     |         |
+| lo_suppkey       | INT         | Yes  | true  | N/A     |         |
+| lo_orderdate     | INT         | Yes  | true  | N/A     |         |
+| lo_orderpriotity | VARCHAR(16) | Yes  | false | N/A     | REPLACE |
+| lo_shippriotity  | INT         | Yes  | false | N/A     | SUM     |
+| lo_quantity      | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_extendedprice | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_ordtotalprice | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_discount      | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_revenue       | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_supplycost    | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_tax           | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_commitdate    | BIGINT      | Yes  | false | N/A     | SUM     |
+| lo_shipmode      | VARCHAR(11) | Yes  | false | N/A     | REPLACE |
+
+---
+
+**spark load**
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|16817|2h|560m|N/A|
+|Yes|613|3min|560m|128k|
+|Yes|529|3min|560m|512k|
+|Yes|285|3min|560m|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|15014|60s|560m|N/A|
+|No|634|33s|560m|128k|
+|No|526|29s|560m|512k|
+|No|423|27s|560m|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|150476|14h|5.8g|N/A|
+|Yes|6547|45min|5.8g|128k|
+|Yes|5670|37min|5.8g|512k|
+|Yes|5598|41min|5.8g|1m|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|169766|8min|5.8g|N/A|
+|No|6773|5min|5.8g|128k|
+|No|5667|4min|5.8g|512k|
+|No|5879|5min|5.8g|1m|
+
+---
+
+**broker load**
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|Yes|51413|42min|250m|N/A|
+|Yes|1873|20min|250m|512k|
+
+|cross-center|rpc times|load time|data size|buffer size|
+|----|----|----|----|----|
+|No|51780|2min|250m|N/A|
+|No|1798|55s|250m|512k|
+
+It can be seen that whether it is cross-data-center or not, adding the cache buffer array can reduce the number of RPC and improve the loading performance.
+
+May be there still improve space in the Cache Policy, such as LRU-cache or someting else, we should try that gradually later.
+
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [optimize] Optimize spark load/broker load reading parquet format file
+                </div><div><b>body:</b> Please see the description in #3877 .
+spark load #3433 
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                Great job
+              </div></li><li><div><div><b>body:</b> @xy720 Hi, Please add the UT for new BufferedReader class, Thanks.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Please add the comment to describe why do we need this class, and when should we use it.
               </div></li><li><div>
-                why do not check if sequenceColName ia alread exist in rollupSchema
+                Let the caller print the log, not here.
               </div></li><li><div>
-                not using ？
+                ```suggestion
+    // If the reader need the file size, set it when construct FileReader.
+```
               </div></li><li><div>
-                mistake, I have already correct it
+                ```suggestion
+    Status _fill();
+```
               </div></li><li><div>
-                add check Done
+                ```suggestion
+    Status _read_once(int64_t position, int64_t nbytes, int64_t* bytes_read, void* out);
+```
               </div></li><li><div>
-                modified
-              </div></li><li><div><div><b>body:</b> indent？
+                Is it necessary to fill() when open()?
+              </div></li><li><div>
+                What is this retry for? add comment for it.
+              </div></li><li><div>
+                when will `position &gt; _buffer_limit`?
+              </div></li><li><div>
+                Yes. If not call fill() in open(), the actual length of the buffer will be 0 when user call read().
+              </div></li><li><div>
+                ok
+              </div></li><li><div>
+                done
+              </div></li><li><div>
+                done
+              </div></li><li><div>
+                done
+              </div></li><li><div>
+                ok
+              </div></li><li><div><div><b>body:</b> You need to check the result, or the unit test is meaningless
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                check the `buf_len` after `read()`
+              </div></li><li><div>
+                should it be `nbytes &gt; _buffer_size ` ?
+              </div></li><li><div>
+                You are right.
+              </div></li><li><div>
+                what is "readat ?"
+              </div></li><li><div>
+                &gt; what is "readat ?"
+
+Like `pread`
+              </div></li><li><div><div><b>body:</b> Yes, it's confusing.  Better named it as pread request.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> maybe this construct funciton can be remove, for this is duplicated code.
+you can add default paremerts to constructor function bellow.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                fix
-              </div></li><li><div>
-                add AggregateType.MAX to unique table ??
-              </div></li><li><div>
-                I  have updated, sequence column use REPLACE 
+                good
               </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

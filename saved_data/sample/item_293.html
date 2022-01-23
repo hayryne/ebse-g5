@@ -1,151 +1,141 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 293
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> AVRO-2603: Simplify and Clean Up Assertions (#696)
-                </div><div><b>message:</b> AVRO-2603: Simplify and Clean Up Assertions (#696)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                *
+ * This is a very specific test that verifies that if the NettyTransceiver fails
+ * to connect it cleans up the netty channel that it has created.
+ 
+              </div></li><li><div>
+                 closing the server socket will actually free up the open channel in the
+ transceiver, which would have hung otherwise (pre AVRO-1407)
+              </div></li><li><div>
+                 all that's left is Error
+              </div></li><li><div>
+                 must attempt to clean up any allocated channel future
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> AVRO-1407: Java: Fix infinite loop on slow connect in NettyTransceiver.  Contributed by Gareth Davis.
+                </div><div><b>message:</b> AVRO-1407: Java: Fix infinite loop on slow connect in NettyTransceiver.  Contributed by Gareth Davis.
 
+git-svn-id: https://svn.apache.org/repos/asf/avro/trunk@1641894 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit fbaf3c399e2f34e57008d8625c76f0543a3cadf4)
 
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> AVRO-2603: Simplify and Clean Up Assertions
-                </div><div><b>body:</b> ### Jira
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> NettyTransceiver can cause a infinite loop when slow to connect
+                </div><div><b>description:</b> When a new {{NettyTransceiver}} is created it forces the channel to be allocated and connected to the remote host. it waits for the connectTimeout ms on the [connect channel future|https://github.com/apache/avro/blob/1579ab1ac95731630af58fc303a07c9bf28541d6/lang/java/ipc/src/main/java/org/apache/avro/ipc/NettyTransceiver.java#L271] this is obivously a good thing it's only that on being unsuccessful, ie {{!channelFuture.isSuccess()}} an exception is thrown and the call to the constructor fails with an {{IOException}}, but has the potential to leave a active channel associated with the {{ChannelFactory}}
 
-- [x] My PR addresses part of [AVRO-2603](https://issues.apache.org/jira/browse/AVRO-2603).
-- [x] My PR references that ticket in the PR title.
-- [x] My PR adds no dependencies.
+The problem is that a Netty {{NioClientSocketChannelFactory}} will not shutdown if there are active channels still around and if you have supplied the {{ChannelFactory}} to the {{NettyTransceiver}} then  you will not be able to cancel it by calling {{ChannelFactory.releaseExternalResources()}} like the [Flume Avro RPC client does|https://github.com/apache/flume/blob/b8cf789b8509b1e5be05dd0b0b16c5d9af9698ae/flume-ng-sdk/src/main/java/org/apache/flume/api/NettyAvroRpcClient.java#L158]. In order to recreate this you need a very laggy network, where the connect attempt takes longer than the connect timeout but does actually work, this very hard to organise in a test case, although I do have a test setup using vagrant VM's that recreates this everytime, using the Flume RPC client and server.
 
-### Tests
+The following stack is from a production system, it won't ever leave recover until the channel is disconnected (by forcing a disconnect at the remote host) or restarting the JVM.
 
-- [x] My PR improves an existing test.
+{noformat:title=Production stack trace}
+"TLOG-0" daemon prio=10 tid=0x00007f581c7be800 nid=0x39a1 waiting on condition [0x00007f57ef9f2000]
+  java.lang.Thread.State: TIMED_WAITING (parking)
+  at sun.misc.Unsafe.park(Native Method)
+  parking to wait for &lt;0x00000007218b16e0&gt; (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
+  at java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:196)
+  at java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:2025)
+  at java.util.concurrent.ThreadPoolExecutor.awaitTermination(ThreadPoolExecutor.java:1253)
+  at org.jboss.netty.util.internal.ExecutorUtil.terminate(ExecutorUtil.java:103)
+  at org.jboss.netty.channel.socket.nio.AbstractNioWorkerPool.releaseExternalResources(AbstractNioWorkerPool.java:80)
+  at org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory.releaseExternalResources(NioClientSocketChannelFactory.java:181)
+  at org.apache.flume.api.NettyAvroRpcClient.connect(NettyAvroRpcClient.java:142)
+  at org.apache.flume.api.NettyAvroRpcClient.connect(NettyAvroRpcClient.java:101)
+  at org.apache.flume.api.NettyAvroRpcClient.configure(NettyAvroRpcClient.java:564)
+  locked &lt;0x00000006c30ae7b0&gt; (a org.apache.flume.api.NettyAvroRpcClient)
+  at org.apache.flume.api.RpcClientFactory.getInstance(RpcClientFactory.java:88)
+  at org.apache.flume.api.LoadBalancingRpcClient.createClient(LoadBalancingRpcClient.java:214)
+  at org.apache.flume.api.LoadBalancingRpcClient.getClient(LoadBalancingRpcClient.java:205)
+  locked &lt;0x00000006a97b18e8&gt; (a org.apache.flume.api.LoadBalancingRpcClient)
+  at org.apache.flume.api.LoadBalancingRpcClient.appendBatch(LoadBalancingRpcClient.java:95)
+  at com.ean.platform.components.tlog.client.service.AvroRpcEventRouter$1.call(AvroRpcEventRouter.java:45)
+  at com.ean.platform.components.tlog.client.service.AvroRpcEventRouter$1.call(AvroRpcEventRouter.java:43)
+{noformat}
 
-### Commits
-
-- [x] My commits all reference Jira issues in their subject lines.
-- [x] My commits follow the guidelines from "[How to write a good git commit message](https://chris.beams.io/posts/git-commit/)":
-
-### Documentation
-
-- [x] No new functionality or documentation.
-
-                </div></div></li><li><div><div><b>title:</b> AVRO-2603: Simplify and Clean Up Assertions
-                </div><div><b>body:</b> ### Jira
-
-- [x] My PR addresses part of [AVRO-2603](https://issues.apache.org/jira/browse/AVRO-2603).
-- [x] My PR references that ticket in the PR title.
-- [x] My PR adds no dependencies.
-
-### Tests
-
-- [x] My PR improves an existing test.
-
-### Commits
-
-- [x] My commits all reference Jira issues in their subject lines.
-- [x] My commits follow the guidelines from "[How to write a good git commit message](https://chris.beams.io/posts/git-commit/)":
-
-### Documentation
-
-- [x] No new functionality or documentation.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Refactor test_tether_word_count.py
-                </div><div><b>description:</b> [https://github.com/apache/avro/blob/master/lang/py/test/test_tether_word_count.py] needs to be refactored:
- # -It's contained almost entirely in a single function. Setup and teardown should be isolated from the test itself.-
- # -Most of the code takes place in a large try/finally block that can obscure legitimate test failures.-
- # The test creates unnecessary files. Instead of creating a script to export {{PYTHONPATH}}, we can use&nbsp;[{{subprocess.Popen}}'s&nbsp;{{env}} parameter|https://docs.python.org/2/library/subprocess.html#subprocess.Popen] to provide the environment we want.
- # -The exit status of the subprocess itself is not checked, which can lead to missed test failures.- (Fixed in [#693|https://github.com/apache/avro/pull/693])
+The solution is very simple, and a patch should be along in a moment.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Commit 360f31b298ed5f6ad3c88aa25b7fb444cb0f144a in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=360f31b ]
+                Patch attached.
 
-AVRO-2603: Clean Up Imports (#684)
+I'm afraid I've been unable to create a unit test, I'm in the process of rewriting my test setup/rig to not require internal resources and be useful.
 
+              </div></li><li><div><div><b>body:</b> We were bitten by this many times with Flume OG.
+
+After many iterations of fixes to the NettyTransceiver code, we found it much easier and less buggy to simply use a Netty ChannelGroup to make sure that there are no race conditions between Channel connections and releaseExternalResources cleanup.
+
+FYI, in case you find it useful our patched code was as follows: 
+https://github.com/frankgrimes97/flume/blob/418397479853f836d5845c4894f5a43e654628a9/flume-core/src/main/java/com/cloudera/flume/handlers/avro/AvroNettyTransceiver.java
+
+Cheers!
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Thanks.. I've being having some similar thoughts and have started hacking away at https://github.com/gid79/flume-async.
+
+I'll being having a good look at the your Transceiver.
+              </div></li><li><div>
+                Why can't the channelFuture be closed in the finally clause?
+              </div></li><li><div>
+                10 months to respond doesn't seem too bad.... sorry.
+
+The channel only needs to be closed only on an exception, hence the catch Throwable.  The core problem is that the constructor is allocating resources that can't aren't reachable if the constructor fails.
+              </div></li><li><div><div><b>body:</b> Is it possible to add a unit test for this?
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                I'll have a bash now, from memory it was rather hard to recreate
+              </div></li><li><div>
+                test case that demonstrates the issue.
+
+Applying this shows the issue. It can be made to show it really clearly if you comment out the serverSocket.close() as the failing test will never terminate.
+
+applying the actual code patch fixes the test.
 
               </div></li><li><div>
-                I've merged some improvements to this test, but this ticket is still WIP.
+                replacement for AVRO-1407-1.patch which doesn't duplicate a one of the debug statements
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #752 (See [https://builds.apache.org/job/AvroJava/752/])
-AVRO-2603: Clean Up Imports (#684) (github: [https://github.com/apache/avro/commit/360f31b298ed5f6ad3c88aa25b7fb444cb0f144a])
-* (edit) lang/py/test/test_tether_word_count.py
-
+                I haven't gone nuts with the test in that it only verifies the main failure case... it doesn't verify that none connect failures are propagated correctly.
               </div></li><li><div>
-                Commit ce91b2e67031bd0c0c6fd899ab76fc28d8d5dda4 in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=ce91b2e ]
+                Commit 1641894 from [~cutting] in branch 'avro/trunk'
+[ https://svn.apache.org/r1641894 ]
 
-AVRO-2603: Context Managers to Manage Resources (#689)
-
-Use the Python `with` block better to ensure file descriptors and other resources get closed.
+AVRO-1407: Java: Fix infinite loop on slow connect in NettyTransceiver.  Contributed by Gareth Davis.
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #758 (See [https://builds.apache.org/job/AvroJava/758/])
-AVRO-2603: Context Managers to Manage Resources (#689) (github: [https://github.com/apache/avro/commit/ce91b2e67031bd0c0c6fd899ab76fc28d8d5dda4])
-* (edit) lang/py/test/test_tether_word_count.py
-
+                I committed this.  Thanks, Gareth!
               </div></li><li><div>
-                Commit eb3f51e7b5c9f87ed5fa9a6a10dd88cd5ec62faf in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=eb3f51e ]
-
-AVRO-2603: Check Exit Status of Tether Tool Command (#693)
-
+                SUCCESS: Integrated in AvroJava #502 (See [https://builds.apache.org/job/AvroJava/502/])
+AVRO-1407: Java: Fix infinite loop on slow connect in NettyTransceiver.  Contributed by Gareth Davis. (cutting: rev 1641894)
+* /avro/trunk/CHANGES.txt
+* /avro/trunk/lang/java/ipc/src/main/java/org/apache/avro/ipc/NettyTransceiver.java
+* /avro/trunk/lang/java/ipc/src/test/java/org/apache/avro/ipc/NettyTransceiverWhenFailsToConnect.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #760 (See [https://builds.apache.org/job/AvroJava/760/])
-AVRO-2603: Check Exit Status of Tether Tool Command (#693) (github: [https://github.com/apache/avro/commit/eb3f51e7b5c9f87ed5fa9a6a10dd88cd5ec62faf])
-* (edit) lang/py/test/test_tether_word_count.py
+                [~sacharya] it seems this is an old bugfix, the fix looks compatible with 1.7 branch, and the fix version is 1.7.8. Should this also be backported to brach-1.7?
+              </div></li><li><div>
+                Yes.
+Feel free to cherry-pick it back to 1.7.8.
+I am for the time being removing the release version 1.7.8 from the Jira
+              </div></li><li><div>
+                Commit 40733f9ab971c7f3fa26bb6c1a2f6dbf88b2a612 in avro's branch refs/heads/branch-1.7 from [~cutting]
+[ https://git-wip-us.apache.org/repos/asf?p=avro.git;h=40733f9 ]
+
+AVRO-1407: Java: Fix infinite loop on slow connect in NettyTransceiver.  Contributed by Gareth Davis.
+
+git-svn-id: https://svn.apache.org/repos/asf/avro/trunk@1641894 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit fbaf3c399e2f34e57008d8625c76f0543a3cadf4)
 
               </div></li><li><div>
-                Commit 77fa25b5a65805f3067c065b9ff46eaf2c2f0897 in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=77fa25b ]
-
-AVRO-2603: Simplify and Clean Up Assertions (#696)
-
-
-              </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #761 (See [https://builds.apache.org/job/AvroJava/761/])
-AVRO-2603: Simplify and Clean Up Assertions (#696) (github: [https://github.com/apache/avro/commit/77fa25b5a65805f3067c065b9ff46eaf2c2f0897])
-* (edit) lang/py/test/test_tether_word_count.py
-
-              </div></li><li><div>
-                Commit df663c511b640f912b673f55c0c8b679996b6c79 in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=df663c5 ]
-
-AVRO-2603: Setup and Teardown (#698)
-
-
-              </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #767 (See [https://builds.apache.org/job/AvroJava/767/])
-AVRO-2603: Setup and Teardown (#698) (github: [https://github.com/apache/avro/commit/df663c511b640f912b673f55c0c8b679996b6c79])
-* (edit) lang/py/test/test_tether_word_count.py
-
-              </div></li><li><div>
-                Commit 29db1adf5b9052d6d57a5c9f9e855a44e7c8d84b in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=29db1ad ]
-
-AVRO-2603: Provide PYTHONPATH in Environment (#706)
-
-* AVRO-2603: Provide PYTHONPATH in Environment
-
-Avoid creating an unnecessary shell script by using the tool invocation to pass command args and by providing appropriate environment variables to the parent java process.
-
-Co-Authored-By: RyanSkraba &lt;ryan@skraba.com&gt;
-              </div></li><li><div>
-                Commit 29db1adf5b9052d6d57a5c9f9e855a44e7c8d84b in avro's branch refs/heads/master from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=29db1ad ]
-
-AVRO-2603: Provide PYTHONPATH in Environment (#706)
-
-* AVRO-2603: Provide PYTHONPATH in Environment
-
-Avoid creating an unnecessary shell script by using the tool invocation to pass command args and by providing appropriate environment variables to the parent java process.
-
-Co-Authored-By: RyanSkraba &lt;ryan@skraba.com&gt;
-              </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build AvroJava #779 (See [https://builds.apache.org/job/AvroJava/779/])
-AVRO-2603: Provide PYTHONPATH in Environment (#706) (github: [https://github.com/apache/avro/commit/29db1adf5b9052d6d57a5c9f9e855a44e7c8d84b])
-* (edit) lang/py/test/test_tether_word_count.py
-
-              </div></li><li><div>
-                Commit 76611fcf44b5b9330213163330195a1a82c24d67 in avro's branch refs/heads/branch-1.9 from Michael A. Smith
-[ https://gitbox.apache.org/repos/asf?p=avro.git;h=76611fc ]
-
-AVRO-2603: Clean Up Imports (#684)
-
-
+                Thanks Suraj, backported to branch-1.7
               </div></li></ol></div></div></html>

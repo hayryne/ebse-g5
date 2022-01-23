@@ -1,63 +1,145 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 65
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 insecure: only use for tests!!!!
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-2019: force Jetty to use insecure randomness source when running tests
-                </div><div><b>message:</b> SOLR-2019: force Jetty to use insecure randomness source when running tests
+                
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                *
+   * @return redaction string to be used instead of the value.
+   
+              </div></li><li><div>
+                *
+   * Returns if the given system property should be redacted.
+   *
+   * @param name The system property that is being checked.
+   * @return true if property should be redacted.
+   
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-10076: Hide keystore and truststore passwords from /admin/info/* outputs.
+                </div><div><b>message:</b> SOLR-10076: Hide keystore and truststore passwords from /admin/info/* outputs.
 
-git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/branch_3x@981267 13f79535-47bb-0310-9956-ffa450edef68
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Hiding keystore and truststore passwords from /admin/info/* outputs
+                </div><div><b>description:</b> Passing keystore and truststore password is done by system properties, via cmd line parameter.
+As result, {{/admin/info/properties}} and {{/admin/info/system}} will print out the received password.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Jetty sometimes randomly takes a long time to start
-                </div><div><b>description:</b> I'm hitting this Jetty issue when running Solr's tests that spawn a Jetty:
-
-    http://jira.codehaus.org/browse/JETTY-331
-
-It seems to be caused by this root cause:
-
-    http://bugs.sun.com/view_bug.do?bug_id=6202721
-
-Whereby, somehow, Jetty is trying to use cryptographically secure source of randomness to seed seed its HashSessionIdManager.  My box doesn't have enough entropy so the read blocks for sometimes 10s of seconds!
-
-If I forcefully symlink /dev/random -&gt; /dev/urandom, that fixes the hang.  Likewise, if I edit the JRE's java.security to  set securerandom.source=file:/dev/./urandom, that also fixes it.  But I think we can workaround this more "generally" by doing the workaround suggested in the Jetty issue (pass java.util.Random not java.security.SecureRandom).
-
-However, it's still not clear how widespread / what evns this issue really affects (besides mine)...
+Proposing solution to automatically redact value of any system property before output, containing the word {{password}}, and replacing its value with {{******}}.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                It is possible to set Random in the SessionIDManager programmatically using the following code:
+                Is there any objection about the approach? Does this count as API change (assuming that somebody depends on the exposed passwords)?
 
-{code}
-Server server = new Server();
-HashSessionIdManager idManager = new HashSessionIdManager();
-idManager.setRandom(new Random());
-server.setSessionIdManager(idManager);
-{code}
+If there is no objection, I will start working on the patch.
               </div></li><li><div>
-                here is a patch (not for committing) to see if it resolves it. if so i think we should do this from tests...
-              </div></li><li><div>
-                That patch works for me!!
-              </div></li><li><div><div><b>body:</b> seems slightly hackish, but is it ok to check a sysprop in JettySolrRunner to enable this?
-we could then set it from ant for tests and be done with it.
+                Been thinking about the same, but perhaps instead of a generic rule about containing password, we could have a property somewhere for what paths to hide. I would also like to hide the content of some ZK nodes such as security.json, and there may also be other places where passwords are exposed through props or APIs...
 
+Ideal would be if this could be coupled with Authorization, so that certain info could be controlled through group membership in AuthorizationPlugin?
+              </div></li><li><div>
+                bq. Been thinking about the same, but perhaps instead of a generic rule about containing password, we could have a property somewhere for what paths to hide.
+
+Thanks [~janhoy] for the feedback! I was also thinking of a pattern-based parameter masking for input password. I prepared a patch with a RedactionUtils that I will extend with external parameters and upload it shortly.
+
+bq. I would also like to hide the content of some ZK nodes such as security.json, and there may also be other places where passwords are exposed through props or APIs...
+I was not aware of the security.json exposing password, I created a separate jira for that as well (SOLR-10100).
+
+bq. Ideal would be if this could be coupled with Authorization, so that certain info could be controlled through group membership in AuthorizationPlugin?
+In general, I would not add password visibility based on privileges. I think passwords should not be revertible, as that would expose them to the reliability of the authorization plugin and the admin users' cautiousness. For me it would somewhat beat the purpose of this jira: reducing the exposure of the security credentials. Do you see any business-case when you would grant certain roles to view these passwords?
+              </div></li><li><div>
+                Attaching patch.
+              </div></li><li><div>
+                bq. I was not aware of the security.json exposing password
+Passwords are not exposed. Salted hashes of the passwords are, though.
+
+bq. In general, I would not add password visibility based on privileges. I think passwords should not be revertible, as that would expose them to the reliability of the authorization plugin and the admin users' cautiousness.
+In the case of security.json, we should encourage and try to ensure that proper authorization is in place while starting a Solr cluster.  To an authorized admin user, I don't see why we shouldn't show salted hashes of passwords. Anyway, we can deal with that issue on SOLR-7890/SOLR-10100.
+              </div></li><li><div>
+                Thank you for the feedback, [~ichattopadhyaya].
+
+Do you think the redaction of command line password could be handled as the first patch contains?
+              </div></li><li><div><div><b>body:</b> This looks okay to me. We probably want to push users towards configuring this in a way it's not on the command line though, right? It's nice not to expose it via the web UI when we see it, but you also don't really want it on the command line as that stuff is pretty easy to introspect via people that should not.
+
+Our doc should probably encourage people to use system property on the command line alternatives or we should look at disabling / warning when it's done. I know our start scripts recently still set some of this ssl stuff via the command line, but if that is still the case, we should fix that too.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                patch that checks sysprop, set from 'ant test'
-              </div></li><li><div>
-                I see no problem in havin an insecure hash generator for session ids. When tests are running, the jetty is localhost only and never in production. So in my opinion, the first patch without sysprops is perfectly fine. There is nothing insecure in it.
-              </div></li><li><div>
-                That jetty runner is not a test class.
-              </div></li><li><div>
-                bq. patch that checks sysprop, set from 'ant test'
+                Thank you [~markrmiller@gmail.com] for your comment.
 
-This patch works for me too!
+bq. We probably want to push users towards configuring this in a way it's not on the command line though, right?
+I agree that this is more like a workaround in the current state. It could also work as a second layer of protection if passwords being passed in command line. I would assume that getting the list of running processes on a server would require higher privileges than accessing the admin-ui, which suggests that the passwords should not be exposed there.
+Also, the {{/admin/info/properties}} API would expose password were set differently.
 
-I think this is a good approach (set a system prop)... +1 to commit.
-              </div></li><li><div>
-                bq. That jetty runner is not a test class. 
+bq. I know our start scripts recently still set some of this ssl stuff via the command line, but if that is still the case, we should fix that too.
+Is there a jira for that? I would be happy looking into it.
+              </div></li><li><div><div><b>body:</b> So I think we want to make sure the search for 'password' is case insensitive due to things like javax.net.ssl.trustStorePassword. Could use a test for that too.
 
-Ah there are two of them.
+We should move RedactionUtils.java to org.apache.solr.util probably.
+
+Greg did something similar in Cloudera Search lucene-solr repo as a temporary hack, but used '--REDACTED--' I think that is more clear than the ****** redaction string. 
+
+Given the affect this could have on tools/scripts that read output, I think it's not a huge deal if we changed it, but I don't see a strong reason to do it and that should usually favour back compat, even if we would guess those affected might be very few. We can do it by default in 7 and anyone looking for this in 6.5 and beyond will know they need it and it didn't exist in 6.4 and &lt; and can turn it on. Seems like the least friction.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                [~markrmiller@gmail.com], thank you for the review and comments!
+
+- I added test for case-sensitive property name, it in fact was not properly working.
+- I changed the redaction text to the one that Greg added. Actually this patch is the generalization of his original intent.
+- I made the system property redaction configurable with default true. 6.x backport only need to vary by the default value of that configuration to have it turned off.
               </div></li><li><div>
-                This solves some of the test failures I've been seeing.  +1 to commit!
+                Commit 91c3f78f8fafbd95cd375bb114e80831ba50d525 in lucene-solr's branch refs/heads/master from markrmiller
+[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=91c3f78 ]
+
+SOLR-10076: Hide keystore and truststore passwords from /admin/info/* outputs.
+
               </div></li><li><div>
-                OK I'll commit!
+                Thanks [~manokovacs]! I fixed the testDisabledRedaction tests (was still the same as when enabled), everything else looks good. Can you put up a backport with it defaulting to off?
               </div></li><li><div>
-                Bulk close for 3.1.0 release
+                Commit ddda27e4deab45b9a6bfec8d61319b00f88e27f6 in lucene-solr's branch refs/heads/master from [~cpoerschke]
+[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=ddda27e ]
+
+SOLR-10076: 'String.format(Locale.ROOT,...' instead of (forbidden API) 'String.format(...)'
+
+              </div></li><li><div>
+                Thanks [~markrmiller@gmail.com]! Sorry for the non-finished test, I will be more careful next time.
+
+I attached the 6x backport with default false configuration. It includes [~cpoerschke]'s patch about forbidden API. (Did not know about that, thank you!)
+              </div></li><li><div>
+                Commit 81e85993bd32f6475e762086bbd4f32dec76ca53 in lucene-solr's branch refs/heads/branch_6x from markrmiller
+[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=81e8599 ]
+
+SOLR-10076: Hide keystore and truststore passwords from /admin/info/* outputs.
+
+              </div></li><li><div>
+                Thanks [~manokovacs]! We missed 6.5, so I have to move the changes entry on master and then I'll close.
+              </div></li><li><div>
+                Commit e11c86f6e4f85fc4ea561283cf6d2fa8c8df2208 in lucene-solr's branch refs/heads/master from markrmiller
+[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=e11c86f ]
+
+SOLR-10076: Move changes entry to 6.6 release.
+
               </div></li></ol></div></div></html>

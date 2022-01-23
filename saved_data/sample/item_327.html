@@ -1,90 +1,39 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 327
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> GUACAMOLE-234: Exclude slf4j from Apache Directory dependency.
-                </div><div><b>message:</b> GUACAMOLE-234: Exclude slf4j from Apache Directory dependency.
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Migrate from JLDAP to Apache Directory LDAP API
-                </div><div><b>description:</b> The LDAP support currently uses [JLDAP|http://www.openldap.org/jldap/], but that library has been unmaintained for several years now (no changes whatsoever since 2009). Migrating away from such a library might be a good idea. The Apache Directory project has produced an LDAP client API which could serve as a replacement:
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> #268: Remove connection mockup stub.
+                </div><div><b>message:</b> #268: Remove connection mockup stub.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> GUACAMOLE-450: Use latest version of Tomcat 8.5.x by default for Docker image.
+                </div><div><b>body:</b> 
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Change Tomcat Version in Dockerfile to major release
+                </div><div><b>description:</b> Currently the Dockerfile specifies the Tomcat version down to the patch level (TOMCAT_VERSION=8.0.20), which isn't ideal.
+Tomcat 8.0.20 has by now several major security issues which are fixed in the lasted release 8.0.47.
 
-http://directory.apache.org/api/
+I checked out the current github source and build / (shortly) tested successful with 8.0 and 8 as version tag. Which leads Docker to pull the current 8.0.47 respectively 8.5.23 tomcat image.
 
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Was glancing at this, and the Apache Directory LDAP API says it requires Java 7 or later.  IIRC, Guacamole is built against JRE 6 compatibility - is this going to cause any problems trying to move to the this API?
-              </div></li><li><div>
-                PR very soon.
-              </div></li><li><div>
-                PR submitted.
-              </div></li><li><div>
-                Took a new stab at this, PR is ready for review and testing.
-              </div></li><li><div>
-                Coverity reports the following:
+Considering the end of life for Apache Tomcat 8.0.x in June 2018 I would suggest changing the Tomcat version directly to the major 8 branch.
+(furthermore an automated build up-to-date official guac image with an current tomcat would be good for everyone.)
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> {quote}
+Considering the end of life for Apache Tomcat 8.0.x in June 2018 I would suggest changing the Tomcat version directly to the major 8 branch.
+{quote}
 
-{code:none}
-*** CID 1452278:  Resource leaks  (RESOURCE_LEAK)
-/extensions/guacamole-auth-ldap/src/main/java/org/apache/guacamole/auth/ldap/ObjectQueryService.java: 226 in org.apache.guacamole.auth.ldap.ObjectQueryService.search(org.apache.directory.ldap.client.api.LdapNetworkConnection, org.apache.directory.api.ldap.model.name.Dn, org.apache.directory.api.ldap.model.filter.ExprNode, int)()
-220                         }
-221                         
-222                     }
-223                     
-224                 }
-225     
-&gt;&gt;&gt;     CID 1452278:  Resource leaks  (RESOURCE_LEAK)
-&gt;&gt;&gt;     Variable "results" going out of scope leaks the resource it refers to.
-226                 return entries;
-227     
-228             }
-229             catch (CursorException | LdapException e) {
-230                 throw new GuacamoleServerException("Unable to query list of "
-231                         + "objects from LDAP directory.", e);
-{code}
+The version definitely needs to be updated, and will continually need to be updated, however I'm wary of pointing to just the major version tag, rather than a specific known-good version, as this has bit us in the past. At an earlier point in the pre-Apache days, the tag was a generic major release tag (at the time, version 7), but a bug which broke WebSocket was released in Tomcat which resulted in the Guacamole Docker image entirely not working:
 
-{code:none}
-*** CID 1452280:  Exceptional resource leaks  (RESOURCE_LEAK)
-/extensions/guacamole-auth-ldap/src/main/java/org/apache/guacamole/auth/ldap/LDAPConnectionService.java: 140 in org.apache.guacamole.auth.ldap.LDAPConnectionService.bindAs(org.apache.directory.api.ldap.model.name.Dn, java.lang.String)()
-134             try {
-135     
-136                 // Connect to LDAP server
-137                 ldapConnection.connect();
-138     
-139                 // Explicitly start TLS if requested
-&gt;&gt;&gt;     CID 1452280:  Exceptional resource leaks  (RESOURCE_LEAK)
-&gt;&gt;&gt;     Variable "ldapConnection" going out of scope leaks the resource it refers to.
-140                 if (confService.getEncryptionMethod() == EncryptionMethod.STARTTLS)
-141                     ldapConnection.startTls();
-142     
-143             }
-144             catch (LdapException e) {
-145                 throw new GuacamoleServerException("Error connecting to LDAP server.", e);
-{code}
+https://github.com/glyptodon/guacamole-docker/commit/1df41e684199d5856d84edd445cbbb1e697658dd
 
-There's also this, but I believe it's a false positive, seeing as it's a debug-level log message:
+In addition to updating the version number, it would probably be better to (somehow) parameterize the Dockerfile such that the Tomcat version can be changed and the image rebuilt, if necessary.
 
-{code:none}
-*** CID 1452279:  Low impact security  (SENSITIVE_DATA_LEAK)
-/extensions/guacamole-auth-ldap/src/main/java/org/apache/guacamole/auth/ldap/ObjectQueryService.java: 189 in org.apache.guacamole.auth.ldap.ObjectQueryService.search(org.apache.directory.ldap.client.api.LdapNetworkConnection, org.apache.directory.api.ldap.model.name.Dn, org.apache.directory.api.ldap.model.filter.ExprNode, int)()
-183          *     information required to execute the query cannot be read from
-184          *     guacamole.properties.
-185          */
-186         public List&lt;Entry&gt; search(LdapNetworkConnection ldapConnection,
-187                 Dn baseDN, ExprNode query, int searchHop) throws GuacamoleException {
-188     
-&gt;&gt;&gt;     CID 1452279:  Low impact security  (SENSITIVE_DATA_LEAK)
-&gt;&gt;&gt;     Leaking persistent secret data, "baseDN". Passing it to "org.slf4j.Logger.debug(java.lang.String, java.lang.Object, java.lang.Object)" stores it to a log file or displays it on the console.
-189             logger.debug("Searching \"{}\" for objects matching \"{}\".", baseDN, query);
-190     
-191             try {
-192     
-193                 LdapConnectionConfig ldapConnectionConfig = ldapConnection.getConfig();
-194                 
-{code}
-              </div></li><li><div><div><b>body:</b> Okay, PR submitted to take care of those two resource leaks, I think...
-https://github.com/apache/guacamole-client/pull/439
+{quote}
+(furthermore an automated build up-to-date official guac image with an current tomcat would be good for everyone.)
+{quote}
+
+It could be useful, yes, however I think ASF release policy does not allow such builds to be intentionally aimed at general consumption. Convenience binaries for an otherwise entirely source release are allowed, but would need to be built from the released source as part of the release process:
+
+http://www.apache.org/legal/release-policy.html#compiled-packages
+
+Continuous, automated builds are technically doable, but would need to be made available only to those that are explicitly made aware that they are not release binaries and are meant for development use only, which is not the intent here:
+
+http://www.apache.org/legal/release-policy.html#host-rc
+
+If the concern is that the Docker images may become frequently out of date due to updates to Tomcat, then the only solutions are for us to be sure to release more frequently (being sure to update the Tomcat version whenever doing so does not break things), or for the packaging of the Docker image itself to move downstream.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Hopefully safe to close out, now :-).
-              </div></li><li><div>
-                Chasing a potential regression on this, per mailing list discussion...
-
-http://apache-guacamole-general-user-mailing-list.2363388.n4.nabble.com/Guacamole-1-1-0-LDAP-issue-td6284.html
-              </div></li><li><div>
-                I believe the issues related to this have been resolved.  Last reported mailing list issue appears to be related to TOTP implementation without ability to modify underlying DB, and not an issue with the implementation of this extensions.
-              </div></li></ol></div></div></html>
+                </div></div></li></ol></div></div></html>

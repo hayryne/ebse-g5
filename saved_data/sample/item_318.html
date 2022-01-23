@@ -1,391 +1,208 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 318
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> THRIFT-2127: Autoconf scripting does not properly account for cross-compile
-                </div><div><b>message:</b> THRIFT-2127: Autoconf scripting does not properly account for cross-compile
-Client: build
-Patch: Frank Earl
-
-Updated patch to add lt_sysroot to help with cross-compiling
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Autoconf scripting does not properly account for cross-compile
-                </div><div><b>description:</b> Trying to get Thrift to Cross-compile within OpenEmbedded to get an ARM based build combined with a full-on SDK for our embedded target.  So far, I'm getting this:
-
-configure:16347: checking for boostlib &gt;= 1.40.0
-configure:16401: arm-poky-linux-gnueabi-g++  -march=armv7-a -mthumb-interwork -mfloat-abi=softfp -mfpu=neon --sysroot=/home/fearl/git/dc_image_build/poky/build/tmp/sysroots/beaglebone -c -O2 -pipe -g -feliminate-unused-debug-types -fpermissive -fvisibility-inlines-hidden  -I/usr/include conftest.cpp &gt;&amp;5
-cc1plus: warning: include location "/usr/include" is unsafe for cross-compilation [-Wpoison-system-directories]
-configure:16401: $? = 0
-
-This means it's grabbing from outside the sysroot- which can present bad results on the cross-compile pass.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                did you set the --includedir flag? please post full configure line
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 implements thrift_transport_open 
               </div></li><li><div>
-                It's automatically set by the OpenEmbedded build recipe if I claim it's an Autotools based build.
-
-configure  --build=x86_64-linux 		  --host=arm-poky-linux-gnueabi 		  --target=arm-poky-linux-gnueabi 		  --prefix=/usr 		  --exec_prefix=/usr 		  --bindir=/usr/bin 		  --sbindir=/usr/sbin 		  --libexecdir=/usr/lib/thrift 		  --datadir=/usr/share 		  --sysconfdir=/etc 		  --sharedstatedir=/com 		  --localstatedir=/var 		  --libdir=/usr/lib 		  --includedir=/usr/include 		  --oldincludedir=/usr/include 		  --infodir=/usr/share/info 		  --mandir=/usr/share/man 		  --disable-silent-rules 		  --disable-dependency-tracking 		  --with-libtool-sysroot=/home/fearl/git/dc_image_build/poky/build/tmp/sysroots/beaglebone  		--with-qt4=no 		--with-csharp=no 		--with-java=no 		--with-erlang=no 		--with-perl=no 		--with-php=no 		--with-ruby=no 		--with-haskell=no 		--with-d=no 		--with-go=no 		--with-python=no 		--with-libevent=no 		--with-zlib=no 
-
-
-Problem is:
-
-1) Re-doing --includedir for a cross compile when you're supposed to use a --with-libtool-sysroot specification for cross-compiling is bogus.  That's supposed to prefix everything else per the help description.
-
-2) It doesn't change anything.  You've got static paths in your macros...
-
-
-		BOOST_ROOT_PATH="$ac_boost_path"
- 	else
-		for ac_boost_path_tmp in /usr /usr/local /opt /opt/local ; do
-
-This does nothing for cross-compilation unless you're building within the Scratchbox2 tool.
-
-Attached is a patch for a "fix" that gets me to the next mess within the PHP Autoconf that's along the same lines.
+                 implements thrift_transport_flush 
               </div></li><li><div>
-                Here's the PHP (Which I wonder why it's doing it since I've turned it off...) phase failure...
-
-configure:3696: result: /usr/include/php5
-configure:3699: checking if debug is enabled
-cc1: warning: include location "/usr/include/php5" is unsafe for cross-compilation [-Wpoison-system-directories]
-configure:3725: result: no
-configure:3728: checking if zts is enabled
-cc1: warning: include location "/usr/include/php5" is unsafe for cross-compilation [-Wpoison-system-directories]
-configure:3754: result: no
-
-I'm betting I find more static path references in the mix.  (Edit: I did- but I'm unsure quite HOW to undo those like I did the upper level ones...)
+                
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ 
               </div></li><li><div>
-                I have the same kind of problems, using Ptxdist to cross-compile. I have to disable zlib, boost and libevent to compile for C++.
-
-Is it planned to be fixed? Is there an old working version?
-
-Thanks.
+                 satisfy -Wall 
               </div></li><li><div>
-                I'm looking at how to make this part of our build better and make phpize not required off the bat if not using the php lib, no immediate fix for it as of yet but hope to have one shortly 
+                 initializes the instance 
               </div></li><li><div>
-                I use Thrift since years on the arm platform, we do this within bitbake recipie:
-{noformat}
-do_configure_prepend () {
-    sed -e '/AC_CONFIG_SUBDIRS/d' -i ${S}/configure.ac
-}
-{noformat}
-which does remove the thrift php extension: 
-{noformat}
-diff --git a/configure.ac b/configure.ac
-index 7eea98f..101263b 100755
---- a/configure.ac
-+++ b/configure.ac
-@@ -255,7 +255,6 @@ AX_THRIFT_LIB(php_extension, [PHP_EXTENSION], yes)
- if test "$with_php_extension" = "yes"; then
-   AC_PATH_PROG([PHP_CONFIG], [php-config])
-   if test -n "$PHP_CONFIG" ; then
--    AC_CONFIG_SUBDIRS([lib/php/src/ext/thrift_protocol])
-     have_php_extension="yes"
-   fi
- fi
-{noformat}
-
-we also have this patch changing AC_RUN_IFELSE to AC_LINK_IFELSE :
-{noformat}
-diff -Nurp thrift-0.9.1.orig/aclocal/ax_lib_event.m4 thrift-0.9.1/aclocal/ax_lib_event.m4
---- thrift-0.9.1.orig/aclocal/ax_lib_event.m4	2013-08-15 16:04:29.000000000 +0200
-+++ thrift-0.9.1/aclocal/ax_lib_event.m4	2013-12-04 15:03:18.319179501 +0100
-@@ -75,7 +75,7 @@ AC_DEFUN([AX_LIB_EVENT_DO_CHECK],
-           AC_LANG_PUSH([C])
-           dnl This can be changed to AC_LINK_IFELSE if you are cross-compiling,
-           dnl but then the version cannot be checked.
--          AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-+          AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-           #include &lt;sys/types.h&gt;
-           #include &lt;event.h&gt;
-           ]], [[
-diff -Nurp thrift-0.9.1.orig/aclocal/ax_lib_zlib.m4 thrift-0.9.1/aclocal/ax_lib_zlib.m4
---- thrift-0.9.1.orig/aclocal/ax_lib_zlib.m4	2013-08-15 16:04:29.000000000 +0200
-+++ thrift-0.9.1/aclocal/ax_lib_zlib.m4	2013-12-04 15:04:57.424865834 +0100
-@@ -73,7 +73,7 @@ AC_DEFUN([AX_LIB_ZLIB_DO_CHECK],
-           #   (defined in the library).
-           AC_LANG_PUSH([C])
-           dnl This can be changed to AC_LINK_IFELSE if you are cross-compiling.
--          AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-+          AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-           #include &lt;zlib.h&gt;
-           #if ZLIB_VERNUM &gt;= 0x$WANT_ZLIB_VERSION
-           #else
-{noformat}
-I guess we should just add an additional parameter to AC_RUN_IFELSE (action-if-cross-compiling), see http://www.gnu.org/software/autoconf/manual/autoconf.html#Runtime
-
-
+                 implements thrift_transport_write 
               </div></li><li><div>
-                Thanks for your comments. It's now compiling, but only when I'm not using libevent and zlib (checking version fail). Notice that I uninstalled Boost, libevent and zlib (dev) on the build machine to make sure it's using the libraries for my target...
-
-I've attached the patch. But, I'm not sure if removing AC_FUNC_MALLOC and AC_FUNC_REALLOC in configure.ac is the best thing to do.
-
-{code}
-diff -rupN thrift-0.9.1.orig/aclocal/ax_boost_base.m4 thrift-0.9.1/aclocal/ax_boost_base.m4
---- thrift-0.9.1.orig/aclocal/ax_boost_base.m4	2013-08-15 10:04:29.000000000 -0400
-+++ thrift-0.9.1/aclocal/ax_boost_base.m4	2014-03-05 08:48:10.198227434 -0500
-@@ -72,7 +72,7 @@ if test "x$want_boost" = "xyes"; then
- 		BOOST_CPPFLAGS="-I$ac_boost_path/include"
- 		BOOST_ROOT_PATH="$ac_boost_path"
- 	else
--		for ac_boost_path_tmp in /usr /usr/local /opt /opt/local ; do
-+		for ac_boost_path_tmp in $lt_sysroot/usr $lt_sysroot/usr/local $lt_sysroot/opt $lt_sysroot/opt/local ; do
- 			if test -d "$ac_boost_path_tmp/include/boost" &amp;&amp; test -r "$ac_boost_path_tmp/include/boost"; then
- 				BOOST_LDFLAGS="-L$ac_boost_path_tmp/lib"
- 				BOOST_CPPFLAGS="-I$ac_boost_path_tmp/include"
-@@ -129,7 +129,7 @@ if test "x$want_boost" = "xyes"; then
- 				done
- 			fi
- 		else
--			for ac_boost_path in /usr /usr/local /opt /opt/local ; do
-+			for ac_boost_path in $lt_sysroot/usr $lt_sysroot/usr/local $lt_sysroot/opt $lt_sysroot/opt/local ; do
- 				if test -d "$ac_boost_path" &amp;&amp; test -r "$ac_boost_path"; then
- 					for i in `ls -d $ac_boost_path/include/boost-* 2&gt;/dev/null`; do
- 						_version_tmp=`echo $i | sed "s#$ac_boost_path##" | sed 's/\/include\/boost-//' | sed 's/_/./'`
-diff -rupN thrift-0.9.1.orig/aclocal/ax_lib_event.m4 thrift-0.9.1/aclocal/ax_lib_event.m4
---- thrift-0.9.1.orig/aclocal/ax_lib_event.m4	2013-08-15 10:04:29.000000000 -0400
-+++ thrift-0.9.1/aclocal/ax_lib_event.m4	2014-03-05 08:48:10.198227434 -0500
-@@ -75,7 +75,7 @@ AC_DEFUN([AX_LIB_EVENT_DO_CHECK],
-           AC_LANG_PUSH([C])
-           dnl This can be changed to AC_LINK_IFELSE if you are cross-compiling,
-           dnl but then the version cannot be checked.
--          AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-+          AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-           #include &lt;sys/types.h&gt;
-           #include &lt;event.h&gt;
-           ]], [[
-@@ -165,7 +165,7 @@ AC_DEFUN([AX_LIB_EVENT],
-             if test -n "$ax_libevent_path"; then
-               AX_LIB_EVENT_DO_CHECK
-             else
--              for ax_libevent_path in "" /usr /usr/local /opt /opt/local /opt/libevent "$LIBEVENT_ROOT" ; do
-+              for ax_libevent_path in "" $lt_sysroot/usr $lt_sysroot/usr/local $lt_sysroot/opt $lt_sysroot/opt/local $lt_sysroot/opt/libevent "$LIBEVENT_ROOT" ; do
-                 AX_LIB_EVENT_DO_CHECK
-                 if test "$success" = "yes"; then
-                   break;
-diff -rupN thrift-0.9.1.orig/aclocal/ax_lib_zlib.m4 thrift-0.9.1/aclocal/ax_lib_zlib.m4
---- thrift-0.9.1.orig/aclocal/ax_lib_zlib.m4	2013-08-15 10:04:29.000000000 -0400
-+++ thrift-0.9.1/aclocal/ax_lib_zlib.m4	2014-03-05 08:48:10.198227434 -0500
-@@ -73,7 +73,7 @@ AC_DEFUN([AX_LIB_ZLIB_DO_CHECK],
-           #   (defined in the library).
-           AC_LANG_PUSH([C])
-           dnl This can be changed to AC_LINK_IFELSE if you are cross-compiling.
--          AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-+          AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-           #include &lt;zlib.h&gt;
-           #if ZLIB_VERNUM &gt;= 0x$WANT_ZLIB_VERSION
-           #else
-@@ -145,7 +145,7 @@ AC_DEFUN([AX_LIB_ZLIB],
-             if test -n "$ax_zlib_path"; then
-               AX_LIB_ZLIB_DO_CHECK
-             else
--              for ax_zlib_path in "" /usr /usr/local /opt /opt/zlib "$ZLIB_ROOT" ; do
-+              for ax_zlib_path in "" $lt_sysroot/usr $lt_sysroot/usr/local $lt_sysroot/opt $lt_sysroot/opt/zlib "$ZLIB_ROOT" ; do
-                 AX_LIB_ZLIB_DO_CHECK
-                 if test "$success" = "yes"; then
-                   break;
-diff -rupN thrift-0.9.1.orig/configure.ac thrift-0.9.1/configure.ac
---- thrift-0.9.1.orig/configure.ac	2013-08-18 11:28:23.000000000 -0400
-+++ thrift-0.9.1/configure.ac	2014-03-05 08:48:10.242260764 -0500
-@@ -214,7 +214,6 @@ AX_THRIFT_LIB(php_extension, [PHP_EXTENS
- if test "$with_php_extension" = "yes"; then
-   AC_PATH_PROG([PHP_CONFIG], [php-config])
-   if test -n "$PHP_CONFIG" ; then
--    AC_CONFIG_SUBDIRS([lib/php/src/ext/thrift_protocol])
-     have_php_extension="yes"
-   fi
- fi
-@@ -350,13 +349,26 @@ AM_CONDITIONAL(HAVE_DEIMOS_OPENSSL, [tes
- AM_CONDITIONAL(WITH_D_SSL_TESTS, [test "$with_d_ssl_tests" = "yes"])
- AC_SUBST(DMD_OPENSSL_FLAGS)
- 
--
-+AC_ARG_ENABLE([tests],
-+  AS_HELP_STRING([--enable-tests], [build tests [default=yes]]),
-+  [], enable_tests=yes
-+)
- have_tests=yes
--if test "$with_tests" = "no"; then
-+if test "$enable_tests" = "no"; then
-   have_tests="no"
- fi
- AM_CONDITIONAL(WITH_TESTS, [test "$have_tests" = "yes"])
- 
-+AC_ARG_ENABLE([tutorial],
-+  AS_HELP_STRING([--enable-tutorial], [build tutorial [default=yes]]),
-+  [], enable_tutorial=yes
-+)
-+have_tutorial=yes
-+if test "$enable_tutorial" = "no"; then
-+  have_tutorial="no"
-+fi
-+AM_CONDITIONAL(WITH_TUTORIAL, [test "$have_tutorial" = "yes"])
-+
- AM_CONDITIONAL(MINGW, false)
- case "${host_os}" in
- *mingw*)
-@@ -454,9 +466,9 @@ AC_CHECK_DECL([AI_ADDRCONFIG], [],
- 
- AC_FUNC_ALLOCA
- AC_FUNC_FORK
--AC_FUNC_MALLOC
-+dnl AC_FUNC_MALLOC
- AC_FUNC_MEMCMP
--AC_FUNC_REALLOC
-+dnl AC_FUNC_REALLOC
- AC_FUNC_SELECT_ARGTYPES
- AC_FUNC_STAT
- AC_FUNC_STRERROR_R
-diff -rupN thrift-0.9.1.orig/Makefile.am thrift-0.9.1/Makefile.am
---- thrift-0.9.1.orig/Makefile.am	2013-08-15 20:14:48.000000000 -0400
-+++ thrift-0.9.1/Makefile.am	2014-03-05 08:48:10.242260764 -0500
-@@ -19,13 +19,15 @@
- 
- ACLOCAL_AMFLAGS = -I ./aclocal
- 
--SUBDIRS = compiler/cpp lib tutorial
-+SUBDIRS = compiler/cpp lib
- 
- if WITH_TESTS
- SUBDIRS += test
- endif
- 
-+if WITH_TUTORIAL
- SUBDIRS += tutorial
-+endif
- 
- dist-hook:
- 	find $(distdir) -type f \( -iname ".DS_Store" -or -iname "._*" -or -iname ".gitignore" \) | xargs rm -rf
-{code}
+                 implements thrift_transport_is_open 
               </div></li><li><div>
-                +1 - Solving this cleanly would help a lot
-              </div></li><li><div><div><b>body:</b> I am using todays git clone. Trying to build it on Mac using 
-
-./configure CPPFLAGS='-static' CFLAGS='-static' LDFLAGS='-static' --host=arm-linux-musleabihf --disable-shared --enable-zlib=yes --enable-openssl=yes --enable-libevent=yes --enable-boost=yes -with-zlib=/opt/cross/zlib --with-openssl=/opt/cross/openssl --with-libevent=/opt/cross/libevent --with-boost=/opt/cross/boost --with-cpp --with-python --with-java --without-qt4 --without-csharp --without-erlang --without-perl --without-php --without-php_extension --without-ruby --without-haskell --without-go --without-d --prefix=/opt/cross/thrift-0.9.2
-
-After applying above ax_lib_zlib.m4 and ax_lib_event.m4 I was able to run ./bootstrap and above ./configure
-
-checking for BN_init in -lcrypto... no
-configure: error: "Error: libcrypto required."
-
-config.log shows that there is no -L path passed to ld to find it
-
-To fixed it for now I added -I/opt/cross/openssl/include and -L/opt/cross/openssl/lib to CPPFLAGS, CFLAGS and LDFLAGS
-
-This moved me little further and got another error when checking for checking for SSL_ctrl in -lssl
-Looking in config.log it looks like linker is complaining about missing -lz since I am building with zlib
-
-I added missing -lz to configure.ac 
-
-AC_CHECK_LIB(crypto,
-    BN_init,
-    [AC_CHECK_LIB(ssl,
-        SSL_ctrl,
-        [LIBS="-lssl -lcrypto $LIBS"],
-        [AC_MSG_ERROR(["Error: libssl required"])],
-        -lcrypto -lz $LIBS
-    )],
-    [AC_MSG_ERROR(["Error: libcrypto required."])]
-)
-fi
-
-Looks like $LIBS should include -lz when zlib enabled
-
-Now with all above changes I was able to finally run configure. Here is full parameter list
-
-./configure CPPFLAGS='-static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include' CFLAGS='-static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include' LDFLAGS='-static -L/opt/cross/openssl/lib -L/opt/cross/zlib/lib -L/opt/cross/libevent/lib' --host=arm-linux-musleabihf --disable-shared --enable-zlib=yes --enable-openssl=yes --enable-libevent=yes --enable-boost=yes -with-zlib=/opt/cross/zlib --with-openssl=/opt/cross/openssl --with-libevent=/opt/cross/libevent --with-boost=/opt/cross/boost --with-cpp --with-python --with-java --without-qt4 --without-csharp --without-erlang --without-perl --without-php --without-php_extension --without-ruby --without-haskell --without-go --without-d --prefix=/opt/cross/thrift-0.9.2
-
-Now when running make
-
-I get following errors. Looking into it now
-
-make
-/Library/Developer/CommandLineTools/usr/bin/make  all-recursive
-Making all in compiler/cpp
-\
-	 \
-	/bin/sh ../../ylwrap `test -f 'src/thrifty.yy' || echo './'`src/thrifty.yy y.tab.c thrifty.cc y.tab.h `echo thrifty.cc | sed -e s/cc$/hh/ -e s/cpp$/hpp/ -e s/cxx$/hxx/ -e s/c++$/h++/ -e s/c$/h/` y.output thrifty.output -- bison -y -d
-updating thrifty.hh
-/Library/Developer/CommandLineTools/usr/bin/make  all-am
-/opt/cross/arm-linux-musleabihf/bin/arm-linux-musleabihf-g++ -DHAVE_CONFIG_H -I. -I../.. -I../../lib/cpp/src/thrift  -I./src -static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include -Wall -Wno-sign-compare -Wno-unused -std=c++11 -MT libparse_a-thrifty.o -MD -MP -MF .deps/libparse_a-thrifty.Tpo -c -o libparse_a-thrifty.o `test -f 'thrifty.cc' || echo './'`thrifty.cc
-mv -f .deps/libparse_a-thrifty.Tpo .deps/libparse_a-thrifty.Po
-\
-	 \
-	/bin/sh ../../ylwrap `test -f 'src/thriftl.ll' || echo './'`src/thriftl.ll lex.yy.c thriftl.cc -- flex
-/opt/cross/arm-linux-musleabihf/bin/arm-linux-musleabihf-g++ -DHAVE_CONFIG_H -I. -I../.. -I../../lib/cpp/src/thrift  -I./src -static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include -Wall -Wno-sign-compare -Wno-unused -std=c++11 -MT libparse_a-thriftl.o -MD -MP -MF .deps/libparse_a-thriftl.Tpo -c -o libparse_a-thriftl.o `test -f 'thriftl.cc' || echo './'`thriftl.cc
-thriftl.cc: In function 'void* yyalloc(yy_size_t)':
-thriftl.cc:3800:31: error: 'rpl_malloc' was not declared in this scope
-  return (void *) malloc( size );
-                               ^
-thriftl.cc: In function 'void* yyrealloc(void*, yy_size_t)':
-thriftl.cc:3812:46: error: 'rpl_realloc' was not declared in this scope
-  return (void *) realloc( (char *) ptr, size );
-                                              ^
-thriftl.cc: In function 'void* yyalloc(yy_size_t)':
-thriftl.cc:3801:1: warning: control reaches end of non-void function [-Wreturn-type]
- }
- ^
-thriftl.cc: In function 'void* yyrealloc(void*, yy_size_t)':
-thriftl.cc:3813:1: warning: control reaches end of non-void function [-Wreturn-type]
- }
- ^
-make[3]: *** [libparse_a-thriftl.o] Error 1
-make[2]: *** [all] Error 2
-make[1]: *** [all-recursive] Error 1
-make: *** [all] Error 2
-
+                 implements thrift_transport_write_end
+ * called when write is complete.  nothing to do on our end. 
+              </div></li><li><div>
+                 destructor 
+              </div></li><li><div>
+                 implements thrift_transport_read_end
+ * called when write is complete.  nothing to do on our end. 
+              </div></li><li><div>
+                 min 
+              </div></li><li><div>
+                 implements thrift_transport_read 
+              </div></li><li><div>
+                 implements thrift_transport_close 
+              </div></li><li><div>
+                 property accessor 
+              </div></li><li><div>
+                 default value 
+              </div></li><li><div>
+                 object properties 
+              </div></li><li><div>
+                 setup accessors and mutators 
+              </div></li><li><div>
+                 property mutator 
+              </div></li><li><div>
+                 initializes the class 
+              </div></li><li><div>
+                 max, 1024*1024 
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ 
+              </div></li><li><div>
+                 _THRIFT_FD_TRANSPORT_H 
+              </div></li><li><div>
+                 used by THRIFT_TYPE_FD_TRANSPORT 
+              </div></li><li><div>
+                ! \file thrift_fd_transport.h
+ *  \brief Class for Thrift file descriptor transports.
+ 
+              </div></li><li><div>
+                !
+ * Thrift Transport class
+ 
+              </div></li><li><div>
+                 protected 
+              </div></li><li><div>
+                 type macros 
+              </div></li><li><div>
+                 write 
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ 
+              </div></li><li><div><div><b>comment:</b>  clean up 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>comment:</b>  test bad fd 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Also had to comment out AC_FUNC_MALLOC and AC_FUNC_RALLOC in configure.ac to get error: 'rpl_malloc' was not declared in this scope errors
-              </div></li><li><div><div><b>body:</b> I added --disable-tests to my configure parameters Since this was causing a problem to run arm image on intel.
+                 open is no-op 
+              </div></li><li><div>
+                 already closed 
+              </div></li><li><div>
+                 read 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> THRIFT-3556 c_glib file descriptor transport
+                </div><div><b>message:</b> THRIFT-3556 c_glib file descriptor transport
+Client: C (GLib)
+Patch: Chandler May &lt;cjmay4754@gmail.com&gt;
 
-./configure CPPFLAGS='-static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include' CFLAGS='-static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include' LDFLAGS='-static -L/opt/cross/openssl/lib -L/opt/cross/zlib/lib -L/opt/cross/libevent/lib' --host=arm-linux-musleabihf --disable-tests --disable-shared --enable-zlib=yes --enable-openssl=yes --enable-libevent=yes --enable-boost=yes -with-zlib=/opt/cross/zlib --with-openssl=/opt/cross/openssl --with-libevent=/opt/cross/libevent --with-boost=/opt/cross/boost --with-cpp --with-python --with-java --without-qt4 --without-csharp --without-erlang --without-perl --without-php --without-php_extension --without-ruby --without-haskell --without-go --without-d --prefix=/opt/cross/thrift-0.9.2
+This closes #810
 
-Now I get this error.  arm-linux-musleabihf-gcc does not understand x86_64 nor i386
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> THRIFT-3556 Implement file descriptor transport for c_glib.
+                </div><div><b>body:</b> Add a basic file descriptor transport to the c_glib library.
 
-building 'thrift.protocol.fastbinary' extension
-creating build/temp.macosx-10.9-intel-2.7
-creating build/temp.macosx-10.9-intel-2.7/src
-creating build/temp.macosx-10.9-intel-2.7/src/protocol
-/opt/cross/arm-linux-musleabihf/bin/arm-linux-musleabihf-gcc -DNDEBUG -g -fwrapv -Os -Wall -Wstrict-prototypes -static -I/opt/cross/openssl/include -I/opt/cross/zlib/include -I/opt/cross/libevent/include -arch x86_64 -arch i386 -pipe -I/System/Library/Frameworks/Python.framework/Versions/2.7/include/python2.7 -c src/protocol/fastbinary.c -o build/temp.macosx-10.9-intel-2.7/src/protocol/fastbinary.o
-arm-linux-musleabihf-gcc: error: x86_64: No such file or directory
-arm-linux-musleabihf-gcc: error: i386: No such file or directory
-arm-linux-musleabihf-gcc: error: unrecognized command line option '-arch'
-arm-linux-musleabihf-gcc: error: unrecognized command line option '-arch'
-                </div><div><b>label:</b> test
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> c_glib file descriptor transport
+                </div><div><b>description:</b> c_glib library does not have any filesystem transports, including a file descriptor transport
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                GitHub user cjmay opened a pull request:
+
+    https://github.com/apache/thrift/pull/810
+
+    THRIFT-3556 Implement file descriptor transport for c_glib.
+
+    Add a basic file descriptor transport to the c_glib library.
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/cjmay/thrift THRIFT-3556
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/thrift/pull/810.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #810
+    
+----
+commit f0fe5d9931da130ed6682436489ff31de7848bfb
+Author: Chandler May &lt;cjmay4754@gmail.com&gt;
+Date:   2016-01-12T23:40:37Z
+
+    THRIFT-3556 Implement file descriptor transport for c_glib.
+
+----
+
+              </div></li><li><div>
+                [~simonsouth], any comments from your side?
+              </div></li><li><div>
+                I haven't had a chance to take a close look at this yet, but I will soon.
+              </div></li><li><div><div><b>body:</b> This looks really good. Thank you, [~cjmay], for the work you're doing.
+
+The only potential issue I see with this code is that it uses {{[g_close|https://developer.gnome.org/glib/stable/glib-File-Utilities.html#g-close]}}, which wasn't available in GLib until version 2.36. This will break support for (at least) CentOS 6, which is still on version 2.28. This may not be a strict requirement but I'd suggest testing the GLib version with a preprocessor macro and providing a separate implementation that uses {{close}} and handles error reporting "manually".
+
+My only other comment is that it would be nice if {{thrift_fd_transport_set_property}} and {{thrift_fd_transport_get_property}} issued a warning when passed an unrecognized property ID (as [the example|https://developer.gnome.org/gobject/2.26/gobject-properties.html] shows), though surprisingly this isn't done in the existing code either so it isn't really an omission.
+                </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Disabling python bypass this for now but creates another problem which can be suppressed with --disable-tutorial
-
-Making all in tutorial
-Making all in cpp
-../../compiler/cpp/thrift --gen cpp -r ../../tutorial/tutorial.thrift
-../../compiler/cpp/thrift: ../../compiler/cpp/thrift: cannot execute binary file
-make[3]: *** [gen-cpp/Calculator.cpp] Error 126
-make[2]: *** [all-recursive] Error 1
-make[1]: *** [all-recursive] Error 1
-make: *** [all] Error 2
+                Thank you!  Pull request updated.
               </div></li><li><div>
-                Also after successful build followed with make install with above changes I see 
+                Github user asfgit closed the pull request at:
 
-/opt/cross/thrift-0.9.2-rc-boost/bin/thrift
-
-This is arm binary but I thin it should be native (Mac OS X in my case)
-              </div></li><li><div>
-                patch updated to account for all locations lt_sysroot needed update, committed
-              </div></li><li><div>
-                FAILURE: Integrated in Thrift-Test #46 (See [https://builds.apache.org/job/Thrift-Test/46/])
-THRIFT-2127: Autoconf scripting does not properly account for cross-compile (jfarrell: rev 4d3f937abd9df3b51ae0f76825fc403958ee6805)
-* aclocal/ax_lib_event.m4
-* aclocal/ax_boost_base.m4
+    https://github.com/apache/thrift/pull/810
 
               </div></li><li><div>
-                SUCCESS: Integrated in Thrift #1303 (See [https://builds.apache.org/job/Thrift/1303/])
-THRIFT-2127: Autoconf scripting does not properly account for cross-compile (jfarrell: rev 4d3f937abd9df3b51ae0f76825fc403958ee6805)
-* aclocal/ax_lib_event.m4
-* aclocal/ax_boost_base.m4
+                Committed. Thanks again, [~cjmay]!
 
+So you're aware, I made two small changes to your work before committing:
+* Explicitly clearing the error condition with {{[g_clear_error|https://developer.gnome.org/glib/stable/glib-Error-Reporting.html#g-clear-error]}} when {{close}} succeeds, and
+* Adding the generated test driver to {{.gitignore}}.
               </div></li><li><div>
-                SUCCESS: Integrated in Thrift #1331 (See [https://builds.apache.org/job/Thrift/1331/])
-THRIFT-2127: Autoconf scripting does not properly account for cross-compile (jfarrell: rev 4d3f937abd9df3b51ae0f76825fc403958ee6805)
-* aclocal/ax_lib_event.m4
-* aclocal/ax_boost_base.m4
+                Great!  And thanks for the tips.
+              </div></li><li><div>
+                FAILURE: Integrated in Thrift-precommit #77 (See [https://builds.apache.org/job/Thrift-precommit/77/])
+THRIFT-3556 c_glib file descriptor transport Client: C (GLib) Patch: (simonsouth: [https://github.com/apache/thrift/commit/e71f20cd3ee9e812a064e492a7e692e2f2f98d35])
+* lib/c_glib/test/Makefile.am
+* lib/c_glib/src/thrift/c_glib/transport/thrift_fd_transport.c
+* lib/c_glib/src/thrift/c_glib/transport/thrift_fd_transport.h
+* .gitignore
+* lib/c_glib/test/testfdtransport.c
+* lib/c_glib/CMakeLists.txt
+* lib/c_glib/Makefile.am
+* lib/c_glib/test/CMakeLists.txt
 
-              </div></li><li><div>
-                CMake and THRIFT-3113 solves this.
               </div></li></ol></div></div></html>

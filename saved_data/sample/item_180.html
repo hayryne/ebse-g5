@@ -1,52 +1,146 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 180
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 eager check setup is ok and it works (avoid to mix redeployment checks with simple deployment)
-              </div></li><li><div><div><b>comment:</b>  just to make time more explicit
-                </div><div><b>label:</b> code-design
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> TOMEE-2050 handling txmgr error for ut usage in @Transactional
+                </div><div><b>message:</b> TOMEE-2050 handling txmgr error for ut usage in @Transactional
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> JTA 1.2 compliance: Calling UserTransaction methods from @Transactional bean
+                </div><div><b>description:</b> JTA 1.2, section 3.7:
+{code}
+If an attempt is made to call any method of the UserTransaction interface from within the scope of a bean or method annotated with @Transactional and a Transactional.TxType other than NOT_SUPPORTED or NEVER, an IllegalStateException must be thrown.
+{code}
+
+Instead TomEE throws:
+{code}
+13:38:03.710 [http-nio-8080-exec-7] ERROR java.lang.Throwable - javax.transaction.NotSupportedException: Nested Transactions are not supported
+13:38:03.713 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.geronimo.transaction.manager.TransactionManagerImpl.begin(TransactionManagerImpl.java:157)
+13:38:03.716 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.geronimo.transaction.manager.TransactionManagerImpl.begin(TransactionManagerImpl.java:152)
+...
+...
+...
+13:38:03.737 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.webbeans.intercept.AbstractInvocationContext.directProceed(AbstractInvocationContext.java:113)
+13:38:03.758 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.webbeans.intercept.AbstractInvocationContext.proceed(AbstractInvocationContext.java:106)
+13:38:03.761 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.webbeans.intercept.InterceptorInvocationContext.proceed(InterceptorInvocationContext.java:67)
+13:38:03.766 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.openejb.cdi.transactional.InterceptorBase.intercept(InterceptorBase.java:67)
+13:38:03.770 [http-nio-8080-exec-7] ERROR java.lang.Throwable -         at org.apache.openejb.cdi.transactional.RequiredInterceptor.intercept(RequiredInterceptor.java:35)
+{code}
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Why case do you have, we have a test validating we get
+
+{code}
+java.lang.IllegalStateException: Can't use UserTransaction from @Transaction call
+{code}
+                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                 it still works
+                Servlet:
+
+{code}
+@WebServlet("/userTransaction")
+public final class CdiTransactionaltest extends HttpServlet {
+    @Resource
+    UserTransaction transaction;
+
+    @Inject
+    TransactionalBean transactionalBean;
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        final PrintWriter out = resp.getWriter();
+        resp.setContentType("text/plain");
+
+//other test cases here       
+
+        try {
+            out.println("Testing with UserTransaction inside transactional bean...");
+            transactionalBean.testWithTxRequiredAndUserTransaction();
+        } catch (Exception ex) {
+            out.println("Exception: " + ex);
+            ex.printStackTrace(out);
+        }
+    }
+}
+{code}
+
+Transactional bean:
+
+{code}
+@Default
+public class TransactionalBean {
+
+    @Resource
+    UserTransaction userTransaction;
+
+//other test methods here
+
+    @Transactional(TxType.REQUIRED)
+    public void testWithTxRequiredAndUserTransaction() throws Exception {
+        userTransaction.begin();
+        userTransaction.commit();
+    }
+}
+{code}
+
+Stack trace from test case:
+{code}
+Testing with UserTransaction inside transactional bean...
+Exception: javax.transaction.NotSupportedException: Nested Transactions are not supported
+javax.transaction.NotSupportedException: Nested Transactions are not supported
+	at org.apache.geronimo.transaction.manager.TransactionManagerImpl.begin(TransactionManagerImpl.java:157)
+	at org.apache.geronimo.transaction.manager.TransactionManagerImpl.begin(TransactionManagerImpl.java:152)
+	at org.example.TransactionalBean.testWithTxRequiredAndUserTransaction(TransactionalBean.java:43)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:606)
+	at org.apache.webbeans.intercept.AbstractInvocationContext.directProceed(AbstractInvocationContext.java:113)
+	at org.apache.webbeans.intercept.AbstractInvocationContext.proceed(AbstractInvocationContext.java:106)
+	at org.apache.webbeans.intercept.InterceptorInvocationContext.proceed(InterceptorInvocationContext.java:67)
+	at org.apache.openejb.cdi.transactional.InterceptorBase.intercept(InterceptorBase.java:67)
+	at org.apache.openejb.cdi.transactional.RequiredInterceptor.intercept(RequiredInterceptor.java:35)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:606)
+	at org.apache.webbeans.component.InterceptorBean.intercept(InterceptorBean.java:136)
+	at org.apache.webbeans.intercept.InterceptorInvocationContext.proceed(InterceptorInvocationContext.java:63)
+	at org.apache.webbeans.intercept.DefaultInterceptorHandler.invoke(DefaultInterceptorHandler.java:139)
+	at org.example.TransactionalBean$$OwbInterceptProxy0.testWithTxRequiredAndUserTransaction(org/example/TransactionalBean.java)
+	at org.example.CdiTransactionaltest.doGet(CdiTransactionaltest.java:81)
+	at javax.servlet.http.HttpServlet.service(HttpServlet.java:622)
+{code}
+
+Attaching zip with sample app (war + source)
               </div></li><li><div>
-                 we redeployed since we have a new deployment date
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> TOMEE-1361 ensuring we can reload a jaxrs app - more validations
-                </div><div><b>message:</b> TOMEE-1361 ensuring we can reload a jaxrs app - more validations
-
-git-svn-id: https://svn.apache.org/repos/asf/tomee/tomee/trunk@1628385 13f79535-47bb-0310-9956-ffa450edef68
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> tomee-m-p automatic reload leaves previously deployed @Path JAX-RS resources undeployed
-                </div><div><b>description:</b> I am running a web application via tomee:run:1.6.0.2 and have a dependency on another module packaging=war which contains @Path JAX-RS resouces. When I make a change to the current module's index.html page, e.g., the overlayed JAX-RS resources are not available after tomee automatically reloads itself.
-
-This is a huge problem for developer productivity.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Hi
-
-did you try 1.7.0 or 1.7.1?
+                this exact case is tested and passing
               </div></li><li><div>
-                I can not migrate to 1.7.x because of other problems with TomEE. I tried a quick test of 1.7.1 with 1.6.0.2 as the embedded TomEE, but could not get that environment to work to even test if it would exhibit the same problem.
-
+                Well, but the attached WAR fails with the exception mentioned above when executed on vanilla TomEE. Just drop the ROOT.war in webapps and request http://localhost:8080/
               </div></li><li><div>
-                Well we didn't speak about a 1.6.1 or 1.6.0.3 for anytime soon but a 1.7.2 is planned so maybe time to upgrade and see how we can resolve your issues?
-              </div></li><li><div><div><b>body:</b> Frankly speaking, the tricks employed to work around OpenJPA deficiencies cause a lot of headaches for my team that already had existing dependencies on org.apache.openjpa:openjpa and then to have to work around org.apache.openejb.patch:openjpa is a pain in Maven. Then our use of Arquillian with TomEE Embedded mode is generally met with disgust or told not to use it at all by TomEE development. It's a huge amount of work over here to migrate with all these land mines, and generally out of date/broken documentation on top of everything else. Getting the 20-40 hours to do the migration and document all the breakage and rule out some likely user errors (probably caused by lack of doc) and create projects which demonstrate the problem external to my projects .... it's huge.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                About openjpa dependency: normally it shouldn't affect you that much but ok.
-About openjpa deficiencies: was it reported to openjpa?
-About arquillian TomEE Embedded: we started to enhance it a lot and your needs will be welcomed on the list - that said we said very early to use tomee remote for common development/big apps/projects.
-About doc: right, I know Andy started to enhance it but you are welcome to help.
-Finally about not doing a sample to show us the issue: then we can't work on this issue very weel since it can be linked to either your usage we can have missed or your app.
-
-              </div></li><li><div><div><b>body:</b> I don't know of any specific openjpa problems - I mean only that TomEE had to bundle their own to work around whatever issues. By having it at different actual coordinates instead of a separate version number, it requires a fantastic amount of maven-fu to work around.. whereas a simple namespaced version deployment org.apache.openjpa:openjpa:2.3.0-openejb-r123 would have worked and been easier on users to just do a simple version change in dependencyManagement.
-
-Yes, I agree that an example is almost always required and probably especially in this case as it is probably classpath related. I'm just saying that like your time isn't free, neither is mine. And there's a real cost to work through all these issues just to finally get to a point where I can create a testcase. I want this bug fixed, so the duty is on me; I just wish it were easier to help contribute, the current TomEE development environment/mechanisms and documentation issues are real inhibitors.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Oh ok, about openjpa we can't do it and openjpa was not able to release when we wanted. Our choices were: not release and wait openjpa (could have been long) or do it. Generally in enterprise you have your "dependency pom" where it is easy to change a single artifact. Maybe something to enhance.
-
-About doc we really need feedback on the list to be able to tackle it. On my side (I dont say it for all tomee dev) it is really hard to see what is missing so if you dont shout I'll not be able to help even when I have time for it.
-
-About your issue I'll try to add some tests next week about it, maybe it will help to find it
+                which is normal since you handle the main tx outside @Tx
               </div></li><li><div>
-                Pushed http://svn.apache.org/repos/asf/tomee/tomee/trunk/maven/tomee-maven-plugin/src/test/java/org/apache/openejb/maven/plugin/test/JAXRSReloadTest.java on trunk and reload seems ok. Code is shared with 1.7 for most of it so I guess the issue is more bound to what you describe but I'm not sure I get it fully right:
+                No, I do not:
 
-do you speak about an overlay ("dependency")? If not is warFile well configured?
+{code}
+@WebServlet("/userTransaction")
+public final class CdiTransactionaltest extends HttpServlet {
+
+    @Inject
+    TransactionalBean transactionalBean;
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        final PrintWriter out = resp.getWriter();
+        resp.setContentType("text/plain");
+
+        try {
+            out.println("Testing with UserTransaction inside transactional bean...");
+            transactionalBean.testWithTxRequiredAndUserTransaction();
+        } catch (Exception ex) {
+            out.println("Exception: " + ex);
+            ex.printStackTrace(out);
+        }
+    }
+}
+{code}
+
+The main transaction is initiated and managed by the transactional intervceptor
+              </div></li><li><div>
+                Oki, then sample.zip was not the intended one ;). Reproduced
               </div></li></ol></div></div></html>

@@ -1,425 +1,148 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 67
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-2510: remove unchecked cast :-) It's much easier!
-                </div><div><b>message:</b> LUCENE-2510: remove unchecked cast :-) It's much easier!
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ * A base TermsEnum that adds default implementations for
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link #attributes()}&lt;/li&gt;
+ *   &lt;li&gt;{@link #termState()}&lt;/li&gt;
+ *   &lt;li&gt;{@link #seekExact(BytesRef)}&lt;/li&gt;
+ *   &lt;li&gt;{@link #seekExact(BytesRef, TermState)}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * In some cases, the default implementation may be slow and consume huge memory, so subclass SHOULD have its own
+ * implementation if possible.
+ 
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                * Sole constructor. (For invocation by subclass
+   *  constructors, typically implicit.) 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-8292: Make TermsEnum fully abstract (#574)
+                </div><div><b>message:</b> LUCENE-8292: Make TermsEnum fully abstract (#574)
 
-git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/lucene2510@1365030 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> migrate solr analysis factories to analyzers module
-                </div><div><b>description:</b> In LUCENE-2413 all TokenStreams were consolidated into the analyzers module.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> LUCENE-8292: Make TermsEnum fully abstract
+                </div><div><b>body:</b> 
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                move to its own file?
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Fix FilterLeafReader.FilterTermsEnum to delegate all seekExact methods
+                </div><div><b>description:</b> FilterLeafReader#FilterTermsEnum wraps another TermsEnum and delegates many methods.
 
-This is a good step, but I think the next step is to put the Solr factories into the analyzers module, too.
+It misses some seekExact() methods, thus it is not possible to the delegate to override these methods to have specific behavior (unlike the TermsEnum API which allows that).
 
-This would make analyzers artifacts plugins to both lucene and solr, with benefits such as:
-* users could use the old analyzers module with solr, too. This is a good step to use real library versions instead of Version for backwards compat.
-* analyzers modules such as smartcn and icu, that aren't currently available to solr users due to large file sizes or dependencies, would be simple optional plugins to solr and easily available to users that want them.
-
-Rough sketch in this thread: http://www.lucidimagination.com/search/document/3465a0e55ba94d58/solr_and_analyzers_module
-
-Practically, I havent looked much and don't really have a plan for how this will work yet, so ideas are very welcome.
-
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                +1 to this idea.
-
-From my perspective the only issue is loading resources used in the factories, which in Solr is currently handled through the SolrResourceLoader.  My suggestion for this is to migrate Solr's ResourceLoader interface, and maybe provide simple FileResourceLoader and ClassPathResourceLoaders that Lucene users can use.
-              </div></li><li><div><div><b>body:</b> Chris, yes I think at a glance this is where I got stuck :)
-
-Related to this, there is duplication in resource loading code already that would be nice to clean up.
-
-For example, Lucene and Solr have their own separate stopword-loading code etc. But I don't really like some of the things Lucene's WordListLoader does:
-* The lucene WordListLoader builds HashMaps and HashSets but this is wasteful since these are always then copied to CharArraySet/Maps... Solr's just builds CharArraySet/Map up front.
-* the Solr file loading code has some features like trying to guess the size of the set/map up front for faster loading.
-* the Solr stopword loading code is more user-friendly as it ignores BOM markers etc.
-
-I think it would be good to only have one piece of code for this functionality and for it to be optimal.
-
+The fix is straightforward: simply override these seekExact() methods and delegate.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> This may be a bit trappy: if someone writes a FilterTermsEnum that hides some terms, now they have 2 more methods to override for their impl to be correct. I don't understand why you are saying that it is not possible to override the behavior of these methods without your change, can you clarify?
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> I think if we consolidate how to load resources, then we can easily reduce the loading of word lists to a single optimal way.
+                </div></div></li><li><div><div><b>body:</b> 1- "Not possible to override": I was not clear. It is still possible for a delegate TermsEnum to override the seekExact() method. But it will never be called since the FilterTermsEnum above always calls seekCeil().
+
+2- "Two more methods to override": You're right. Although normally the same code should be reusable, it should not be tedious. I see the trappy point.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Heres a few things I think we should do as part of this work:
+                </div></div></li><li><div><div><b>body:</b> Indeed these methods need to be overridden explicitly if you want them to be used.
 
-- Convert the factories to beans.  This will make the properties that a Factory has a great deal clearer as it won't be necessary to initialize the Factory using a Map.  It'll also increase their testability.  Part of this will require changing how Solr initializes the Factories from its XML configuration.  The simplist way is to change the attribute names in the configuration to match the bean property.
+In general, we do not delegate methods that have a default implementation because the default implementation is correct regardless of what the wrapper class does. Overriding these methods in FilterTermsEnum to delegate to the wrapped instance would make room for bugs by requiring more methods to be overridden for the wrapper to be correct.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> When looking at TermsEnum API, what I understand is that seekExact() defaults to calling seekCeil(), but if needed (not for correctness but for performance consideration) we can override it to have a specialized seek that searches only the exact term and does not have to position to the next term if not found.
 
-- Either move the ResourceLoader interface to Lucene, or do some fancy property injection just in Solr and remove ResourceLoading from factories.  The former option means Lucene, Solr and any future modules can all use a single consist interface for resource loading.  But it may also introduce something which isn't Lucene's responsibility.  The latter would involve the factories having List&lt;String&gt; properties for example, and Solr detecting this and injecting the list from its own ResourceLoader.  It introduces more complexity into Solr, but presents a very clean interface in the Factory which increases its readability, testability, and makes them more programmatically friendly.
+This may have an impact for some TermsEnum&nbsp;extensions (a really noticeable impact in&nbsp;my case, that's why I noticed this issue). To me the current behavior of FilterTermsEnum is not correct with regard to TermsEnum API. (And I noticed that AssertingLeafReader overrides seekExact()).
+
+Adding&nbsp;these two methods in&nbsp;FilterTermsEnum fixes correctness, even if I agree it makes more room for bugs.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I'm getting this issue back online.
-
-First step, moving ResourceLoader/Aware into the analysis module.  I can imagine later on different implementations of ResourceLoader which maybe just uses the Classpath or something.
-
-Command for patch:
-
-{noformat}
-svn mv solr/solrj/src/java/org/apache/solr/common/ResourceLoader.java modules/analysis/common/src/java/org/apache/lucene/analysis/util/ResourceLoader.java
-svn mv solr/core/src/java/org/apache/solr/util/plugin/ResourceLoaderAware.java modules/analysis/common/src/java/org/apache/lucene/analysis/util/ResourceLoaderAware.java
-{noformat}
-              </div></li><li><div><div><b>body:</b> Hmm looking at this ResourceLoader, what is the purpose of the newInstance method?
-
-It seems to be unrelated to the 'resource loading', i think it should be something else?
-
-Separately, do we have any vague idea of a plan of how WordListLoader can implement this interface?
-I don't think we have to do that immediately to proceed, but long term I think it would make sense,
-since currently we have some duplicate code between lucene and solr here:
-* take a look at wordlistloader
-* take a look at the protected methods in BaseTokenStreamFactory.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> bq. what is the purpose of the newInstance method?
-
-If you take a look at {{org.apache.solr.analysis.DelimitedPayloadTokenFilterFactory}} you'll see an example of how it's used.
-
-Looking at the implementation in SolrResourceLoader, it seems to facilitate two things:
-
-- The use of simplified {{solr.*}} package names
-- In {{FSTSynonymFilterFactory}} for example, newInstance is used to load other components.  Consequently SolrResourceLoader adds the instantiated classes to its tracking of SolrCoreAware, ResourceLoaderAware, etc.  
-
-With all that said, its only used in 3 Factories (but a lot of other Solr code).  Perhaps we can break it out somehow.
-
-bq. Separately, do we have any vague idea of a plan of how WordListLoader can implement this interface?
-
-I don't at this stage, but you're right, there is duplication.  Off the top of my head I think we'd want to move everything over to using ResourceLoader, but somehow incorporate the WordlistLoader logic somewhere.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> {quote}
-With all that said, its only used in 3 Factories (but a lot of other Solr code). Perhaps we can break it out somehow.
-{quote}
-
-I guess my main problem with it is the generics (it returns Object).
-Seems like the generics could be fixed so its parameterized to return ? extends X.
-If we add generics violations to the analyzers module, Uwe will not be happy :)
-
-{quote}
-I don't at this stage, but you're right, there is duplication. Off the top of my head I think we'd want to move everything over to using ResourceLoader, but somehow incorporate the WordlistLoader logic somewhere.
-{quote}
-
-Right I was just thinking really this stuff should be mostly in one place. I think
-its a little better now but there is some stuff in both places. I guess I can let
-that go, but it would be cool to have some sort of plan here, and if we don't tackle
-it, at least open up a followup issue since we are talking about an interface here:
-we won't be able to easy fix it without hard API breaks if we need.
-
-Don't get me wrong: when interfaces are the right choice, we should use them without fear! 
-I think we just need to be extra careful up-front since we really should not break
-them across minor releases.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> {quote}
-I guess my main problem with it is the generics (it returns Object).
-Seems like the generics could be fixed so its parameterized to return ? extends X.
-If we add generics violations to the analyzers module, Uwe will not be happy 
-{quote}
-
-+1
-
-I thought along the same lines so we can definitely clean it up.  Wouldn't want to get a ticket from the policeman.
-
-{quote}
-Right I was just thinking really this stuff should be mostly in one place. I think
-its a little better now but there is some stuff in both places. I guess I can let
-that go, but it would be cool to have some sort of plan here, and if we don't tackle
-it, at least open up a followup issue since we are talking about an interface here:
-we won't be able to easy fix it without hard API breaks if we need.
-{quote}
-
-I'll think on it a bit and see if anybody else has any opinions.  I agree that we need to be extra careful here.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Patch updated to trunk.
-
-I'm going to commit this shortly and then tackle the factories themselves.
+                Another option would be to modify the TermsEnum.seekExact() method and make it final, or have the javadoc be explicit that it should not be overridden. (though I don't like this option)
               </div></li><li><div>
-                Err... patch is broke, will fix.
+                _Any_ use of a delegating wrapper is arguably "trappy" in the sense that you need to be mindful of what you should and should not override to do whatever it is you are doing. &nbsp;So I think we might as well delegate everything – at least at the time of creating the subclass you can look at the FilterTermsEnum and observe the methods to potentially override yourself. &nbsp;Today you need to know there are some "hidden" ones further below in the hierarchy.
+
+Sidenote: if we were all using Kotlin, we probably would not bother to have such Filter/delegate classes in Lucene because Kotlin [makes it trivial to auto-delegate all members|https://kotlinlang.org/docs/reference/delegation.html]. &nbsp;You still need to be mindful of what you need to override to do whatever it is you need to do.
               </div></li><li><div>
-                Actually it works, just needed to rebuild analysis/common.
+                I just realized that the current no-default-override behavior is actually enforced by a test TestFilterLeafReader.testOverrideMethods.
+
+I still think all methods should be overridden, but I understand that this may not be the expected behavior currently.
               </div></li><li><div>
-                Updated patch for moving ResourceLoader/Aware with a new command:
+                Maybe it would be helpful if we simply add a _comment_ to FilterTermsEnum of the methods it does not override but could still be by subclasses that wish to? &nbsp;e.g.:
 
-{noformat}
-svn mv solr/solrj/src/java/org/apache/solr/common/ResourceLoader.java lucene/analysis/common/src/java/org/apache/lucene/analysis/util/ResourceLoader.java
-svn mv solr/core/src/java/org/apache/solr/util/plugin/ResourceLoaderAware.java lucene/analysis/common/src/java/org/apache/lucene/analysis/util/ResourceLoaderAware.java
-{noformat}
-
-I'm going to commit this and then start moving the Factory classes incrementally.
-              </div></li><li><div><div><b>body:</b> Patch which moves the Factory interfaces and base implementations (and some associated classes).  
-
-Command:
-
-{noformat}
-svn mkdir lucene/analysis/common/src/java/org/apache/lucene/analysis/factory
-svn mv solr/core/src/java/org/apache/solr/analysis/BaseCharFilterFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/BaseCharFilterFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/BaseTokenFilterFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/BaseTokenFilterFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/BaseTokenizerFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/BaseTokenizerFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/BaseTokenStreamFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/BaseTokenStreamFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/CharFilterFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/CharFilterFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/MultiTermAwareComponent.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/MultiTermAwareComponent.java
-svn mv solr/core/src/java/org/apache/solr/analysis/TokenFilterFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/TokenFilterFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/TokenizerFactory.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/TokenizerFactory.java
-svn mv solr/core/src/java/org/apache/solr/analysis/InitializationException.java lucene/analysis/common/src/java/org/apache/lucene/analysis/factory/InitializationException.java
-{noformat}
-
-A big TODO after all this moving is to collapse the base implementations into a single {{BaseAnalysisFactory}} class and get rid of FactoryUtils.
-
-Tests pass.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Need to also fix the relationship between the Solr uima contrib and analyzers-common in appropriate configuration files too.
-              </div></li><li><div>
-                Actually I think I've been a little naive with backwards compatibility here.  I think I need to ensure that any user created Factory implementations continue to work and existing schemas continue to load.  Otherwise upgrading to Solr 4 is going to be an epic hassle.
-              </div></li><li><div><div><b>body:</b> Patch which does some backwards compat work for ResourceLoader/Aware.  
-
-Deprecated versions of both are added in their old locations and they extend from those in the new locations.  {{SolrResourceLoader}} implements the deprecated ResourceLoader so it can continue to be used with Factories expecting the old ResourceLoader.  It also includes a check for plugins using the old ResourceLoaderAware and logs a warning recommending that they are upgraded.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Chris, before the changes made here, solrj did not have a dependency on lucene-core, but now it does.  Is it possible to move the dependency to solr-core?
-
-The Maven build failed today because of this &lt;https://builds.apache.org/job/Lucene-Solr-Maven-trunk/476/consoleText&gt;:
-
-{quote}
-[INFO] Error for project: Apache Solr Solrj (during install)
-[INFO] ------------------------------------------------------------------------
-[INFO] Compilation failure
-/usr/home/hudson/hudson-slave/workspace/Lucene-Solr-Maven-trunk/checkout/solr/solrj/src/java/org/apache/solr/common/ResourceLoader.java:[25,71] package org.apache.lucene.analysis.util does not exist
-{quote}
-
-The short-term fix for the Maven build would be just adding a lucene-core dependency to the solrj POM.
-              </div></li><li><div>
-                bq. before the changes made here, solrj did not have a dependency on lucene-core, but now it does
-Ugh... can we avoid this extra dependency?  SolrJ is just a client and is not supposed to depend on lucene or solr core.
-              </div></li><li><div><div><b>body:</b> The only reason solrj has that dependency is for the deprecated interface:
 {code:java}
-public interface ResourceLoader extends org.apache.lucene.analysis.util.ResourceLoader 
+//inherited methods with default impls that could still be overridden:
+// public AttributeSource attributes()
+// public boolean seekExact(BytesRef text) throws IOException
+// public void seekExact(BytesRef term, TermState state) throws IOException
+// public TermState termState() throws IOException
 {code}
 
-I vote we just drop ResourceLoader from the solrj client API at 4.0 rather then 5.0
+The main down-side is that it could be easy to forget to maintain this comment as changes happen over time.  WDYT [~jpountz]?
+              </div></li><li><div>
+                [~dsmiley], if I create a subclass of FilterTermsEnum to override seekExact, how can I make other classes in Lucene create this subclass instead of FilterTermsEnum? Would I have to also override other classes or other factories?
+              </div></li><li><div>
+                Yes, you'd need to modify the other classes to override to get whatever behavior you want.
+              </div></li><li><div><div><b>body:</b> Actually there is also another related issue with this FilterLeafReader#FilterTermsEnum delegate pattern.
 
-alternatively, we could put the deprecated interface in solr-core, but that makes a mess of OSGI bundles (i think)
+It does not delegate termState() nor seekExact(ByteRef, TermState) methods. Which means the termState is never used, so the term queries repeat twice the same seek (seekCeil) instead of using the termState to improve performance (normally the termState is kept by TermContext#build()).
 
+Practical example: When one configures a timeout for queries, internally an ExitableDirectoryReader is created. And its ExitableTermsEnum, which extends FilterTermsEnum, makes all term queries repeat twice the same seekCeil().
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Ah sorry guys, I went to a lot of effort to avoid this dependency, then went and added it myself.  
+                Great example! &nbsp;I was playing around with TestExitableDirectoryReader and there's definitely a loss of passing the term state. &nbsp;I set a breakpoint here [https://github.com/apache/lucene-solr/blob/master/lucene/core/src/java/org/apache/lucene/search/TermQuery.java#L136]&nbsp;then ran in a debugger (after increasing the test timeout and removing the Ignore annotation) then stepped in to the default implementation of seekExact(term,state) for TestTermsEnum –&nbsp;which doesn't delegate. &nbsp;I manually added delegation of this method there. &nbsp;Then _again_ ran into the default implementation for ExtiableDirectoryReader's ExitableTermsEnum. &nbsp;In this one little adventure, I&nbsp;his this thing twice.
 
-I still think just dropping the interface at this stage is going to make upgrading to Solr 4 a hassle so I think the best option is to move the interface into solr-core under the same package name.  I don't see why that would hurt OSGI?
+_There's certainly a bug here_. &nbsp;Either FilterTermsEnum should delegate everything, or these two subclasses of TermsEnum mentioned above ought&nbsp;to delegate these methods but I bet there are more out there if we look closer. &nbsp;I appreciate&nbsp;modifying the delegation policy of&nbsp;FilterTermsEnum is not a decision to be taken lightly and would probably not happen until a major release.
               </div></li><li><div>
-                Tests pass so I've moved it into solr-core to remove this dependency issue.  If there is some problem related to OSGI, we can then decide if we really do want to drop the interface at this stage.
-              </div></li><li><div>
-                bq.  I don't see why that would hurt OSGI
+                Adrien last said:
+{quote}In general, we do not delegate methods that have a default implementation because the default implementation is correct regardless of what the wrapper class does. Overriding these methods in FilterTermsEnum to delegate to the wrapped instance would make room for bugs by requiring more methods to be overridden for the wrapper to be correct.
+{quote}
+CC [~simonw] curious about your thoughts too
 
-I think OSGI gets upset when you have different .jar files have classes in the same package -- I don't really know or care though.
-
-------
-
-Shouldn't SolrResourceLoader depend on org.apache.lucene.analysis.util.ResourceLoader rather then the deprecated one?
-              </div></li><li><div>
-                bq. Shouldn't SolrResourceLoader depend on org.apache.lucene.analysis.util.ResourceLoader rather then the deprecated one?
-
-No, that would prevent SolrResourceLoader from being able to be used with classes that still use the deprecated ResourceLoader.  This way an analysis Factory which relies on the deprecated ResourceLoader can be loaded into Solr 4 without error.
-              </div></li><li><div><div><b>body:</b> New massive patch for handling the Base parent classes and interfaces.
-
-Originally I wanted to remove the Base parent classes but I think they'll be useful for validation and any future backwards compat logic.
-
-Focus is on bw compat here, so nothing is removed (except InitializationException which I only added recently), only deprecated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> I dont think back compat is really important?
-
-No ones code is going to work without changes for 4.0 anyway... 
-I dont think we should add a bunch of dead weight classes for no reason.
-
-If we remove these, then do we need a .factories package? Cant we just 
-put these couple classes in .util? 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> I think the interfaces are also unnecessary. Why not something like:
-
-* AnalysisFactory (has init(Args), luceneMatchVersion, etc etc)
-** TokenizerFactory
-** TokenFilterFactory
-** CharFilterFactory
+_In general_ I can see this.  For the case of termState() and seekExact(termState) in particular, I don't.  Hypothetically what could go wrong if FilterTermsEnum delegated?  When I think of filtering a TermsEnum, I think of something that might match a subset of terms from the underlying TermsEnum.  The TermsEnum must be positioned to something that matches when termState is called.  If seekExact(termState) in the underlying TermsEnum receives some termState impl it doesn't identify (isn't of a class it knows), then you get the default functional behavior, which is safe.  I'm looking at the 6 subclasses of FilterTermsEnum we have in Lucene and I don't see an issue.  (Interestingly, 3 of them are in the UnifiedHighlighter).  I checked that delegating these two methods doesn't result in test failures too, aside from TestFilterLeafReader.testOverrideMethods which expressly tests our policy.
+              </div></li><li><div><div><b>body:</b> I do see both points here. [~dsmiley] I hate how trappy this is and [~jpountz] I completely agree with you. My suggestions here would be to add an additional class TermsEnum that has all methods abstract and BaseTermsEnum that can add default impls. FilterTermsEnum then subclasses TermsEnum and does the right thing. Other classes that don't need to override stuff like seekExact and seek(BytesRef, TermState) / TermState termState() can simply subclass BaseTermsEnum and we don't have to duplicate code all over the place. I don't think we need to do this in other places were we have the same pattern but in this case the traps are significant and we can fix it with a simple class in-between?
 
 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                bq. No ones code is going to work without changes for 4.0 anyway... 
-
-Fair point
-
-{quote}
-If we remove these, then do we need a .factories package? Cant we just 
-put these couple classes in .util?
-{quote}
-
-Yeah I can make that change.  I'll update the patch.
-              </div></li><li><div>
-                {quote}
-TokenizerFactory
-TokenFilterFactory
-CharFilterFactory
-{quote}
-
-As classes instead of interfaces?
-              </div></li><li><div>
-                Yes. practically, all of the impls 'extend UselessBaseXXXFactory' today anyway :)
-              </div></li><li><div>
-                Okay, good idea.
-              </div></li><li><div><div><b>body:</b> re: what is the purpose of the newInstance method?
-
-{quote}
-If you take a look at org.apache.solr.analysis.DelimitedPayloadTokenFilterFactory you'll see an example of how it's used.
-
-Looking at the implementation in SolrResourceLoader, it seems to facilitate two things:
-
-The use of simplified solr.* package names
-In FSTSynonymFilterFactory for example, newInstance is used to load other components. Consequently bq. bq. SolrResourceLoader adds the instantiated classes to its tracking of SolrCoreAware, ResourceLoaderAware, bq. etc.
-With all that said, its only used in 3 Factories (but a lot of other Solr code). Perhaps we can break it bq. out somehow.
-{quote}
-
-I think we should revisit this. I don't like placing this into the analyzers module when not many factories actually use it, instead a lot of unrelated code in solr actually uses it. I think this could cause a mess.
-
-On the other hand, both the things this provides can be achieved in other ways. For example, if we use NamedSPILoader instead to allow components such as factories to be found by name, then we can support "solr.WhitespaceTokenizerFactory" because TokenizerFactory.forName("WhitespaceTokenizerFactory") works. Using the SPI mechanism would allow for us to have completely pluggable analysis modules, also operations like listAll() work in case you want to enumerate a list (imagine someone that doesnt want a xml configuration but configured by a GUI or something like that instead). We also keep sane packaging within the analysis modules and keep type safety, and solr still keeps its solr.XXX syntax without reflecting a zillion packages or other crazy things.
-
-
-
-
+                +1 to your proposal Simon. &nbsp;Such a proposal could even&nbsp;result in BaseTermsEnum implementing seekExact.
+              </div></li><li><div><div><b>body:</b> I don't think there is a perfect fix here, the current approach in master is less prone to correctness bugs but more to performance bugs while Simon's proposal is less prone to performance bugs but more prone to correctness bugs, in the case that you forget to override one of the TermsEnum methods? I'm fine either way.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                New patch which follows Robert's suggestions.
-
-All parent classes are distilled down to 4 classes: AbstractAnalysisFactory, TokenizerFactory, TokenFilterFactory and CharFilterFactory.
-
-All implementations, Solr code and Javadocs have been updated.  Tests pass.
-              </div></li><li><div><div><b>body:</b> {quote}
-I think we should revisit this. I don't like placing this into the analyzers module when not many factories actually use it, instead a lot of unrelated code in solr actually uses it. I think this could cause a mess.
-{quote}
-
-I agree.  It feels messy where it is currently.
-
-{quote}
-For example, if we use NamedSPILoader instead to allow components such as factories to be found by name, then we can support "solr.WhitespaceTokenizerFactory" because TokenizerFactory.forName("WhitespaceTokenizerFactory") works.
-{quote}
-
-I don't really know much about NamedSPILoader but I think what you're suggesting.  How would we support Factories loading unrelated classes like they can through ResourceLoader now? Assume they're on the classpath and use Class.forName?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> {quote}
-I don't really know much about NamedSPILoader but I think what you're suggesting. How would we support Factories loading unrelated classes like they can through ResourceLoader now? Assume they're on the classpath and use Class.forName?
-{quote}
-
-It needs more discussion (and input from Uwe would help!), but it works like Charset.forName("ASCII") etc. We use this already for codecs and postingsformats (Codec.forName, Codec.listAllCodecs, ...).
-
-Have a look at lucene/core/src/resources/META-INF/services for the idea. Basically you "register" your classes in
-your jar file this way: additional jar files (e.g. look at lucene/test-framework/src/resources/META-INF) can load more classes.
-
-So this could support some idea like TokenizerFactory.forName("Whitespace") or something simple like that. So someone would not need to use org.apache.solr.analysis.xxx namespace to be able to load their analyzer stuff easily, they use whatever package they want and register in their META_INF. And added jar files (other analysis jars), are automatically available this way.
-
-I think Uwe mentioned this idea before, though I think he had Analyzers in mind (e.g. provide language code and get back analyzer or something). Anyway thats for another issue :)
-
-Just something worth consideration if we want to make these modules really pluggable. On the other hand we shouldn't use anything overkill if its not the right fit... 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> {quote}
-How would we support Factories loading unrelated classes like they can through ResourceLoader now? Assume they're on the classpath and use Class.forName?
-{quote}
-
-I think there are only a few situations of this? Like your payload example? If PayloadEncoder really needs to be
-pluggable by class then you always also put it under SPI too (PayloadEncoder.forName).
-
-In general if we decide on the SPI approach, I think it would be useful to think of improving the solr config too,
-because the current configuration is so verbose and redundant.
-e.g. for backwards compat we could support:
-
-{noformat}
-&lt;charFilter class="solr.HtmlStripCharFilterFactory"/&gt;
-&lt;tokenizer class="solr.StandardTokenizerFactory"/&gt;
-&lt;filter class="solr.LowerCaseFilterFactory"/&gt;
-&lt;filter class="solr.PorterStemFilterFactory"/&gt;
-{noformat}
-
-but going forward this would be cleaner IMO, just use the SPI name directly:
-
-{noformat}
-&lt;charFilter name="HtmlStrip"/&gt;
-&lt;tokenizer name="Standard"/&gt;
-&lt;filter name="LowerCase"/&gt;
-&lt;filter name="PorterStem"/&gt;
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> That would be of a huge benefit, I definitely think it's something we should pursue.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                We're actually going to need this sooner rather than later, in order to continue to support the {solr.*} suffix for analysis factories.  Currently {{SolrResourceLoader}} just has a list a directories it tries when presented with the suffix.  When we move all the factories into their directories, it won't be able to do that any more.  
-
-I'll experiment with this once I've committed my latest patch.
+                I don't think I ever saw a "nice" solution to the problem of subclassing and delegating filters. Java's built-in classes suffer from the same problem (FilterInputStream for example).
               </div></li><li><div>
-                I will try to convince Uwe to look at the issue as well. He is the SPI expert, he
-will probably have some good ideas about the best approach.
+                the solution is, don't use delegators except over interfaces (or all-abstract).
+              </div></li><li><div>
+                I opened a PR here https://github.com/apache/lucene-solr/pull/574
+              </div></li><li><div>
+                Commit 4a513fa99f638cb65e0cae59bfdf7af410c0327a in lucene-solr's branch refs/heads/master from Simon Willnauer
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=4a513fa ]
 
-Worst case I see him tomorrow or something and hassle him about it.
+LUCENE-8292: Make TermsEnum fully abstract (#574)
+
 
               </div></li><li><div>
-                On trunk (1335132) I am getting this error with windows Java(TM) SE Runtime Environment (build 1.6.0_31-b05)
+                Commit fd1fc2637071347201df3ecede659c47a0414d9d in lucene-solr's branch refs/heads/branch_8_0 from Simon Willnauer
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=fd1fc26 ]
 
-{code}
+LUCENE-8292: Make TermsEnum fully abstract (#574)
 
-common.compile-core:
-    [javac] Compiling 1 source file to C:\workspace\apache\lucene\solr\build\contrib\solr-analysis-extras\classes\java
-    [javac] warning: [options] bootstrap class path not set in conjunction with -source 1.6
-    [javac] C:\workspace\apache\lucene\solr\contrib\analysis-extras\src\java\org\apache\solr\schema\ICUCollationField.java:89: error: method setup in class ICUCollationField cannot be applied to given types;
-    [javac]     setup(schema.getResourceLoader(), args);
-    [javac]     ^
-    [javac]   required: ResourceLoader,Map&lt;String,String&gt;
-    [javac]   found: SolrResourceLoader,Map&lt;String,String&gt;
-    [javac]   reason: actual argument SolrResourceLoader cannot be converted to ResourceLoader by method invocation conversion
-    [javac] 1 error
-    [javac] 1 warning
-{code}
-
-switching SolrResourceLoader to depend on org.apache.lucene.analysis.util.ResourceLoader fixes it...
-
-I don't know why I see this, but not hudson
 
               </div></li><li><div>
-                Ryan, compilation succeeds for me (at svn r1335131) on Win7+Cygwin, w/ Oracle JDK 1.6.0_21 - I don't see the same failure as you.
+                Commit 8dfbbec892d2db40e5e855b11ff8288e3524bac4 in lucene-solr's branch refs/heads/branch_8x from Simon Willnauer
+[ https://gitbox.apache.org/repos/asf?p=lucene-solr.git;h=8dfbbec ]
 
-Maybe 'ant clean' will help?
-              </div></li><li><div>
-                my bad -- i was running ant compile from the solr folder and needed to run clean from up a level.
-              </div></li><li><div>
-                Patch which moves MultiTermComponent to the analysis module.  Hopefully this is the last thing to move.
+LUCENE-8292: Make TermsEnum fully abstract (#574)
 
-Tests pass.
-              </div></li><li><div>
-                I dont like the type-unsafety here... shouldnt it be at least AbstractAnalysisFactory (instead of Object)? 
-              </div></li><li><div>
-                I agree but I don't know anything about this functionality so I'll take your word for it.
-              </div></li><li><div>
-                Looking at the usage of this functionality in FieldTypePluginLoader, yes it can definitely be changed to AbstractAnalysisFactory since the code just checks whether it's a TokenFilterFactory, TokenizerFactory or CharFilterFactory (and throws an error on any other type).
 
-I'll update the patch.
               </div></li><li><div>
-                New patch changing MultiTermComponent over to returning an AbstractAnalysisFactory.
-              </div></li><li><div><div><b>body:</b> Bash file for moving all the non-deprecated non-solr specific factories.
-
-TODO:
-- Make patch correcting package names
-- Collapse functionality from {{BaseTokenTestCase}} into {{BaseTokenStreamTestCase}}
-- Add test classes to those being moved
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Patch which simplifies the factory tests.  It removes BaseTokenTestCase, moves the tests over to using TEST_CURRENT_VERSION, and cleans up some of the init(args) code.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Updated move script to include tests.
+                Thanks Simon. &nbsp;I didn't think&nbsp;this could get in to 8.x at the last second or I would have volunteered. &nbsp;FYI [~romseygeek] so you're aware.
               </div></li><li><div>
-                bulk cleanup of 4.0-ALPHA / 4.0 Jira versioning. all bulk edited issues have hoss20120711-bulk-40-change in a comment
-              </div></li><li><div>
-                Fixed with merge of sub-task.
-
-We should open new issues for:
-
-- Fix the Factory API to be more useable for Lucene programmers from Hibernate, ES, and other projects needing configureable analyzers
-- Clean up solr/contrib/analysis-extras (this contrib contains no factory code anymore just some JARS + The ICUCollationKeyField). We can nuke the whole contrib now, users can simply extract the analysis/morfologic,icu,smarcn,... JARS and put into their Solr plugins folder. I would move the ICUCollationFieldType to core and add icu.jar there. Its already needed by other contribs, so deduplicating it by adding to core makes much sense
-- We should maybe add a script to Solr that downloads the JAR files of the former extra analysis from Maven/Ivy and install in plugin folder. No need to ship this seldom used stuff with the main WAR.
-- Automatism to create META-INF/services (also affects Codecs&amp;PostingsFormat). 2 possibilities (using APT and do it in JavaC using custom annotation while compiling, ASM-based ANT task like forbidden APIS to find all subclasses/implementations of an interface after compiling).
-              </div></li><li><div>
-                Solr tests have been failing under Maven on ASF Jenkins since the LUCENE-4044 commits on 7/25, because the POMs for two analysis modules (morfologik and phonetic) didn't include {{$\{project.build.resources}}} definitions for {{src/resources/}}, the location of the SPI configuration files {{META-INF/services/o.a.l.analysis.util.*Factory}}.  
-
-I've added {{src/resources/}} to these two modules' POMs:
-
-- r1369961: trunk
-- r1369980: branch_4x
-
+                [~dsmiley] I coordinated this with [~romseygeek] given that we had to respin for https://issues.apache.org/jira/browse/SOLR-13126 anyhow. 
               </div></li></ol></div></div></html>

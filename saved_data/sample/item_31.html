@@ -1,208 +1,138 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 31
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-4247 Add isAborted method to the Abortable interface
-                </div><div><b>message:</b> HBASE-4247 Add isAborted method to the Abortable interface
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-5119 Set the TimeoutMonitor's timeout back down
+                </div><div><b>message:</b> HBASE-5119 Set the TimeoutMonitor's timeout back down
 
-git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1172040 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1403500 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add isAborted method to the Abortable interface
-                </div><div><b>description:</b> Add a new method isAborted() to the Abortable interface 
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Firstly in the process of working on this. I have made the following assumptions
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Set the TimeoutMonitor's timeout back down
+                </div><div><b>description:</b> The TimeoutMonitor used to be extremely racy and caused more troubles than it fixed, but most of this has been fixed I believe in the context of 0.92 so I think we should set it down back to a useful level. Currently it's 30 minutes, what should the new value be?
 
-1. if abort() has a null implementation, then 
-      a. isAborted() will have a null implementation ( returns false )
+I think 5 minutes should be good, will do some testing.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                I think I will retract from my statement that it "used to be extremely racy and caused more troubles than it fixed", on my first test I got a stuck region in transition instead of being able to recover. The timeout was set to 2 minutes to be sure I hit it.
 
-2. if abort() throws a RuntimeException(), then 
-      a. create a boolean abort 
-      b.set this to true in  abort()
-      c. return abort in isAbort()
+First the region gets closed
+{quote}
+2012-01-04 00:16:25,811 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Sent CLOSE to sv4r5s38,62023,1325635980913 for region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791.
+{quote}
 
-I hope this would be fine.
+2 minutes later it times out:
 
+{quote}
+2012-01-04 00:18:30,026 INFO org.apache.hadoop.hbase.master.AssignmentManager: Regions in transition timed out:  test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. state=PENDING_CLOSE, ts=1325636185810, server=null
+2012-01-04 00:18:30,026 INFO org.apache.hadoop.hbase.master.AssignmentManager: Region has been PENDING_CLOSE for too long, running forced unassign again on region=test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791.
+2012-01-04 00:18:30,027 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Starting unassignment of region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. (offlining)
+{quote}
 
-Secondly there are Instances where in abort() implementation this.stopped and this.closed are manipulated. Shouldn't this be done in stop() and close() methods of Stoppable and Closable interfaces? This is a little misleading isn't it ? 
+100ms later the master finally gets the event:
 
-If it really has to be stopped when aborted then why not call stop() from abort(). I feel it makes it more meaningful
+{quote}
+2012-01-04 00:18:30,129 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Handling transition=RS_ZK_REGION_CLOSED, server=sv4r5s38,62023,1325635980913, region=1a4b111bcc228043e89f59c4c3f6a791, which is more than 15 seconds late
+2012-01-04 00:18:30,129 DEBUG org.apache.hadoop.hbase.master.handler.ClosedRegionHandler: Handling CLOSED event for 1a4b111bcc228043e89f59c4c3f6a791
+2012-01-04 00:18:30,129 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Table being disabled so deleting ZK node and removing from regions in transition, skipping assignment of region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791.
+2012-01-04 00:18:30,129 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:62003-0x134589d3db03587 Deleting existing unassigned node for 1a4b111bcc228043e89f59c4c3f6a791 that is in expected state RS_ZK_REGION_CLOSED
+2012-01-04 00:18:30,166 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:62003-0x134589d3db03587 Successfully deleted unassigned node for region 1a4b111bcc228043e89f59c4c3f6a791 in expected state RS_ZK_REGION_CLOSED
+{quote}
 
+At this point everything is fine, the region was processed as closed. But wait, remember that line where it said it was going to force an unassign?
 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> On 1., agree.  I agree on 2. too.
+{quote}
+2012-01-04 00:18:30,322 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: master:62003-0x134589d3db03587 Creating unassigned node for 1a4b111bcc228043e89f59c4c3f6a791 in a CLOSING state
+2012-01-04 00:18:30,328 INFO org.apache.hadoop.hbase.master.AssignmentManager: Server null returned java.lang.NullPointerException: Passed server is null for 1a4b111bcc228043e89f59c4c3f6a791
+{quote}
 
-On your 'Secondly', yes.  That seems dirty.
+Now the master is confused, it recreated the RIT znode but the region doesn't even exist anymore. It even tries to shut it down but is blocked by NPEs. Now this is what's going on.
 
-Agree on calling stop from abort (Doesn't it do this in a few places?  IIRC).
+The late ZK notification that the znode was deleted (but it got recreated after):
+
+{quote}
+2012-01-04 00:19:33,285 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: The znode of region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. has been deleted.
+{quote}
+
+Then it prints this, and much later tries to unassign it again:
+
+{quote}
+2012-01-04 00:19:46,607 DEBUG org.apache.hadoop.hbase.master.handler.DeleteTableHandler: Waiting on  region to clear regions in transition; test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. state=PENDING_CLOSE, ts=1325636310328, server=null
+...
+2012-01-04 00:20:39,623 DEBUG org.apache.hadoop.hbase.master.handler.DeleteTableHandler: Waiting on  region to clear regions in transition; test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. state=PENDING_CLOSE, ts=1325636310328, server=null
+2012-01-04 00:20:39,864 INFO org.apache.hadoop.hbase.master.AssignmentManager: Regions in transition timed out:  test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. state=PENDING_CLOSE, ts=1325636310328, server=null
+2012-01-04 00:20:39,864 INFO org.apache.hadoop.hbase.master.AssignmentManager: Region has been PENDING_CLOSE for too long, running forced unassign again on region=test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791.
+2012-01-04 00:20:39,865 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Starting unassignment of region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. (offlining)
+2012-01-04 00:20:39,865 DEBUG org.apache.hadoop.hbase.master.AssignmentManager: Attempted to unassign region test1,089cd0c9,1325635015491.1a4b111bcc228043e89f59c4c3f6a791. but it is not currently assigned anywhere
+{quote}
+
+And this is still ongoing.
+              </div></li><li><div>
+                This stuff scares me. How do you manually recover from this?
+              </div></li><li><div>
+                In my case killing -9 the master did it.
+              </div></li><li><div>
+                Moving to 0.92.2
+              </div></li><li><div>
+                No movement here. Moving to 0.96. Pull back if you feel otherwise.
+              </div></li><li><div>
+                We can do it in 0.96.
+              </div></li><li><div>
+                I will make the change in HBASE-6611.  HBASE-6977 will be helpful too.
+              </div></li><li><div>
+                Based on my testing for HBASE-6611/HBASE-6977, in my testing cluster, I can easily open 10+k regions on 4 nodes in around 4 minutes.  I think we are fine to set the timeout back to 5 minutes.
+              </div></li><li><div>
+                Make a patch to set it to 10 minutes Jimmy?  That would be a big improvement over what it currently is?
+              </div></li><li><div>
+                I uploaded a patch, which simply set the timeout to 10minutes and the checking period to 30 seconds.
+              </div></li><li><div>
+                +1  Be sure to make a release note on resolve of the issue detailing new defaults
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12551208/trunk_5119.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 hadoop2.0{color}.  The patch compiles against the hadoop 2.0 profile.
+
+    {color:red}-1 javadoc{color}.  The javadoc tool appears to have generated 85 warning messages.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:red}-1 findbugs{color}.  The patch appears to introduce 3 new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in .
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop2-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-server.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop1-compat.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-common.html
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//artifact/trunk/patchprocess/newPatchFindbugsWarningshbase-hadoop-compat.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/3171//console
+
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I just made the changes and ran tests. There's one issue. In HConnectionManagerImpl as I mentioned before this.closed is being set to true in the abort() method and I changed this to call close(stopProxy) method indeed instead of manipulating this.closed to true. But unfortunatly TestMergeTool started failing because of this change. So my question is that was this intended closed in the first place ??  
-              </div></li><li><div>
-                TestMergeTool passed in build 2155.
-Can you publish your patch along with the test failure ?
+                Integrated in HBase-TRUNK #3495 (See [https://builds.apache.org/job/HBase-TRUNK/3495/])
+    HBASE-5119 Set the TimeoutMonitor's timeout back down (Revision 1403500)
 
-Thanks
-              </div></li><li><div>
-                TestMerge tool is failing because of the changes I made I am sure. 
-
-The change is basically this:
-
-Original
-&lt;code&gt;
-   @Override
-    public void abort(final String msg, Throwable t) {
-      if (t instanceof KeeperException.SessionExpiredException) {
-        try {
-          LOG.info("This client just lost it's session with ZooKeeper, trying" +
-              " to reconnect.");
-          resetZooKeeperTrackers();
-          LOG.info("Reconnected successfully. This disconnect could have been" +
-              " caused by a network partition or a long-running GC pause," +
-              " either way it's recommended that you verify your environment.");
-          return;
-        } catch (ZooKeeperConnectionException e) {
-          LOG.error("Could not reconnect to ZooKeeper after session" +
-              " expiration, aborting");
-          t = e;
-        }
-      }
-      if (t != null) LOG.fatal(msg, t);
-      else LOG.fatal(msg);
-      this.closed=true;
-    }
-&lt;/code&gt;
-
-Changed
-&lt;code&gt;
-   @Override
-    public void abort(final String msg, Throwable t) {
-      if (t instanceof KeeperException.SessionExpiredException) {
-        try {
-          LOG.info("This client just lost it's session with ZooKeeper, trying" +
-              " to reconnect.");
-          resetZooKeeperTrackers();
-          LOG.info("Reconnected successfully. This disconnect could have been" +
-              " caused by a network partition or a long-running GC pause," +
-              " either way it's recommended that you verify your environment.");
-          return;
-        } catch (ZooKeeperConnectionException e) {
-          LOG.error("Could not reconnect to ZooKeeper after session" +
-              " expiration, aborting");
-          t = e;
-        }
-      }
-      if (t != null) LOG.fatal(msg, t);
-      else LOG.fatal(msg);
-      close(false);
-    }
-&lt;/code&gt;
-
-My question is close is closing zookeeper session and other thing. But does changing this leads to other test cases like TestMergeTool failing. 
-
-Does setting this.closed=true have any meaning at all in abort without actually closing ?
-              </div></li><li><div><div><b>body:</b> Plz excuse me about the formatting. I didn't know the Markup tags the codes should be placed under 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                See https://lists.secondlife.com/pipermail/jira-notify/2009-January/099415.html for Code formatting tags for JIRA
-
-@Akash:
-If you cannot edit your previous comment, I can format it for you.
-              </div></li><li><div>
-                HConnectionImplementation implements HConnection which inturn implements Abortable
-              </div></li><li><div>
-                According to the javadoc for Abortable:
-{noformat}
- * This is used primarily for ZooKeeper usage when we could get an unexpected
- * and fatal exception, requiring an abort.
-{noformat}
-This means the first if block in the above abort() method is supposed to handle almost all calls to the method.
-
-To try to validate the above judgement, I issued the following two searches among all test output files:
-{code}
-grep FATAL target/surefire-reports/* | grep ConnectionManager | grep -v TestMergeTool
-grep 'Could not reconnect to ZooKeeper after session' target/surefire-reports/*
-{code}
-There was nothing returned.
-
-TestMergeTool is a special case where HBase cluster is supposed to be unavailable.
-
-Looking at getMaster() and locateRegion(), this.closed being true would make them return immediately.
-
-Hope this helps with your question.
-              </div></li><li><div>
-                I agree with that. But on a more logical level doesn't setting this.closed = true mean that close() method was called on it and the zookeeper session itself was closed ? 
-setting this.closed = true without executing close() shouldn't be done even for special cases right ?
-
-If such is that case then this.aborted itself should be used instead of closed right ??
-              </div></li><li><div>
-                I thought abort executed close?
-              </div></li><li><div>
-                In HConnectionManager.java under the subclass HConnectionManagerImplementation
-
-{code}
- @Override
-    public void abort(final String msg, Throwable t) {
-      if (t instanceof KeeperException.SessionExpiredException) {
-        try {
-          LOG.info("This client just lost it's session with ZooKeeper, trying" +
-              " to reconnect.");
-          resetZooKeeperTrackers();
-          LOG.info("Reconnected successfully. This disconnect could have been" +
-              " caused by a network partition or a long-running GC pause," +
-              " either way it's recommended that you verify your environment.");
-          return;
-        } catch (ZooKeeperConnectionException e) {
-          LOG.error("Could not reconnect to ZooKeeper after session" +
-              " expiration, aborting");
-          t = e;
-        }
-      }
-      if (t != null) LOG.fatal(msg, t);
-      else LOG.fatal(msg);
-      this.closed = true;
-    }
-{code}
-
-If we call close() instead of this tests are failing( one of them being TestMergeTools ). I was wondering if some change should be made out here. Somehow I feel its not right set this.closed out here? Or if this is some special case and could be left untouched. 
-
-Thanks
-              </div></li><li><div>
-                I think this is special.  This is client-side.  I thought you were talking server-side.  I misunderstood.  Do what you think makes most sense Akash.  This client-side stuff is tricky.
-              </div></li><li><div>
-                Adding Javadoc to the isAbortable() method in Abortable Interface
-              </div></li><li><div>
-                Committed to TRUNK.  Thank you for the patch Akash.
-              </div></li><li><div>
-                Integrated in HBase-TRUNK #2227 (See [https://builds.apache.org/job/HBase-TRUNK/2227/])
-    HBASE-4247 Add isAborted method to the Abortable interface
-HBASE-4247 Add isAborted method to the Abortable interface
-
-stack : 
+     Result = SUCCESS
+jxiang : 
 Files : 
-* /hbase/trunk/CHANGES.txt
-
-stack : 
-Files : 
-* /hbase/trunk/CHANGES.txt
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/Abortable.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/client/HBaseAdmin.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/client/HConnectionManager.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/master/HMaster.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/replication/master/ReplicationLogCleaner.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/util/HBaseFsck.java
-* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/zookeeper/ZooKeeperWatcher.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/catalog/TestCatalogTracker.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/catalog/TestCatalogTrackerOnCluster.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/catalog/TestMetaReaderEditor.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/master/TestActiveMasterManager.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/master/TestCatalogJanitor.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/master/TestClockSkewDetection.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/master/TestLogsCleaner.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/master/TestMasterFailover.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/regionserver/handler/MockRegionServerServices.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/regionserver/handler/MockServer.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/replication/regionserver/TestReplicationSourceManager.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/zookeeper/TestZKTable.java
-* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/zookeeper/TestZooKeeperNodeTracker.java
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
 
               </div></li><li><div>
-                This issue was closed as part of a bulk closing operation on 2015-11-20. All issues that have been resolved and where all fixVersions have been released have been closed (following discussions on the mailing list).
+                Integrated in HBase-TRUNK-on-Hadoop-2.0.0 #244 (See [https://builds.apache.org/job/HBase-TRUNK-on-Hadoop-2.0.0/244/])
+    HBASE-5119 Set the TimeoutMonitor's timeout back down (Revision 1403500)
+
+     Result = FAILURE
+jxiang : 
+Files : 
+* /hbase/trunk/hbase-server/src/main/java/org/apache/hadoop/hbase/master/AssignmentManager.java
+
+              </div></li><li><div>
+                Marking closed.
               </div></li></ol></div></div></html>

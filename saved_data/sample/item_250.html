@@ -1,1258 +1,182 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 250
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 couchjs OS process IO logs
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Enable OS process IO logging + upload for Travis and Jenkins tests
-                </div><div><b>message:</b> Enable OS process IO logging + upload for Travis and Jenkins tests
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merge pull request #590 from cloudant/fix-couch_log_config_listener_test
+                </div><div><b>message:</b> Merge pull request #590 from cloudant/fix-couch_log_config_listener_test
 
-Issue #551
+Wait for listener's exit during restart test
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> eunit couch_log_config_test failed with get_listener() found
+                </div><div><b>body:</b> ## Current &amp; Expected Behaviour
+Sometimes, the `couch_log_config_listener_test` test `couch_log_config_test`_ fails. It should always pass
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
+Makefile output:
+```
+module 'couch_log_config_listener_test'
+  couch_log_config_listener_test: couch_log_config_test_...*failed*
+in function couch_log_config_listener_test:'-check_restart_listener/0-fun-2-'/1 (test/couch_log_config_listener_test.erl, line 38)
+in call from couch_log_config_listener_test:check_restart_listener/0 (test/couch_log_config_listener_test.erl, line 38)
+**error:{assertEqual_failed,[{module,couch_log_config_listener_test},
+                     {line,38},
+                     {expression,"get_handler ( )"},
+                     {expected,not_found},
+                     {value,{config_listener,{couch_log_sup,&lt;0.3334.0&gt;}}}]}
 
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
+  couch_log_config_listener_test: couch_log_config_test_...[1.002 s] ok
+  [done in 1.008 s]
 ```
 
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
+couch.log from the uploader is **EMPTY**.
 
 ## Possible Solution
-There was a comment on IRC about this:
+Looks like this test is expecting `gen_event:delete_handler` to occur immediately. Should there be a `timer:sleep()` call prior to checking `get_handler()`?
 
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li><li><div><div><b>title:</b> [Jenkins] couchjs segfaults
-                </div><div><b>body:</b> ## Expected Behavior
-`couchjs` shouldn't segfault.
-
-## Current Behavior
-Sometimes, in an automated run, it does. Here's an example:
-
-```python
-test/javascript/tests/attachment_views.js                      
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 177: test/javascript/couch.js
-      ("(function (doc) {var count = 0;for (var idx in doc._attachments) {co
-  79: test/javascript/tests/attachment_views.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-[31mfail
-```
-
-Sample couch.log content:
-```
-[info] 2017-05-30T19:36:00.862817Z node1@127.0.0.1 &lt;0.2237.0&gt; -------- Starting index update for db: shards/a0000000-bfffffff/test_suite_db_rsaxbqjx.1496172960 idx: _design/temp_dhrvvuyu
-[error] 2017-05-30T19:36:00.903666Z node1@127.0.0.1 &lt;0.2202.0&gt; -------- OS Process Error &lt;0.2117.0&gt; :: {os_process_error,{exit_status,139}}
-[info] 2017-05-30T19:36:00.903800Z node1@127.0.0.1 &lt;0.222.0&gt; -------- couch_proc_manager &lt;0.2117.0&gt; died normal
-[error] 2017-05-30T19:36:00.903990Z node1@127.0.0.1 &lt;0.2148.0&gt; a631af55fb rexi_server throw:{os_process_error,{exit_status,139}} [{couch_mrview_util,get_view,4,[{file,"src/couch_mrview_util.erl"},{line,52}]},{couch_mrview,query_view,6,[{file,"src/couch_mrview.erl"},{line,244}]},{rexi_server,init_p,3,[{file,"src/rexi_server.erl"},{line,139}]}]
-[error] 2017-05-30T19:36:00.904339Z node1@127.0.0.1 &lt;0.1724.0&gt; a631af55fb req_err(2090670111) os_process_error : {exit_status,139}
-    [&lt;&lt;"couch_mrview_util:get_view/4 L52"&gt;&gt;,&lt;&lt;"couch_mrview:query_view/6 L244"&gt;&gt;,&lt;&lt;"rexi_server:init_p/3 L139"&gt;&gt;]
-```
-
-
-## Possible Solution
-There was a comment on IRC about this:
-
-```irc
-14:02 &lt; vatamane&gt; I had built a centos 7 vagrant vm before but couldn't reproduce
-14:02 &lt; vatamane&gt; however i encountered segfaults in couchjs when was playing with changing its max heap parameter, -S I think
-14:03 &lt; vatamane&gt; the segfault was triggered by garbage collection
-14:35 &lt;+jan____&gt; eeenteresting
-14:35 &lt;+jan____&gt; we dropped support for this between 1.x and 2.x and only fixed it after 2.0, which means, I think, that Cloudant never ran that code
-14:41 &lt;+jan____&gt; …and subsequently didn’t see any potential segfaults
-14:42 &lt; vatamane&gt; the idea there at some point was that making the max heap big enough just delayed the garbage collection indefinitely
-```
-
-This is a recurrence of JIRA issue https://issues.apache.org/jira/browse/COUCHDB-3352
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                Based on @nickva 's suppositions, I attempted a low-memory, low-stack-size invocation of couch and couchjs respectively. For reference:
-
-```sh
-$ docker run -it -m 256M --memory-swap 0 --memory-reservation 256M couchdbdev/centos-7-erlang-18.3 /bin/bash
-```
-
-Then, after pulling &amp; building couch master inside the VM, editing `dev/run` to add `-S 65535` or `-S 16384` to the `javascript =` line (L268)
-
-Finally, running the test in a loop:
-
-```sh
-$ for i in `seq 1 500`; do make suites=reduce.js javascript; done
-```
-
-No failures after 500 executions. It didn't help reproduce the problem. :(
-
-              </div></li><li><div><div><b>body:</b> I looked at this a bit today. Compiled couchjs from mozjs 1.8.5 source on a CentOS 7 VM. 
-
-The created a patch to run log all couchjs inputs to file. Then fed that input to that couchjs process in a loop. So far no crashes.
-
-The ran valgrind against couchjs with a few lines of input. It found a whole bunch of uninitialized variable uses but apparently those are ok according to upstream and to reduce the noise have to set `./configure --enable-valgrind` that made it better and only showed two leaks:
-
-```
-==2212==
-==2212== HEAP SUMMARY:
-==2212==     in use at exit: 608 bytes in 2 blocks
-==2212==   total heap usage: 1,157,666 allocs, 1,157,664 frees, 470,097,237 bytes allocated
-==2212==
-==2212== 40 bytes in 1 blocks are definitely lost in loss record 1 of 2
-==2212==    at 0x4C27BE3: malloc (vg_replace_malloc.c:299)
-==2212==    by 0x4056EF: couch_parse_args (util.c:75)
-==2212==    by 0x4048E2: main (main.c:388)
-==2212==
-==2212== 568 bytes in 1 blocks are still reachable in loss record 2 of 2
-==2212==    at 0x4C27BE3: malloc (vg_replace_malloc.c:299)
-==2212==    by 0x596654C: __fopen_internal (iofopen.c:73)
-==2212==    by 0x405529: slurp_file (util.c:36)
-==2212==    by 0x405CDA: couch_readfile (util.c:203)
-==2212==    by 0x404B53: main (main.c:449)
-==2212==
-==2212== LEAK SUMMARY:
-==2212==    definitely lost: 40 bytes in 1 blocks
-==2212==    indirectly lost: 0 bytes in 0 blocks
-==2212==      possibly lost: 0 bytes in 0 blocks
-==2212==    still reachable: 568 bytes in 1 blocks
-==2212==         suppressed: 0 bytes in 0 blocks
-==2212==
-==2212== For counts of detected and suppressed errors, rerun with: -v
-==2212== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)
-```
-
-Those are ok. It would be good to clean them up but the process exits at that point it doesn't seem like the culprit.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> So to me this suggests it's not a strict memory leak that's failing. Your idea from IRC about capturing all the stdio for the couchjs process and using that to playback against the process to find the source of the problem is intriguing.
-
-I'd also appreciate a review of the compile-time settings for our js libs across platforms, compilers used, and whether anything there might be at fault.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Got a traceback from a Jenkins Docker CentOS 7 test runner:
-
-```
-(gdb) bt
-#0  0x00007f35fcb924ef in js::NewBuiltinClassInstance(JSContext*, js::Class*, js::gc::FinalizeKind) ()
-   from /lib/libmozjs185.so.1.0
-#1  0x00007f35fcb93650 in js_ValueToNonNullObject(JSContext*, js::Value const&amp;) ()
-   from /lib/libmozjs185.so.1.0
-#2  0x00007f35fcca7304 in js::mjit::stubs::GetElem(js::VMFrame&amp;) () from /lib/libmozjs185.so.1.0
-#3  0x00007f35fcd0a07c in js::mjit::ic::GetElement(js::VMFrame&amp;, js::mjit::ic::GetElementIC*) ()
-   from /lib/libmozjs185.so.1.0
-#4  0x00007f35fd1bef05 in ?? ()
-#5  0x000000004de2894d in ?? ()
-#6  0x00007f35f7670340 in ?? ()
-#7  0x0000000100000000 in ?? ()
-#8  0x0000000000000001 in ?? ()
-#9  0x00007f35fc527640 in ?? () from /lib64/libc.so.6
-#10 0x00007f35f76703b8 in ?? ()
-#11 0x00000000020bd302 in ?? ()
-#12 0x00007f35f7670340 in ?? ()
-#13 0x00000000020bd303 in ?? ()
-#14 0x00007f35f7670340 in ?? ()
-#15 0x0000000001fd0aa0 in ?? ()
-#16 0x00007f35f771a168 in ?? ()
-#17 0x00007f35f7670228 in ?? ()
-#18 0x0000000001fd0aa0 in ?? ()
-#19 0x0000000001fd0aa0 in ?? ()
-#20 0x00007f35f7a70000 in ?? ()
-#21 0x000000000000ffff in ?? ()
-#22 0x00007ffd4b6fac70 in ?? ()
-#23 0x00007f35f7670228 in ?? ()
-#24 0x00007f35fcca3bd6 in js::mjit::JaegerShotAtSafePoint(JSContext*, void*) () from /lib/libmozjs185.so.1.0
-#25 0x00007f35fcb6dc88 in js::Interpret(JSContext*, JSStackFrame*, unsigned int, JSInterpMode) ()
-   from /lib/libmozjs185.so.1.0
-#26 0x00007f35fcb6f4a5 in js::RunScript(JSContext*, JSScript*, JSStackFrame*) () from /lib/libmozjs185.so.1.0
-#27 0x00007f35fcb7022c in js::Execute(JSContext*, JSObject*, JSScript*, JSStackFrame*, unsigned int, js::Value*) () from /lib/libmozjs185.so.1.0
-#28 0x00007f35fcae3348 in JS_ExecuteScript () from /lib/libmozjs185.so.1.0
-#29 0x0000000000404c8a in main (argc=4, argv=0x7ffd4b6faf98) at priv/couch_js/main.c:470
-```
-              </div></li><li><div>
-                Found a deterministic instance of a segfault.
-
-Apparently this bit
-```
-["reset",{"reduce_limit":true,"timeout":5000}]
-["add_fun","function(doc) }{"]
-```
-Segfaults in `ubuntu12erlang183` docker image when running on Ubuntu 17.04 host. 
-
-Haven't tried others. The same input is expected to generate an exception about an invalid function, and it does so for example in the `centos7erlang18` docker image running on the same host.
-
-It obviously doesn't always segfault because it runs as part of a test suite and it doesn't always crash in `ubuntu12erlang183`, sometimes it passes.  It could be just my specific host / docker running combination triggered it.
-
-```
-(gdb) run
-Starting program: /usr/src/couchdb/apache-couchdb-2.1.0-2f539e0/bin/couchjs /usr/src/couchdb/apache-couchdb-2.1.0-2f539e0/share/server/main.js &lt; bad.in
-warning: no loadable sections found in added symbol-file system-supplied DSO at 0x7ffff7ffa000
-[Thread debugging using libthread_db enabled]
-Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
-[New Thread 0x7ffff1af3700 (LWP 20)]
-true
-Program received signal SIGSEGV, Segmentation fault.
-0x00007ffff79508a4 in ?? () from /usr/lib/libmozjs185.so.1.0
-(gdb) bt
-#0  0x00007ffff79508a4 in ?? () from /usr/lib/libmozjs185.so.1.0
-#1  0x00007ffff78c1603 in JS_TypeOfValue () from /usr/lib/libmozjs185.so.1.0
-#2  0x00007ffff793baf5 in ?? () from /usr/lib/libmozjs185.so.1.0
-#3  0x00007ffff794e285 in ?? () from /usr/lib/libmozjs185.so.1.0
-#4  0x00007ffff794e722 in ?? () from /usr/lib/libmozjs185.so.1.0
-#5  0x00007ffff7920791 in ?? () from /usr/lib/libmozjs185.so.1.0
-#6  0x00007ffff7944b46 in ?? () from /usr/lib/libmozjs185.so.1.0
-#7  0x00007ffff794e285 in ?? () from /usr/lib/libmozjs185.so.1.0
-#8  0x00007ffff794fdc5 in ?? () from /usr/lib/libmozjs185.so.1.0
-#9  0x00007ffff78c73aa in JS_ExecuteScript () from /usr/lib/libmozjs185.so.1.0
-#10 0x0000000000404e71 in main (argc=2, argv=0x7fffffffe728) at priv/couch_js/main.c:470
-
-```
-              </div></li><li><div>
-                So @davisp and I found out that building mozjs185 from source on Ubuntu12 docker image doesn't reproduce the segfault. But re-building deb package from source does. We tried applying the same ./configure options but still couldn't make the segfault happen.
-
-There are differences in CFLAGS and some of those seem like would enable stack protection mechanisms.
-
-Here is the compile options diff between a deb package build vs build from source. The first one is the deb package
-
-```
-
-&lt; configure:14198: c++ -o conftest -g -O2 -fstack-protector 
---param=ssp-buffer-size=4 -Wformat -Wformat-security 
--fno-strict-aliasing -pthread -D_FORTIFY_SOURCE=2 -lpthread 
--Wl,-Bsymbolic-functions -Wl,-z,relro conftest.C -ldl  1&gt;&amp;5
----
- &gt; configure:14198: c++ -o conftest  -fno-strict-aliasing -pthread 
--lpthread  conftest.C -ldl  1&gt;&amp;5
-```
-              </div></li><li><div>
-                So we've been talking this over on #couchdb-dev IRC.
-
-The working theory is:
-
-```
-&lt;vatamane&gt; jit + fortify source + extra stack protection causes segfault
-```
-
-On Ubuntu 12.04, our Docker images currently use Debian's package, which is what @nickva analysed above. I will change our 12.04 image to build SM from source using flags as recommended via https://paste.apache.org/2UId . I'm not going to put a lot of effort in here - Ubuntu 12.04 is officially EOL at this point. Also worth noting is that the equivalent Debian package has a `--disable-methodjit` (and wrapped in a `ifdef` for `platform==Debian` only), which should also bypass the bug as found.
-
-Our CentOS 6/7 images currently build SM from source but do *not* include the build options above. That is, The *package* builds (in couchdb-pkg) **do** use these options, though (derived from the official CentOS 7 js-devel package definition).
-
-None of this helps Ubuntu 14, though, which has shown multiple segfaults (including at least 2 recorded in JIRA), and should have the flags listed above as ideal.
-
-All of this mess, plus the problems with building SM1.8.5 with gcc6+, make me want to get a `couchjs-chakracore` out the door as soon as possible, maybe for 2.2.
-              </div></li><li><div>
-                Lunch gave me some perspective. I'm proceeding with a 3-step approach:
-
-1. Compile js-1.8.5 from source in all Docker images, with the `--disable-methodjit` configure option. This should remove the possibility for the current known segfault.
-2. Watch for more segfaults in test runs &amp; in the field. Address on a case-by-case basis. If the chronic problem resurfaces in our test suite, reopen this issue.
-3. Because of the gcc6+ issues and this ticket, move couchjs to couchjs-chakracore as soon as possible (same external view server interface, just replacing SM 1.8.5)
-
-@janl what do you think about for #3 above, adding the daemon in 2.2, and making it the default in 3.0?
-              </div></li><li><div>
-                Images are still uploading; once they have I'll push the button on Jenkins to run a few times and will share results in this ticket. If it's not fixed, I'll reopen.
-              </div></li><li><div>
-                One run done so far with no segfaults (though 4 other errors).
-              </div></li><li><div>
-                Two runs done with no segfaults. I'm declaring victory for now - we would have had a segfault by now.
-
-Again, please reopen this ticket if another segfault happens in Jenkins.
-              </div></li><li><div>
-                Out of interest I found out that on Ubuntu 12 image. The predictable segfault is caused by this linker flag:
-
-`-Wl,-Bsymbolic-functions`
-
-Deb package adds that to config/autoconf.mk to `OS_LDFLAGS` variable.
-
-So just adding that to the vanilla upstream source on Ubuntu 12 ends up reproducing the segfault.  
-              </div></li><li><div>
-                Great work isolating this, I was utterly lost.
-              </div></li><li><div><div><b>body:</b> I'll leave the full backtrace of the segfault here for future reference. Wohali's work on building from source seems fixed this problem (and disabling jit fixed other unpredictable segfaults).
-```
-(gdb) bt f
-#0  typeOf (cx=0x696a00, this=0x7ffffffffff6) at jsobj.h:1262
-        op = &lt;optimized out&gt;
-#1  js::TypeOfValue (cx=0x696a00, vref=...) at jsinterp.cpp:1202
-        v = &lt;optimized out&gt;
-#2  0x00007ffff7973ed3 in JS_TypeOfValue (cx=&lt;optimized out&gt;, v=18446744073709551606) at jsapi.cpp:578
-No locals.
-#3  0x00007ffff79e9aa0 in js::Interpret (cx=0x696a00, entryFrame=0x7ffff19e92e0, inlineCallCount=1, interpMode=JSINTERP_NORMAL) at jsinterp.cpp:3914
-        type = JSTYPE_BOOLEAN
-        normalJumpTable = {0x7ffff79ea732, 0x7ffff79ebcab, 0x7ffff79e8e8f, 0x7ffff79ebb94, 0x7ffff79ebb60, 0x7ffff79ebb31, 0x7ffff79e9083, 0x7ffff79ec388, 0x7ffff79e9e8b, 0x7ffff79eef98, 0x7ffff79ebd58, 0x7ffff79e9d6e, 0x7ffff79e9fcb, 0x7ffff79e9d28, 0x7ffff79ec970, 0x7ffff79ec4a7, 0x7ffff79ec3f8, 0x7ffff79eba82, 0x7ffff79eb98d, 0x7ffff79eb89a, 0x7ffff79eb57e, 0x7ffff79eb436, 0x7ffff79eb2ee, 0x7ffff79eb1a6,
-          0x7ffff79eb0f3, 0x7ffff79eb040, 0x7ffff79eaf85, 0x7ffff79eae5e, 0x7ffff79ead7f, 0x7ffff79efed8, 0x7ffff79efdeb, 0x7ffff79ede85, 0x7ffff79ede02, 0x7ffff79edd7b, 0x7ffff79edceb, 0x7ffff79edcac, 0x7ffff79edbdf, 0x7ffff79ef1f0, 0x7ffff79ef0b0, 0x7ffff79e9a8c, 0x7ffff79edfbd, 0x7ffff79ea6a1, 0x7ffff79efd53, 0x7ffff79edfb8, 0x7ffff79ec285, 0x7ffff79efd58, 0x7ffff79edfb3, 0x7ffff79ec27f, 0x7ffff79e8328,
-          0x7ffff79e8210, 0x7ffff79efd98, 0x7ffff79e8328, 0x7ffff79e8210, 0x7ffff79e9aec, 0x7ffff79e8354, 0x7ffff79ea580, 0x7ffff79ea254, 0x7ffff79e848f, 0x7ffff79ebc3e, 0x7ffff79e848f, 0x7ffff79ecd85, 0x7ffff79ecd2d, 0x7ffff79ecb60, 0x7ffff79ecb1c, 0x7ffff79ef33e, 0x7ffff79efc3f, 0x7ffff79ef2fa, 0x7ffff79ef478, 0x7ffff79e9dea, 0x7ffff79ec295, 0x7ffff79ef3f3, 0x7ffff79ece48, 0x7ffff79eb81d, 0x7ffff79eb7a0,
-          0x7ffff79ecaff, 0x7ffff79ebedf, 0x7ffff79ebe25, 0x7ffff79ebdd3, 0x7ffff79e804d, 0x7ffff79ec935, 0x7ffff79eccba, 0x7ffff79ebc7f, 0x7ffff79ea009, 0x7ffff79ecdeb, 0x7ffff79e9a05, 0x7ffff79edf61, 0x7ffff79ef05c, 0x7ffff79ef2a7, 0x7ffff79eca78, 0x7ffff79ef643, 0x7ffff79ef5b5, 0x7ffff79eeb98, 0x7ffff79eeb75, 0x7ffff79e97c7, 0x7ffff79ed49b, 0x7ffff79ed3c5, 0x7ffff79ed2e1, 0x7ffff79efaa4, 0x7ffff79f00e6,
-          0x7ffff79efa0d, 0x7ffff79f00d9, 0x7ffff79efd2d, 0x7ffff79efd44, 0x7ffff79efcfe, 0x7ffff79efd3a, 0x7ffff79ec556, 0x7ffff79e8edc, 0x7ffff79eac3b, 0x7ffff79e9f58, 0x7ffff79ebc43, 0x7ffff79ec570, 0x7ffff79efd4e, 0x7ffff79ed98c, 0x7ffff79ebf40, 0x7ffff79ed7b4, 0x7ffff79ed6b5, 0x7ffff79edb71, 0x7ffff79edaa6, 0x7ffff79eda41, 0x7ffff79ebd35, 0x7ffff79ea70f, 0x7ffff79eb733, 0x7ffff79e907a, 0x7ffff79e8da9,
-          0x7ffff79ea108, 0x7ffff79e9c47, 0x7ffff79e9c47, 0x7ffff79ee3be, 0x7ffff79e90e2, 0x7ffff79e90e2, 0x7ffff79edff6, 0x7ffff79efda5, 0x7ffff79ed937, 0x7ffff79ec8ca, 0x7ffff79ea6ec, 0x7ffff79eda0c, 0x7ffff79e92d8, 0x7ffff79e92d8, 0x7ffff79eef19, 0x7ffff79ef382, 0x7ffff79ee259, 0x7ffff79e902f, 0x7ffff79ec318, 0x7ffff79ec1dd, 0x7ffff79ec12c, 0x7ffff79ec0a9, 0x7ffff79edae7, 0x7ffff79eb6c6, 0x7ffff79e9026,
-          0x7ffff79ef4bc, 0x7ffff79ecf9c, 0x7ffff79e94c4, 0x7ffff79e94c4, 0x7ffff79ed9c6, 0x7ffff79e8e8f, 0x7ffff79e8655, 0x7ffff79ec27a, 0x7ffff79ea8e7, 0x7ffff79efd93, 0x7ffff79efd9d, 0x7ffff79e7dd2, 0x7ffff79e7dd8, 0x7ffff79ecba4, 0x7ffff79ed66d, 0x7ffff79ed734, 0x7ffff79ed615, 0x7ffff79ee6f7, 0x7ffff79ee66e, 0x7ffff79ee60b, 0x7ffff79ee5a6, 0x7ffff79e9744, 0x7ffff79e9744, 0x7ffff79ee8d3, 0x7ffff79ee793,
-          0x7ffff79e9680, 0x7ffff79e95e0, 0x7ffff79eeb22, 0x7ffff79eea6e, 0x7ffff79eea05, 0x7ffff79ee99c, 0x7ffff79ed202, 0x7ffff79ed172, 0x7ffff79e90bf, 0x7ffff79ed0fa, 0x7ffff79ed082, 0x7ffff79ed001, 0x7ffff79e95e0, 0x7ffff79ea933, 0x7ffff79ebcef, 0x7ffff79ebd12, 0x7ffff79eca1b, 0x7ffff79ecad1, 0x7ffff79e9a65, 0x7ffff79e9a65, 0x7ffff79ea6c9, 0x7ffff79ea6a6, 0x7ffff79ea3ce, 0x7ffff79e8655, 0x7ffff79e9aec,
-          0x7ffff79e9680...}
-        argv = 0x7ffff19e9358
-        interruptJumpTable = {0x7ffff79ea755 &lt;repeats 244 times&gt;}
-        atoms = 0x788c68
-        op = JSOP_TYPEOF
-        rt = 0x609070
-        regs = {sp = 0x7ffff19e93f0, pc = 0x788e10 "'=", fp = 0x7ffff19e9370}
-        script = 0x788bb0
-        atomNotDefined = 0x7ffffffffff6
-#4  0x00007ffff79f912f in js::RunScript (cx=0x696a00, script=&lt;optimized out&gt;, fp=0x7ffff19e92e0) at jsinterp.cpp:653
-        prepareInterp = {cx = 0x696a00, script = &lt;optimized out&gt;}
-#5  0x00007ffff79f9482 in js::Invoke (cx=0x696a00, argsRef=..., flags=&lt;optimized out&gt;) at jsinterp.cpp:740
-        preserve = {cx = 0x696a00, enumerators = 0x0}
-        clasp = 0x5
-        fun = 0x0
-        frame = {cx_ = 0x696a00, regs_ = {sp = 0x7ffff19e9338, pc = 0x77c650 ";", fp = 0x7ffff19e92e0}, prevRegs_ = 0x7fffffffe040}
-        ok = &lt;optimized out&gt;
-        script = 0x77c570
-#6  0x00007ffff79cf47a in js_fun_apply (cx=0x696a00, argc=&lt;optimized out&gt;, vp=0x7ffff19e92a8) at jsfun.cpp:2205
-        length = 1
-        fval = {data = {asBits = 18445618173559587696, debugView = {payload47 = 140737245234032, tag = JSVAL_TAG_OBJECT}, s = {payload = {i32 = -243121296, u32 = 4051846000, why = 4051846000, word = 18445618173559587696}}, asDouble = -nan(0xbfffff1824370), asPtr = 0xfffbfffff1824370}}
-        n = 1
-        args = {&lt;js::CallArgs&gt; = {argv_ = 0x7ffff19e92d8, argc_ = 1}, cx = 0x696a00, seg = 0x0, prevInvokeArgEnd = 0x0}
-#7  0x00007ffff79f2082 in CallJSNative (vp=&lt;optimized out&gt;, argc=&lt;optimized out&gt;, native=&lt;optimized out&gt;, cx=&lt;optimized out&gt;) at jscntxtinlines.h:701
-        ok = 5
-#8  js::Interpret (cx=0x696a00, entryFrame=0x7ffff19e90d8, inlineCallCount=2, interpMode=JSINTERP_NORMAL) at jsinterp.cpp:4799
-        ok = 5
-        flags = 0
-        vp = 0x7ffff19e92b0
-        argc = 2
-        normalJumpTable = {0x7ffff79ea732, 0x7ffff79ebcab, 0x7ffff79e8e8f, 0x7ffff79ebb94, 0x7ffff79ebb60, 0x7ffff79ebb31, 0x7ffff79e9083, 0x7ffff79ec388, 0x7ffff79e9e8b, 0x7ffff79eef98, 0x7ffff79ebd58, 0x7ffff79e9d6e, 0x7ffff79e9fcb, 0x7ffff79e9d28, 0x7ffff79ec970, 0x7ffff79ec4a7, 0x7ffff79ec3f8, 0x7ffff79eba82, 0x7ffff79eb98d, 0x7ffff79eb89a, 0x7ffff79eb57e, 0x7ffff79eb436, 0x7ffff79eb2ee, 0x7ffff79eb1a6,
-          0x7ffff79eb0f3, 0x7ffff79eb040, 0x7ffff79eaf85, 0x7ffff79eae5e, 0x7ffff79ead7f, 0x7ffff79efed8, 0x7ffff79efdeb, 0x7ffff79ede85, 0x7ffff79ede02, 0x7ffff79edd7b, 0x7ffff79edceb, 0x7ffff79edcac, 0x7ffff79edbdf, 0x7ffff79ef1f0, 0x7ffff79ef0b0, 0x7ffff79e9a8c, 0x7ffff79edfbd, 0x7ffff79ea6a1, 0x7ffff79efd53, 0x7ffff79edfb8, 0x7ffff79ec285, 0x7ffff79efd58, 0x7ffff79edfb3, 0x7ffff79ec27f, 0x7ffff79e8328,
-          0x7ffff79e8210, 0x7ffff79efd98, 0x7ffff79e8328, 0x7ffff79e8210, 0x7ffff79e9aec, 0x7ffff79e8354, 0x7ffff79ea580, 0x7ffff79ea254, 0x7ffff79e848f, 0x7ffff79ebc3e, 0x7ffff79e848f, 0x7ffff79ecd85, 0x7ffff79ecd2d, 0x7ffff79ecb60, 0x7ffff79ecb1c, 0x7ffff79ef33e, 0x7ffff79efc3f, 0x7ffff79ef2fa, 0x7ffff79ef478, 0x7ffff79e9dea, 0x7ffff79ec295, 0x7ffff79ef3f3, 0x7ffff79ece48, 0x7ffff79eb81d, 0x7ffff79eb7a0,
-          0x7ffff79ecaff, 0x7ffff79ebedf, 0x7ffff79ebe25, 0x7ffff79ebdd3, 0x7ffff79e804d, 0x7ffff79ec935, 0x7ffff79eccba, 0x7ffff79ebc7f, 0x7ffff79ea009, 0x7ffff79ecdeb, 0x7ffff79e9a05, 0x7ffff79edf61, 0x7ffff79ef05c, 0x7ffff79ef2a7, 0x7ffff79eca78, 0x7ffff79ef643, 0x7ffff79ef5b5, 0x7ffff79eeb98, 0x7ffff79eeb75, 0x7ffff79e97c7, 0x7ffff79ed49b, 0x7ffff79ed3c5, 0x7ffff79ed2e1, 0x7ffff79efaa4, 0x7ffff79f00e6,
-          0x7ffff79efa0d, 0x7ffff79f00d9, 0x7ffff79efd2d, 0x7ffff79efd44, 0x7ffff79efcfe, 0x7ffff79efd3a, 0x7ffff79ec556, 0x7ffff79e8edc, 0x7ffff79eac3b, 0x7ffff79e9f58, 0x7ffff79ebc43, 0x7ffff79ec570, 0x7ffff79efd4e, 0x7ffff79ed98c, 0x7ffff79ebf40, 0x7ffff79ed7b4, 0x7ffff79ed6b5, 0x7ffff79edb71, 0x7ffff79edaa6, 0x7ffff79eda41, 0x7ffff79ebd35, 0x7ffff79ea70f, 0x7ffff79eb733, 0x7ffff79e907a, 0x7ffff79e8da9,
-          0x7ffff79ea108, 0x7ffff79e9c47, 0x7ffff79e9c47, 0x7ffff79ee3be, 0x7ffff79e90e2, 0x7ffff79e90e2, 0x7ffff79edff6, 0x7ffff79efda5, 0x7ffff79ed937, 0x7ffff79ec8ca, 0x7ffff79ea6ec, 0x7ffff79eda0c, 0x7ffff79e92d8, 0x7ffff79e92d8, 0x7ffff79eef19, 0x7ffff79ef382, 0x7ffff79ee259, 0x7ffff79e902f, 0x7ffff79ec318, 0x7ffff79ec1dd, 0x7ffff79ec12c, 0x7ffff79ec0a9, 0x7ffff79edae7, 0x7ffff79eb6c6, 0x7ffff79e9026,
-          0x7ffff79ef4bc, 0x7ffff79ecf9c, 0x7ffff79e94c4, 0x7ffff79e94c4, 0x7ffff79ed9c6, 0x7ffff79e8e8f, 0x7ffff79e8655, 0x7ffff79ec27a, 0x7ffff79ea8e7, 0x7ffff79efd93, 0x7ffff79efd9d, 0x7ffff79e7dd2, 0x7ffff79e7dd8, 0x7ffff79ecba4, 0x7ffff79ed66d, 0x7ffff79ed734, 0x7ffff79ed615, 0x7ffff79ee6f7, 0x7ffff79ee66e, 0x7ffff79ee60b, 0x7ffff79ee5a6, 0x7ffff79e9744, 0x7ffff79e9744, 0x7ffff79ee8d3, 0x7ffff79ee793,
-          0x7ffff79e9680, 0x7ffff79e95e0, 0x7ffff79eeb22, 0x7ffff79eea6e, 0x7ffff79eea05, 0x7ffff79ee99c, 0x7ffff79ed202, 0x7ffff79ed172, 0x7ffff79e90bf, 0x7ffff79ed0fa, 0x7ffff79ed082, 0x7ffff79ed001, 0x7ffff79e95e0, 0x7ffff79ea933, 0x7ffff79ebcef, 0x7ffff79ebd12, 0x7ffff79eca1b, 0x7ffff79ecad1, 0x7ffff79e9a65, 0x7ffff79e9a65, 0x7ffff79ea6c9, 0x7ffff79ea6a6, 0x7ffff79ea3ce, 0x7ffff79e8655, 0x7ffff79e9aec,
-          0x7ffff79e9680...}
-        argv = 0x7ffff19e9228
-        interruptJumpTable = {0x7ffff79ea755 &lt;repeats 244 times&gt;}
-        atoms = 0x78a7e8
-        op = 4053701296
-        rt = 0x609070
-        regs = {sp = 0x7ffff19e92c8, pc = 0x78a95d "N", fp = 0x7ffff19e9228}
-        script = 0x78a730
-        atomNotDefined = 0x7ffffffffff6
-#9  0x00007ffff79f912f in js::RunScript (cx=0x696a00, script=&lt;optimized out&gt;, fp=0x7ffff19e90d8) at jsinterp.cpp:653
-        prepareInterp = {cx = 0x696a00, script = &lt;optimized out&gt;}
-#10 0x00007ffff79faa55 in js::Execute (cx=0x696a00, chain=0x7ffff1803048, script=0x78aa30, prev=&lt;optimized out&gt;, flags=&lt;optimized out&gt;, result=0x7fffffffe590) at jsinterp.cpp:1028
-        frame = {&lt;js::FrameGuard&gt; = {cx_ = 0x696a00, seg_ = 0x7ffff19e9090, vp_ = 0x7ffff19e90c8, fp_ = 0x7ffff19e90d8}, regs_ = {sp = 0x7ffff19e9130, pc = 0x78aae0 "\202", fp = 0x7ffff19e90d8}}
-        initialVarObj = &lt;optimized out&gt;
-        preserve = {cx = 0x696a00, enumerators = 0x0}
-        ok = &lt;optimized out&gt;
-#11 0x00007ffff797987a in JS_ExecuteScript (cx=0x696a00, obj=&lt;optimized out&gt;, scriptObj=&lt;optimized out&gt;, rval=&lt;optimized out&gt;) at jsapi.cpp:4998
-        ok = &lt;optimized out&gt;
-#12 0x0000000000404e71 in main (argc=2, argv=0x7fffffffe6e8) at priv/couch_js/main.c:470
-        rt = 0x609070
-        cx = 0x696a00
-        global = 0x7ffff1803048
-        call = 0x6f47c0
-        klass = 0x0
-        script = 0x7ffff1803948
-        scriptsrc = 0x7ffff1818040
-        schars = 0x7253a0
-        slen = 52758
-        sroot = 18445336698582827072
-        result = 4841656
-        i = 0
-        args = 0x609040
-```
-
+## Context
+This used to be known as https://issues.apache.org/jira/browse/COUCHDB-3341 but is now on GH Issues.
 
                 </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> JS: couchjs SIGSEGVs
-                </div><div><b>description:</b> Failures typically look like this:
+                </div></div></li><li><div><div><b>title:</b> eunit couch_log_config_test failed with get_listener() found
+                </div><div><b>body:</b> ## Current &amp; Expected Behaviour
+Sometimes, the `couch_log_config_listener_test` test `couch_log_config_test`_ fails. It should always pass
+
+Makefile output:
+```
+module 'couch_log_config_listener_test'
+  couch_log_config_listener_test: couch_log_config_test_...*failed*
+in function couch_log_config_listener_test:'-check_restart_listener/0-fun-2-'/1 (test/couch_log_config_listener_test.erl, line 38)
+in call from couch_log_config_listener_test:check_restart_listener/0 (test/couch_log_config_listener_test.erl, line 38)
+**error:{assertEqual_failed,[{module,couch_log_config_listener_test},
+                     {line,38},
+                     {expression,"get_handler ( )"},
+                     {expected,not_found},
+                     {value,{config_listener,{couch_log_sup,&lt;0.3334.0&gt;}}}]}
+
+  couch_log_config_listener_test: couch_log_config_test_...[1.002 s] ok
+  [done in 1.008 s]
+```
+
+couch.log from the uploader is **EMPTY**.
+
+## Possible Solution
+Looks like this test is expecting `gen_event:delete_handler` to occur immediately. Should there be a `timer:sleep()` call prior to checking `get_handler()`?
+
+## Context
+This used to be known as https://issues.apache.org/jira/browse/COUCHDB-3341 but is now on GH Issues.
+
+                </div></div></li><li><div><div><b>title:</b> eunit couch_log_config_test failed with get_listener() found
+                </div><div><b>body:</b> ## Current &amp; Expected Behaviour
+Sometimes, the `couch_log_config_listener_test` test `couch_log_config_test`_ fails. It should always pass
+
+Makefile output:
+```
+module 'couch_log_config_listener_test'
+  couch_log_config_listener_test: couch_log_config_test_...*failed*
+in function couch_log_config_listener_test:'-check_restart_listener/0-fun-2-'/1 (test/couch_log_config_listener_test.erl, line 38)
+in call from couch_log_config_listener_test:check_restart_listener/0 (test/couch_log_config_listener_test.erl, line 38)
+**error:{assertEqual_failed,[{module,couch_log_config_listener_test},
+                     {line,38},
+                     {expression,"get_handler ( )"},
+                     {expected,not_found},
+                     {value,{config_listener,{couch_log_sup,&lt;0.3334.0&gt;}}}]}
+
+  couch_log_config_listener_test: couch_log_config_test_...[1.002 s] ok
+  [done in 1.008 s]
+```
+
+couch.log from the uploader is **EMPTY**.
+
+## Possible Solution
+Looks like this test is expecting `gen_event:delete_handler` to occur immediately. Should there be a `timer:sleep()` call prior to checking `get_handler()`?
+
+## Context
+This used to be known as https://issues.apache.org/jira/browse/COUCHDB-3341 but is now on GH Issues.
+
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> Just a note: it turned out there could be two causes for this failure 1) we are indeed checking event manager before it had chance to remove old handler 2) `couch_log_sup` is super fast and spawns and register new handler before we are pulling `which_handlers/1`, so we are getting _new_ handler. Just `sleep` would help in half of the cases, so I ended with something a bit more verbose. Hope it'll work more reliably. 
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Wait for listener's exit during restart test
+                </div><div><b>body:</b> ## Overview
+
+To test a config listener's restart we are deleting event handler in config_event and then immediately checking event manager.
+
+This creates race when we can be a slightly early and catch old handler yet to be removed or slightly late and get new handler that already been installed.
+
+This patch trying to address this by doing the check immediately after old handler exits and then incrementally waiting for new handler to be installed.
+
+## Testing recommendations
+
+Run for an isolated test:
+
+```bash
+make eunit apps=couch_log suites=couch_log_config_listener_test tests=couch_log_config_test_
+```
+
+## GitHub issue number
+
+Fixes #581 
+
+## Checklist
+
+- [x] Code is written and works correctly;
+- [x] Changes are covered by tests;
+- [ ] Documentation reflects the changes;
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                Ironically your test for this build failed on the couch_log_config_listener_test:
+
+https://travis-ci.org/apache/couchdb/jobs/240997782
+              </div></li><li><div>
+                Ironically indeed :/
+
+Since it's guaranteed that the old handler was gone, it sent `'DOWN'` after all, that means this is a new registered handler already spawned by sup. I'll have to bash my head now to figure out what can be done about this.
+              </div></li><li><div>
+                So I've been pondering on this for a while and I don't see a good solution on how we can fix this race without altering the test.
+
+The issue here is that when we are trying to confirm that handler got removed from `config_event` manager we are aiming in a pretty narrow gap between `config_listener`'s terminate and `couch_log_sup` spawning and registering new `config_listener_mon`.
+
+We can ensure that we are not checking handlers before old listener dies, but we can't delay supervisor without mocking `couch_log_sup` to set delay in its `handle_config_terminate`.
+And mocking the very module we are testing doesn't seems right to me.
+
+So I removed assertion on that short moment when handler is not in `config_event` and used it as a flag to wait on new listener to start. Then I've added assertion on that it is indeed a new listener and it is registered as the same handler id, which should be enough to confirm that listener's restart is working as expected.
+
+@davisp I believe you are the original author of this test. Do you think this change is acceptable and doesn't compromise integrity of the test?
+              </div></li><li><div>
+                +1
+
+I didn't even remember writing this test so I went back to look at history. The reason this got all mixed up was the big config API changes that happened around the time I wrote this test. Originally it was its own gen_server which would wait 5s between reloads of the config listener but then we changed the config listener to be in the supervision tree which as you point out makes it quite the race. Looks like we hit that and then just changed the timeout without actually rethinking the test.
+
+Your changes to wait for the handler to exit, wait for a new one wiht the same id and a different pid I agree perform the same logical assertion that the restart is working.
+
+Good work on this!
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> EUnit: config listener unknown failure
+                </div><div><b>description:</b> One occurrence in our Jenkins builds so far.
 
 {noformat}
-test/javascript/tests/reduce_builtin.js                        
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 546: test/javascript/couch.js
-      CouchError([object Object])
- 509: test/javascript/couch.js
-      ([object CouchHTTP])
- 175: test/javascript/couch.js
-      ("(function (doc) {emit(doc.keys, [1, 1]);})","_sum",[object Object])
- 159: test/javascript/tests/reduce_builtin.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-fail
+module 'couch_log_config_listener_test'
+  couch_log_config_listener_test: couch_log_config_test_...*failed*
+in function
+couch_log_config_listener_test:'-check_restart_listener/0-fun-2-'/1
+(test/couch_log_config_listener_test.erl, line 38)
+in call from couch_log_config_listener_test:check_restart_listener/0
+(test/couch_log_config_listener_test.erl, line 38)
+**error:{assertEqual,[{module,couch_log_config_listener_test},
+              {line,38},
+              {expression,"get_handler ( )"},
+              {expected,not_found},
+              {value,{config_listener,{couch_log_sup,&lt;0.3192.0&gt;}}}]}
+  output:&lt;&lt;""&gt;&gt;
 {noformat}
 
-Have seen this so far on both CentOS 7 and Ubuntu 14.04. 
+No clue what's going on here.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                This has just recurred on CentOS7, Erlang 18.2.
-
-{noformat}
-test/javascript/tests/reduce.js                                
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 546: test/javascript/couch.js
-      CouchError([object Object])
- 509: test/javascript/couch.js
-      ([object CouchHTTP])
- 175: test/javascript/couch.js
-      ("(function (doc) {emit(doc.keys, 1);})","(function (keys, values) {re
- 116: test/javascript/tests/reduce.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-fail
-{noformat}
+                Second occurrence of this today on Debian 8 (jessie) Erlang 18.3. Identical log to original issue posting.
               </div></li><li><div>
-                Another instance of this, but Ubuntu 12.04 this time, Erlang 18.3.
-
-{noformat}
-test/javascript/tests/reduce.js                                
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 546: test/javascript/couch.js
-      CouchError([object Object])
- 509: test/javascript/couch.js
-      ([object CouchHTTP])
- 175: test/javascript/couch.js
-      ("(function (doc) {emit(doc.keys, 1);})","(function (keys, values) {re
-  79: test/javascript/tests/reduce.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-fail
-{noformat}
+                Third occurance today, CentOS 6, Erlang 18.3. Identical log.
               </div></li><li><div>
-                A different failure log this time. CentOS 7, Erlang 18.3 - this time in Coffeescript.
-
-{noformat}
-test/javascript/tests/coffee.js                                
-    Error: expected '"Foo 5Foo"', got '"{\"error\":\"os_process_error\",\"reason\":\"{exit_status,139}\"}\u000a"'
-Trace back (most recent call first):
-    
-  52: test/javascript/test_setup.js
-      T(false,"expected '\"Foo 5Foo\"', got '\"{\\\"error\\\":\\\"os_process
- 321: test/javascript/couch_test_runner.js
-      TEquals("Foo 5Foo","{\"error\":\"os_process_error\",\"reason\":\"{exit
-  63: test/javascript/tests/coffee.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-fail
-{noformat}
-              </div></li><li><div><div><b>body:</b> Back in reduce.js again.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Still getting this, now in view compaction (Ubuntu 14.04, Erlang 18.3)
-
-{noformat}
-test/javascript/tests/view_compaction.js                       
-    Error: {exit_status,139}
-Trace back (most recent call first):
-    
- 548: test/javascript/couch.js
-      CouchError([object Object])
- 511: test/javascript/couch.js
-      ([object CouchHTTP])
- 199: test/javascript/couch.js
-      ("foo/view1",[object Object])
-  72: test/javascript/tests/view_compaction.js
-      ()
-  37: test/javascript/cli_runner.js
-      runTest()
-  48: test/javascript/cli_runner.js
-      
-fail
-{noformat}
+                Fourth occurrence, Ubuntu 16.04, default Erlang. 
               </div></li><li><div>
-                I there any way to get a trace/core dump file for this?
+                Happened again in Jenkins, 14.04, 18.3.
               </div></li><li><div>
-                Your best bet is to pull the Jenkins Docker images and run the tests in them yourself until you get a segfault. You can do this via (for example, Ubuntu 12.04, Erlang 18.3):
-
-{noformat}
-$ docker run -it couchdbdev/ubuntu-12.04-erlang-18.3 bash
-build@e5f478cab4b5:/ansible$ ~/build-ci.sh
-{noformat}
-
-The full list of images is here: {{https://github.com/apache/couchdb-ci/tree/master/bin}} Only images with {{erlang}} in the name are useful.
+                [~iilyak] git blame says this is your most recent change. Can you look into why the assert on line 38 couch_log_config_listener_test.erl is failing about once every 10-20 runs? Thanks.
               </div></li><li><div>
-                Moved to https://github.com/apache/couchdb/issues/551
+                Just recurred again, am porting to GH Issues.
+              </div></li><li><div>
+                Migrated to https://github.com/apache/couchdb/issues/581
               </div></li></ol></div></div></html>

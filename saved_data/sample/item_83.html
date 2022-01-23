@@ -1,97 +1,164 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 83
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-10126: Improve test a bit.
-                </div><div><b>message:</b> SOLR-10126: Improve test a bit.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-2621: SegmentMerger returns MergeState
+                </div><div><b>message:</b> LUCENE-2621: SegmentMerger returns MergeState
+
+git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/lucene2621@1198728 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Extend Codec to handle also stored fields and term vectors
+                </div><div><b>description:</b> Currently Codec API handles only writing/reading of term-related data, while stored fields data and term frequency vector data writing/reading is handled elsewhere.
+
+I propose to extend the Codec API to handle this data as well.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                .. and norms while we're at it.
+              </div></li><li><div>
+                bq. .. and norms while we're at it.
+just for the record we should explore if norms could just be a doc payload see LUCENE-2186
+              </div></li><li><div>
+                FYI - I marked this as gsoc-2011 I think this would make a wonderful project. If any student needs more info go ahead and ask on the dev list. 
+              </div></li><li><div>
+                Brief Summary for GSoC Students:
+
+This issue is about extend Codec to handle also stored fields and term vectors
+This is a very interesting and at the same time very much needed
+feature which involves API Design, Refactoring and in depth
+understanding of how IndexWriter and its internals work. The API which
+needs to be refactored (Codec API) was made to consume PostingLists
+once an in memory index segment is flushed to disc. Yet, to expose
+Stored Fields to this API we need to prepare it to consume data for
+every document while we build the in memory segment. So there is a
+little paradigm missmatch here which needs to be addressed.
+              </div></li><li><div>
+                Brief Summary for GSoC Students:
+
+This issue is about extend Codec to handle also stored fields and term vectors
+This is a very interesting and at the same time very much needed
+feature which involves API Design, Refactoring and in depth
+understanding of how IndexWriter and its internals work. The API which
+needs to be refactored (Codec API) was made to consume PostingLists
+once an in memory index segment is flushed to disc. Yet, to expose
+Stored Fields to this API we need to prepare it to consume data for
+every document while we build the in memory segment. So there is a
+little paradigm missmatch here which needs to be addressed.
+              </div></li><li><div>
+                I've some questions here to make sure I'm looking into the correct codes:
+When you mentioned Codec API, do you mean the abstract class org.apache.lucene.index.codecs.Codec?
+Term vectors refer to org.apache.lucene.index.TermFreqVector, and it is processed by TermVectorsWriter now, correct?
+But what are the stored fields? I cannot find them immediately.
+
+BTW, is there any design document of Lucene in the Wiki?
+
+              </div></li><li><div>
+                bq. When you mentioned Codec API, do you mean the abstract class org.apache.lucene.index.codecs.Codec?
+Yes that is the main entry point. Currently a codec offer a FieldsConsumer which is pulled by the IndexWriter upon a flush request. Codecs are assigned per field and segment via the CodecProvider. So each field can have its own codec and each codec can have a different implementation. Yet, currently we only provide codec support for the reverse index so a codec can customize the term dictionary (TermsEnum would be the API counterpart) and posting lists (DocsEnum / DocsAndPositionsEnum in the API). What this issue tries to do is to open up this API as a general low level customization layer that enables users to also customize how Stored Fields and TermVectors are stored on disk.
+
+ bq. Term vectors refer to org.apache.lucene.index.TermFreqVector, and it is processed by TermVectorsWriter now, correct?
+yes thats true.
+
+bq. But what are the stored fields? I cannot find them immediately.
+there should be a StoredFieldsWriter and a FieldsReader.
+
+bq. BTW, is there any design document of Lucene in the Wiki?
+
+nothing that I would call a design document. there are some pages which could be similar to what you are looking for but those might be out of date. You should maybe look int the corresponding issues to find design decisions.
+              </div></li><li><div>
+                I assigned this to me since I would volunteer to mentor this issue. Hope that is ok Andrzej?
+              </div></li><li><div>
+                Sure, go ahead.
+              </div></li><li><div><div><b>body:</b> Here is a minimal 'rote refactor' for stored fields, there is a lot more to do (e.g. filenames/extensions should come from codec, segmentmerger optimizations (bulk merging) should not be in the API but customized by the codec, the codec name (format) of fields should be recorded in the index, we should implement a simpletext version and refactor/generalize, ...)
+
+but more importantly, I think we need to restructure the class hierarchy: Codec is a per-field thing currently but I think the name "Codec" should represent the entire index... 
+
+maybe what is Codec now should be named FieldCodec? maybe the parts of CodecProvider (e.g. segmentinfosreader, storedfields, etc) should be be moved to this new Codec class? in this world maybe PreFlex codec for example returns its hardcoded representation for every field since in 3.x this stuff is *not* per field, and with more of the back compat code refactored down into PreFlex.
+
+Would be good to come up with a nice class naming/hierarchy that represents reality here.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Awesome!
+
+I think, like the postings, we can add a .merge() method, and the impl for that would do bulk-merge when it can?
+
+On the restructuring, maybe we can go back to a PerFieldCodecWrapper, which is itself a Codec?  This would simplify CodecProvider back to just being a name -&gt; Codec instance provider?  We would still use SegmentCodecs/FieldInfo(s) to compute/record the codecID, though, in theory this could become "private" to PFCW once it's a Codec again.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> I think so, assuming FieldInfos etc are *also* read/written by the codec.
+
+Then I think PFCW could be an abstract class that writes per-field configuration into the index, but for example PreFlexCodec would *not* extend this class, as a 3.x index is the same codec across all fields.
+
+I think if we do things this way we have a lot more flexibility with backwards compatibility instead of all this if-then-else conditional version-checking code when reading these files... 
+
+Really, for example if someone wanted to make a Codec that reads a lucene 2.x indexes (compressed fields and all) they should be able to do this if we reorganize this right.
 
                 </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> PeerSyncReplicationTest is a flakey test.
-                </div><div><b>description:</b> Could be related to SOLR-9555, but I will see what else pops up under beasting.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                {noformat}
-   [junit4] FAILURE 39.4s J8  | PeerSyncReplicationTest.test &lt;&lt;&lt;
-   [junit4]    &gt; Throwable #1: java.lang.AssertionError: expected:&lt;204&gt; but was:&lt;189&gt;
-   [junit4]    &gt; 	at __randomizedtesting.SeedInfo.seed([73F45BB654A349E5:FBA0646CFA5F241D]:0)
-   [junit4]    &gt; 	at org.apache.solr.cloud.PeerSyncReplicationTest.bringUpDeadNodeAndEnsureNoReplication(PeerSyncReplicationTest.java:286)
-   [junit4]    &gt; 	at org.apache.solr.cloud.PeerSyncReplicationTest.test(PeerSyncReplicationTest.java:165)
-   [junit4]    &gt; 	at org.apache.solr.BaseDistributedSearchTestCase$ShardsRepeatRule$ShardsFixedStatement.callStatement(BaseDistributedSearchTestCase.java:985)
-   [junit4]    &gt; 	at org.apache.solr.BaseDistributedSearchTestCase$ShardsRepeatRule$ShardsStatement.evaluate(BaseDistributedSearchTestCase.java:960)
-   [junit4]    &gt; 	at java.lang.Thread.run(Thread.java:745)
-   [junit4]   2&gt; 381334 INFO  (SUITE-PeerSyncReplicationTest-seed#[73F45BB654A349E5]-worker) [    ] o.a.s.SolrTestCaseJ4 ###deleteCore
-   [junit4]   2&gt; NOTE: leaving temporary files on disk at: /data1/ssd/lucene-solr-workspace/lucene-solr-1/solr/build/solr-core/test/J8/temp/solr.cloud.PeerSyncReplicationTest_73F45BB654A349E5-001
-   [junit4]   2&gt; Feb 11, 2017 5:17:04 PM com.carrotsearch.randomizedtesting.ThreadLeakControl checkThreadLeaks
-   [junit4]   2&gt; WARNING: Will linger awaiting termination of 1 leaked thread(s).
-{noformat}
-              </div></li><li><div><div><b>body:</b> I beasted this on my 6 core machine 100 runs 10 at a time. It failed 5 out of 100 times.
-
-PeerSyncReplicationTest 5.00% flakey 100.00 ~75s.
-
-                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                I think I looked at some fails of this test a while back and questioned the validity of the part of the test that was failing.
-              </div></li><li><div>
-                I've seen two types of a fail on this. One I think is SOLR-9555 and the other is like the snippet in the first comment.
-              </div></li><li><div>
-                Commit 3771e7d2c7df4df0c3771a1c6aaa05ce16d58b43 in lucene-solr's branch refs/heads/master from markrmiller
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=3771e7d ]
+                I created a branch (https://svn.apache.org/repos/asf/lucene/dev/branches/lucene2621) for extending and refactoring the codec API to cover more portions of the index...
 
-SOLR-10126: @BadApple this test, fails frequently on Jenkins cluster.
+I think it would be really nice to flesh this out for 4.0
 
               </div></li><li><div>
-                Commit 2d69eb3cf0d7f063d1076809731c669178b99cc7 in lucene-solr's branch refs/heads/branch_6x from markrmiller
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=2d69eb3 ]
+                CodecProvider -&gt; Codec and Codec -&gt; FieldCodec makes sense to me. This way the Codec would be responsible for all global index parts (seginfos, fieldinfos), and it would provide API to manage per-field data (FieldCodec), stored fields (FieldsWriter/Reader, perhaps a class to tie these two together), and term vectors (TermVectorsWriter/Reader, again grouped in a class).
 
-SOLR-10126: @BadApple this test, fails frequently on Jenkins cluster.
+Re. current patch: this looks like a great start. I discovered a problem lurking in SegmentMerger.mergeFields. setMatchingSegmentReaders checks only fieldInfos for compatibility, but it doesn't check the codecs (and fieldWriter/fieldReader) compatibility. It's happy then to use the matchingSegmentReader directly, which results in raw documents encoded with one codec being sent as a raw stream to a fieldWriter from another codec.
 
+Also, SegmentInfo.files() is messy, it should be populated from codecs - as soon as I changed the extension of the stored fields file things exploded because TieredMergePolicy couldn't find the .fdx file reported by files().
               </div></li><li><div>
-                Commit be64c26c270fc9663609492de77c1dec5574afda in lucene-solr's branch refs/heads/master from markrmiller
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=be64c26 ]
+                yeah another alternative name to FieldCodec would be something like PostingsFormat (or similar).
 
-SOLR-10126: Improve test a bit.
+Because there is a big difference between PreFlex (which is actually a codec), and Memory/Pulsing.
 
+as far as the current patch: yeah its missing a lot... because as soon as I started digging here I thought, well we have to probably try to fix these codec classes first before going further. Really I would like for some of the stuff like shared docstores to be private to PreFlex codec, part of fixing the files() issue.
+
+Same with the merging, this bulk copying of index inputs should be in codec as well. Currently its not only wrong as you noted, but makes assumptions about the implementation. But i didn't want to just shove this into CodecProvider since it doesnt really belong there.
+
+Finally, I do think the CodecProvider has a place after we fix these names. But I dont think it should be really any more than name -&gt; Codec resolution... currently it does too much. But to fix this, we really want to remove all the special per-field map, etc stuff it has... and this means factoring PerFieldCodecWrapper back out into codecs (in my opinion this should be PerFieldPostingsFormat, and just an 'ordinary' Codec). And for that to work correctly, we need FieldInfos reading/writing under codec control so that this per-field stuff can be private to PerFieldPostingsFormat....
+
+So there is a ton to do, although I made a branch I'm kinda concerned about doing a bunch of renaming and keeping things in sync... maybe I should ignore this though. But for now I've been trying to figure out any way we can do this in individual incremental steps/issues directly on trunk, its always nice to make progress that way.
               </div></li><li><div>
-                I'm looking at this test, I see some failure when REPLICATION.peerSync.errors == 1. Here are the case
-- leader and replica receive update from 1 to 4
-- replica stop
-- replica miss updates 5, 6
-- replica start recovery
-	+ replica buffer updates 7, 8
-	+ replica request versions from leader, 
-	+ replica get recent versions which is 1,2,3,4,7,8
-	+ in the same time leader receive update 9, so it will return updates from 1 to 9 (for request versions)
-	+ replica do peersync and request updates 5, 6, 9 from leader
-	+ replica apply updates 5, 6, 9. Its index does not have update 7, 8 and maxVersionSpecified for fingerprint is 9, therefore compare fingerprint will fail
-
-
+                IMHO you could merge the branch back into trunk, we are allowed to experiment and the current patch already improves the API and shows what to do next.
               </div></li><li><div>
-                Commit 68bda0be421ce18811e03b229781fd6152fcc04a in lucene-solr's branch refs/heads/master from [~caomanhdat]
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=68bda0b ]
+                bq. IMHO you could merge the branch back into trunk,
 
-SOLR-10126: PeerSyncReplicationTest is a flakey test.
++1
 
+This baby step (rote move of stored fields under codec control) is great.
+              </div></li><li><div><div><b>body:</b> Well technically its Codec*Provider* control, which is global, until we fix the codec hierarchy.
+
+But you can also subclass segmentinfosreader/writer in the same expert way (even harder/impossible to "fix"), so how about for now i just mark these methods "expert", merge, and followup with an issue to fix the codec hierarchy? (and later we need to make the apis more general and all these other things)
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I opened LUCENE-3490 to try to restructure our current "Codec" idea so that we can put more of the index underneath it.
+              </div></li><li><div><div><b>body:</b> OK I think the stored fields are all cleaned up in the lucene2621 branch: the issues Andrzej encountered
+when trying to extend it should no longer be an issue: fdx/fdt are no longer in IndexFileNames (but codec-private),
+codecs can override how merging happens for stored fields (the default is just the obvious impl),
+the indexinput/output "raw" methods for bulk merging are removed from the abstract API and only 
+inside DefaultFieldsReader/Writer, DefaultFieldsWriter overrides merge() and uses bulk optimisations 
+when the paired-up reader is also a DefaultFieldsReader
+
+Before merging to trunk, i think we need a SimpleText stored fields implementation to ensure everything is ok... 
+I'll try to do this next.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                All tests pass with the new simpletext stored fields impl: I'd like to merge the branch to trunk.
+
+attached is a patch between trunk and branch.
               </div></li><li><div>
-                Commit bc233d6dcd31aaf09770fc4c8e394bf80d2f803a in lucene-solr's branch refs/heads/branch_7x from [~caomanhdat]
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=bc233d6 ]
-
-SOLR-10126: PeerSyncReplicationTest is a flakey test.
-
+                +1 looks good (as far as I can tell!), even SegmentMerger starts making sense now :)
               </div></li><li><div>
-                [~caomanhdat] - can you please explain how your commit fixes the test?
-              </div></li><li><div>
-                [~shalin] It's not actually fix the problem, but It mades the test hardly to fail. 
+                +1!  Very exciting to finally have stored fields under codec control...
+              </div></li><li><div><div><b>body:</b> Attached is a new patch between trunk and branch. I think its at a point ready for merging.
+* term vectors and fieldinfos move to codec.
+* segmentinfos is moved to codec (before you could only realistically tweak a few things).
+* term vectors are cut over to flex apis
+* much better testing of term vectors in checkindex.
+* added simpletext impls of term vectors, fieldinfos, and segmentinfos.
 
-The test get failed when requestVersions response contain a new update that not present in replica recentUpdates ( in the above example, this is update 9). Therefore by putting a sleep between requestVersions and get recentUpdates, we will make sure that update 9 will present in replica's recentUpdates.
-              </div></li><li><div>
-                Thanks for explaining. I see that you have created a follow-up issue to fix the root cause. I have linked SOLR-11216 to this issue.
-              </div></li><li><div>
-                Commit 5cdf89d2727e1a33da4ac51b2562fcc9f0ebc1fc in lucene-solr's branch refs/heads/master from [~caomanhdat]
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=5cdf89d ]
-
-SOLR-10126: Leader may trigger LIR on replicas, cause the test failure
-
-              </div></li><li><div>
-                Commit 2526af1de9c2124500ce28c99ac6737934df898c in lucene-solr's branch refs/heads/branch_7x from [~caomanhdat]
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=2526af1 ]
-
-SOLR-10126: Leader may trigger LIR on replicas, cause the test failure
-
+After this I would propose closing this issue and opening followup issues for:
+* make a new more efficient term vector implementation for 4.0, the existing one would go to preflex, and preflex impl should reorder the terms correctly to UTF8 order (this is a bug all along in trunk, not caused here!)
+* see if we can remove the global .fnx file completely, as its not per-segment and i'm not sure its totally necessary, perhaps the field number consistency can be achieved with another mechanism. Otherwise, we should add a codec hack/hook at least so that preflexRW can write segments without .fnx files.
+* make preflex implementations of the other various reader/writers so that our 4.0 impls are clean and don't contain backwards compatibility code, and so that we have more realistic testing of backwards with PreFlexRW.
+* allow adding offsets to the postings lists impls either startOffset/endOffset() or via attribute like term vectors do in this patch, so that a D&amp;Penum can retrieve the offsets at a position. this could make highlighting much faster without having to use vectors.
+* try to make a few other things like deletes extendable via codec
+* figure out a good design to cut over norms to DocValues.
+* add a SimpleTextDocValues, its sorely needed.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Nice!
               </div></li></ol></div></div></html>

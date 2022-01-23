@@ -1,437 +1,72 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 247
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Collapse dupes in views instead of crashing
-                </div><div><b>message:</b> Collapse dupes in views instead of crashing
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Support setting cookie domain for AuthSession cookie
+                </div><div><b>message:</b> Support setting cookie domain for AuthSession cookie
 
-Duplicate entries in a database's sequence tree can be introduced by the
-bugs described in COUCHDB-968 and COUCHDB-1265.  The dupes will
-propagate to any secondary indexes if they are sufficiently close enough
-to each other in the seq tree.
+Merge pull request #827 from almightyju/master
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Support setting cookie domain for auth
+                </div><div><b>body:</b> Implementation for https://issues.apache.org/jira/browse/COUCHDB-1959 
 
-This patch modifies the view compactor so that instead of crashing on
-detection of dupes in the view index it collapses all the view keys into
-a single entry for the document.  A subsequent indexing of the document
-will remove the duped keys from the view and will replace them with the
-correct output for the current revision of the doc.
+It's a very simple use where you can set cookie_domain in the config which gets put on the set-cookie header.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Duplicated IDs in _all_docs
-                </div><div><b>description:</b> We have a database, which is causing serious trouble with compaction and replication (huge memory and cpu usage, often causing couchdb to crash b/c all system memory is exhausted). Yesterday we discovered that db/_all_docs is reporting duplicated IDs (see [1]). Until a few minutes ago we thought that there are only few duplicates but today I took a closer look and I found 10 IDs which sum up to a total of 922 duplicates. Some of them have only 1 duplicate, others have hundreds.
+I couldn't work out where the documentation is to update that and I'm not familiar enough with Erlang to write a test for it but a manual test with and without the config value works fine. If anyone wants to point out how to make a test for it I'm happy enough to put it in if desired.
 
-Some facts about the database in question:
-* ~13k documents, with 3-5k revs each
-* all duplicated documents are in conflict (with 1 up to 14 conflicts)
-* compaction is run on a daily bases
-* several thousands updates per hour
-* multi-master setup with pull replication from each other
-* delayed_commits=false on all nodes
-* used couchdb versions 1.0.0 and 1.0.x (*)
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                Before merging this we'll definitely want to see a test for this.
 
-Unfortunately the database's contents are confidential and I'm not allowed to publish it.
+Can you confirm that this does the right thing on the clustered port (5984)? 
+              </div></li><li><div>
+                I've been using this build myself for dev since making the pull request and it all works as expected on port 5984. 
 
-[1]: Part of http://localhost:5984/DBNAME/_all_docs
-...
-{"id":"9997","key":"9997","value":{"rev":"6096-603c68c1fa90ac3f56cf53771337ac9f"}},
-{"id":"9999","key":"9999","value":{"rev":"6097-3c873ccf6875ff3c4e2c6fa264c6a180"}},
-{"id":"9999","key":"9999","value":{"rev":"6097-3c873ccf6875ff3c4e2c6fa264c6a180"}},
-...
+With the tests I can see how the login is handled easy enough but I can't work out how the server is started since I guess it would have to be restarted with different a config to test the domain gets set on the cookie correctly.
+              </div></li><li><div>
+                Hi @almightyju , I'd like to push forward with this. I also want you to get the credit for the change!
 
-[*]
-There were two (old) servers (1.0.0) in production (already having the replication and compaction issues). Then two servers (1.0.x) were added and replication was set up to bring them in sync with the old production servers since the two new servers were meant to replace the old ones (to update node.js application code among other things).
+You don't have to restart the server with a different config, just change it as part of your `setup()` function, and set it back to the default value in your `teardown()` function. Here's an example:
+
+https://github.com/apache/couchdb/blob/master/src/couch/test/couchdb_mrview_cors_tests.erl#L32-L57
+
+If you need more guidance, I'm happy to work together with you on this, just let me know.
+              </div></li><li><div><div><b>body:</b> @wohali, finally got the tests done, I really do dislike erlang :/
+
+Anyway, new tests are passing for me, not confident about the need for clustered and backdoor for this so I've only tested against the clustered port.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Only clustered matters here, the node-local port is deprecated for all communications other than essential system admin tasks.
+
+Looks good! Assuming the Travis changes pass, we can merge this PR.
+
+              </div></li><li><div>
+                Thanks again @almightyju - great job, and congrats on your first-time contribution to Apache CouchDB! 
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Cookie Domain Setting
+                </div><div><b>description:</b> When using cookies for authentication, there is no "domain" set for the cookie.
+
+This is fine - because this will default the cookie to the domain you accessed it from.
+
+However, if you want to, for example, login to auth.domain.com and then access 1.domain.com, 2.domain.com - your authentication won't be valid as the cookie domain will be auth.domain.com
+
+I'd like to see an option in local.ini to turn on a wildcard cookie. This would set the domain to ".domain.com" which would allow the cookie to work across subdomains. This would default to off and only affect people who want this specific use. 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                I've just created a small test that resulted in over 1K dups in the database. Perhaps this is abuse of couchdb but here's the test:
+                It's worth mentioning that several other people want this feature (from googling) and there is even a node project as a man in the middle to add this parameter in. See:
 
-1. create 3 dbs and start continuous replications db1 -&gt; db2 -&gt; db3 -&gt; db1   in a ring.
-
-2. add doc1 to db1
-
-3. update doc1 N times where N is large
-
-4. kill the client that's sending the updates (my test is erlang using ibrowse)
-
-db1 which is where the updates are going now has 1085 dups of doc1
-
-I originally tried this with lower values of revs limit and noticed that doc1 in db1 would always end up with only one or two revisions, where db2 and db3 would have the full number, .eg. 10
-
-Obviously I shouldn't be doing this, but this is somewhat simpler that @tisba's case where there are N choose 2 replications, loads of updates and daily compactions. 
-
-In any event couchdb shouldn't let me do these things thru the APIs
-
-              </div></li><li><div><div><b>body:</b> My first case also involved compaction. Here's a simpler case:
-
-1. create db1 and db2
-
-2. start continuous replication between them in both directions
-
-3. add a doc to db1
-
-4. update the same doc 1005 times  (where 1000 is the max revs, it doesn't fail at 1001 as you would suspect)
-
-5. compact db1
-
-It will have 3 dups of doc1 in it.
-
-This is against trunk with the default config. #4 seems to be a good clue that it involves the rev limit, replication and compaction
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                Bob, in tisba's case the duplicates had the same revision.  Is that also true in your case?  And you only see these duplicates after compaction?
+https://github.com/MarFarMa/couchdb-cookie-auth
               </div></li><li><div>
-                The steps to reproduce enumerated by Bob, as a series of curl invocations:
-
-curl localhost:5984/db1 -X PUT
-curl localhost:5984/db2 -X PUT
-curl localhost:5984/_replicate -d '{"source":"db1", "target":"db2", "continuous":true}' -Hcontent-type:application/json
-curl localhost:5984/_replicate -d '{"source":"db2", "target":"db1", "continuous":true}' -Hcontent-type:application/json
-curl localhost:5984/db1/foo -X PUT -d '{}'
-curl localhost:5984/db1/_design/update -X PUT -d '{"updates": {
-       "a": "function(doc, req) { doc[\"random\"] = Math.random(); return [doc, \".\"]; }"
-   }
-}'
-for i in {1..1005}; do curl localhost:5984/db1/_design/update/_update/a/foo -d '{}'; done
-curl localhost:5984/db1
-curl localhost:5984/db1/_all_docs
-curl localhost:5984/db1/_compact -X POST -Hcontent-type:application/json
-sleep 2
-curl localhost:5984/db1
-curl localhost:5984/db1/_all_docs
-
-Sure enough, the second query to /db1/_all_docs shows 2 copies of foo.  The dupe also shows up in _changes, where both rows have the same sequence number.
+                It would be good to see this in. Would a PR on this be accepted?
               </div></li><li><div>
-                Lowering the _revs_limit for db1 allows you to reproduce this bug in a shorter amount of time.  I've found that a _revs_limit of 5 and 15 iterations in the for loop results in a duplicate about half the time.  So
-
-curl localhost:5984/db1 -X PUT
-curl localhost:5984/db2 -X PUT
-curl localhost:5984/db1/_revs_limit -X PUT -d '5'
-curl localhost:5984/_replicate -d '{"source":"db1", "target":"db2", "continuous":true}' -Hcontent-type:application/json
-curl localhost:5984/_replicate -d '{"source":"db2", "target":"db1", "continuous":true}' -Hcontent-type:application/json
-curl localhost:5984/db1/foo -X PUT -d '{}'
-curl localhost:5984/db1/_design/update -X PUT -d '{"updates": {
-       "a": "function(doc, req) { doc[\"random\"] = Math.random(); return [doc, \".\"]; }"
-   }
-}'
-for i in {1..15}; do curl localhost:5984/db1/_design/update/_update/a/foo -d '{}'; done
-curl localhost:5984/db1
-curl localhost:5984/db1/_all_docs
-curl localhost:5984/db1/_compact -X POST -Hcontent-type:application/json
-sleep 2
-curl localhost:5984/db1
-curl localhost:5984/db1/_all_docs
-
+                If it will be submitted - why not? (: 
               </div></li><li><div>
-                I tried to narrow it further and this seems like the minimum case. compaction triggers it. It works fine if the replication is only in one direction or if you don't exceed the revs limit.
+                Class :) Quick one, code is officially handled through Github, right?
               </div></li><li><div>
-                Confirmed sighting in 0.11.1 and 0.11.2
+                Not quite, but you can submit PR via Github, yes.
+Please note that for 2.0 main httpd application is located here: https://github.com/apache/couchdb-chttpd/ Configuration files are still in apache/couchdb repo however.
+If you're going to make a patch for 1.x series, checkout https://github.com/apache/couchdb/tree/1.x.x/ branch.
+
+If you'll need any help with the patch, build or tests, please ask!
               </div></li><li><div>
-                Confirmed sightings in 0.10.1 and 0.10.2
-              </div></li><li><div><div><b>body:</b> &lt;brain_dump&gt; 
-So I spent some time today tracking this down. Here are some notes. 
+                CouchDB 1.x has been end-of-lifed, we are mass closing out all related issues.
 
-The multiple entries in _all_docs is a bit of a red herring. Yes its something we should investigate preventing in the future, but its just an expression of the underlying cause. 
+If this issue remains in CouchDB 2.x, please file a new issue at:  https://github.com/apache/couchdb/issues
 
-What happens is that some how multiple update_seq entries are getting inserted into the database's update_seq btree for a single document id. When compaction run it just iterates over this btree and writes the docs to disk. This means that it'll just write multiple docs to that tree. If we write multiple rows in a single btree query_modify call, its possible that we end up with multiple rows with identical keys (which is bad). 
+Thanks for your interest in CouchDB.
 
-The real issue is how we end up with multiple update_seq entries for a given doc id. This is where the replication and rev_stemming come in. Once a document's revision length has been exceeded, there's apparently a way for two update_seq's to get inserted. After some digging, I've found out that what happens is that couch_db_updater:update_docs_int ends up trying to remove an update_seq that doesn't exist. Once this happens we have two update seq's for a single doc id. 
-
-So, next question is how do we screw up figuring out which update_seq to delete. 
-
-The code in question would appear to be trying to delete the previous update_seq which gets taken from the full_doc_info record. At this point, my exact understanding of the events gets a bit hazy, so bear with me. 
-
-What I think is happening is that a document with a full revision history gets written out due to an interactive edit (ie, one that would fail wtih a conflict). Then when the replicator attempts to write (in a manner that merges key trees, ie, no conflicts are possible) what happens is that it gets a bit confused. For instance: 
-
-Given the interactive edit resulted in a revision history of B-C-D, then the replicator attempts to write a doc with history A-B-C, it gets confused on whether its writing a new doc or not. At this point I get a bit lost. Some how a second edit comes in and the update_seq on the full_doc_info object that gets looked up is newer than it should be, where as the entry in the update_seq btree is older, hence, duplicate rows, hence compaction gives multiple docs in _all_docs. 
-
-Etc etc. 
-
-I'm flying tomorrow so I'll have more time to investigate the exact consequences of these various bits if no one beats me to it. If someone wants to take a crack at this, the next place to start digging is in the bottom of couch_db_updater:merge_rev_trees where it attempts to compare the new and old revision trees to decide on if it should update the update_seq in the full_doc_info record. Specifically, I think we need to reevaluate the NewRevTree == OldTree comparison in the last if-statement as it appears the absolute root cause of this bug is that comparison evaluating false when it should be true. 
-&lt;/brain_dump&gt;
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> After watching Ace Ventura for a couple minutes it occurs to me that the reason is probably because when the replicated write comes in and it thinks it needs to write the doc, the revision tree is changed slightly because of the file pointer update for the doc body in the middle of the revision tree. Then later on, the term comparison would return false, thus incrementing the update_seq and so on and such forth.
-
-Its a theory anyway.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                In my tests _changes for the compacted DB shows duplicate entries which have the same sequence number.  Does that agree with your assessment of the problem, Paul?
-              </div></li><li><div><div><b>body:</b> Answering my own question - yes, it makes sense because the compactor walks the sequence tree, then looks up the documents in the ID tree.  In the uncompacted database the sequence tree has two entries for the document with different sequence numbers (because the first one was not removed correctly).  Querying _changes without compacting will prove this.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> Sorry for the delay, ended up having a flight cancelled and got rerouted and ended up not making it home till just now.
-
-I'm not sure I quite follow what you mean by uncompacted here. I would expect post compaction when we see the issue in _all_docs that they all have the same update_seq. Pre compaction in _changes I would expect the same _revision (I think, just guessing) because it's just iterating the by_seqid_btree and then displaying the update_seq from the actual #full_doc_info (I think, just guessing).
-
-As Bob Dionne noted in #couchdb, its not entirely clear where the actual bug is. Right now its a combination of three things basically: couch_key_tree:stem kinda sorta fails when merging two revision lists that exceed the rev_limit setting. Once that fails, we hit another issue that results in two entries in the by_seqid_btree, and then finally, compaction copies multiple docs to the actual by_docid_btree.
-
-After musing on it during the copious amounts of queueing I managed to accomplish today, I think that we should treat them as three bugs right now. My proposed fixes are basically such:
-
-1. Fix couch_key_tree:stem so that it takes into account when the input write has a suffix that is a prefix of an existing edit path. This would avoid the rewrite that fixes everything.
-
-2. We need to figure out a way to fix the breakage of the update_seq. Its a bit nebulous on whether this is an actual bug as the soution to #1 would fix all known occurences of this. I think the proper fix would be revisit couch_db_updater:merge_rev_trees and figure out a better way of picking the new update_seq (which would basically need to detect if an edit leaf was changed and only if so, update the update_seq.
-
-3. Our btree implementation should probably check harder for the possibility of adding duplicate keys. The basic bug is that its a possibility in a single call to query_modify. A simple solution that I've implemented (that would impact all calls to query_modify) would be to check the input list of actions for duplicates. Ie, just iterate over the Actions list and find duplicate {Action, Key, _Value} tuples. (Ie, ignore differing values). Alternatively, a check deep down in modify_kvnode could discard Action/Key pairs that are greater than the last entry in ResultNode there by selecting one of the actions semi randomly (or alternatively, throw an error when not). I think technically, both are O(N) with N the size of the list of Actions that were requested.
-
-That is all. I'll look more tomorrow. Right now its time for beer and a bit of zoning out in front of the tele before I pass out.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                 I see that there are possibly a few aspects to this but I think the core issue is that couchdb simply does not handle exceeding the revs_limit gracefully. Some more data points:
-
-1. In my test I've set revs_limit=3, have added a single doc and updated it 10 times. The changes[1] run before compaction shows that the revs seem to be out of sync with the seq no. Perhaps that's ok but with one doc which is the only one updated they should be in sync? Also 3 of the changes are missing.
-
-2. timing is a factor. I put in a 3 sec sleep between updates and all is hunky dory. So the problem seems to occur when the replication from db2-&gt;db1 finds that a new update has occurred on db1.
-
-Interestingly one can fix it completely by reversing the direction in the stem function, but it breaks almost everything else :) I don't quite grok what the stemming is intended to do. In particular under what conditions will the Tree exceed the Limit (which in all paths is always revs_limit) and need to be stemmed? Since it's called immediately after merge_rev_trees, which has a comment about checking that a previous revision is a leaf node, the real culprit might be merge_rev_trees as you surmised.
-
-Nice to see you made it safely back to civilization :)
-
-
-[1] https://gist.github.com/721483
-
-              </div></li><li><div>
-                @davisp
-
-&gt; Pre compaction in _changes I would expect the same _revision (I think, just guessing) because it's just iterating the by_seqid_btree and then displaying the update_seq from the actual #full_doc_info (I think, just guessing).
-
-Nope, that's not how _changes works.  It walks the seq tree and displays the high_seq from the #doc_info record stored there.  The #full_doc_info from the id tree is not involved.  That's why the duplicate entries for a given document in a _changes response have different "seq" values before compaction.
-
-On the other hand, compaction does something more like what you described - it grabs the #full_doc_info from the ID tree and constructs a #doc_info from it.  When compacting a database with duplicates in the seq tree, it grabs the same #full_doc_info from the id tree multiple times, and each time contructs a new (identical) #doc_info record to insert into the compacted seq tree.  This explains why the _changes response looks different before and after compaction.
-
-Stop me if I'm not making sense.  This part of the issue is very clear in my head, but I may not be explaining it well.  For reference, here are the results I'm trying to explain:
-
-$ curl localhost:5984/db1/_changes
-{"results":[
-{"seq":3,"id":"_design/update","changes":[{"rev":"1-18867805c5d826b6d58312e4430e40fe"}]},
-{"seq":9,"id":"foo","changes":[{"rev":"7-c660ea7a73efa1b9f727146ef7ca71ed"}]},
-{"seq":21,"id":"foo","changes":[{"rev":"13-dde4cd2d68f911fe27bd62c6c4aec0ed"}]},
-{"seq":34,"id":"foo","changes":[{"rev":"19-71621b918e86377e61618feeaee48a74"}]}
-],
-"last_seq":34}
-
-$ curl localhost:5984/db1/_compact -d '{}' -Hcontent-type:application/json
-{"ok":true}
-
-$ curl localhost:5984/db1/_changes
-{"results":[
-{"seq":3,"id":"_design/update","changes":[{"rev":"1-18867805c5d826b6d58312e4430e40fe"}]},
-{"seq":34,"id":"foo","changes":[{"rev":"19-71621b918e86377e61618feeaee48a74"}]},
-{"seq":34,"id":"foo","changes":[{"rev":"19-71621b918e86377e61618feeaee48a74"}]},
-{"seq":34,"id":"foo","changes":[{"rev":"19-71621b918e86377e61618feeaee48a74"}]}
-],
-"last_seq":34}
-
-At any rate, I definitely agree that the core issue is in merge_rev_trees and stem.  However, I think that any databases which are stuck with duplicates will not have them removed by solution #1.  I think forcing a compaction in "retry" mode would repair them, though.
-
-@bitdiddle I noticed that running of the update_seq too.  I guess the db2 -&gt; db1 replicator is bouncing the update_seq on db1 even when nothing changes.  That may be a separate low-priority bug, or it may be central to the problem.  Not sure yet.
-              </div></li><li><div><div><b>body:</b> Sebastian, it's not clear to me how the duplicates could cause major problems with compaction or replication, so I wonder if there may be other problems in your deployment.  You mentioned that the duplicated documents have a number of conflicts.  Do you have other documents with hundreds of conflicts? If so, you may be suffering from the bug in COUCHDB-888.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                Adam, we don't have hundreds of conflict, though other documents are in conflict to. None has more than 14 conflicts. We have tried to apply your patch from COUCHDB-888 but this didn't change anything.
-              </div></li><li><div>
-                @Bob
-
-Responding to #2 first:
-
-Consider these two ordering of events:
-
-1. Created db1/foo and edit it more than rev_limit times. Now has history A-B-C
-2. foo is replicated db1 -&gt; db2 History: A-B-C
-3. foo is replicated db2 -&gt; db1 History: A-B-C
-4. wait 3 seconds then repeat.
-
-Here, all is hunky dory. Writng foo with an identical revision history results in a no-op more or less. The issue is from this progression:
-
-1. Same as before, history is A-B-C
-2. foo is replicated db1 -&gt; db2 History: A-B-C
-3. write to db1/foo, History: B-C-D
-4. foo is replicated db2 -&gt; db1 History A-B-C
-
-Here, step four is attempting to merge A-B-C and B-C-D which results in a history of B-C'-D. C' is actually the same revision, but with a new doc pointer and high_seq in the doc_info record. Once this happens, it looks like a write (because of NewRevTree == OldTree is false). This confusion is where the second update_seq is added and then things start going downhill as described before.
-
-To night I plan on writing a specific test for this behavior without requiring replication (_bulk_docs interactive_edits=false) to demonstrate that I've got it figured out (or to show that I've got no idea what's going on).
-
-You'll notice the timing issue is in how the progression of edits is made with respect to the replication coming back.
-
-Now, as to number 1, what you should see and what I was seeing is that db2 has the correct update_seq that you'd expect, N writes means update_seq=N. But db1 has update_seq = N + some_random_number. That randomness is just in how these actual writes are ordered, but its greater because of the history-merge-that-causes-spurious-writes (I'm pretty sure).
-
-
-Your last point about reversing the order makes perfect sense because what's happening in that case is that CouchDB is just doing a normal edit more or less. Ie, a doc with history A-B-C, that gets an edit with history B-C-D gets merged and stemmed correctly to B-C-D and all is hunky dory. Its of interest to note that your run of the mill every day PUT with the previous revision is the equivalent to doing A-B-C + C-D which results in B-C-D.
-
-
-I've not yet decided who the real culprit is yet. I can't point at any of the various places and say that its exactly the bug. Only that the bug is the interaction of these two bits under these circumstances. Fixing it could go a number of directions and I haven't managed to calibrate my compass for the new timezone just yet.
-              </div></li><li><div><div><b>body:</b> @Adam,
-
-Gotchya. Reading the code I kept getting confused on what the semantics of high_seq were supposed to be. I'd always assumed it was just an opaque number so we don't get cyclic revision trees, but there appears to be more to it than that. I was also fairly confused about how it relates to update_seq in a few places that seemed a bit funky.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I've put together a branch [1] that seems to resolve the problem with spurious changes to the revision tree.  There are two separate concerns:
-
-a) The revision trees are compared before the new one is stemmed, so if the merging results in a tree with a branch larger than revs_limit it will automatically fail to match the old one.  This issue is addressed by [2], which simply passes the revs_limit to merge_rev_trees() and stems the new tree before comparing with the old one.
-
-b) The merging logic occasionally selects values from the inserted tree rather than the old tree.  I'm pretty sure that's never a good idea.  The old tree contains pointers to the document bodies for all available revisions, while the new tree is typically a fairly empty structure, with ?REV_MISSING for all branch revisions and an unflushed #doc{} record representing the incoming edit.  Choosing the value from the InsertTree instead of the one from the old tree for a given key results in a mismatch between the old tree and the merged tree.  I'm pretty sure it also causes old branch revisions to become unavailable without compaction even running (*ahem* not that anyone should ever rely on them being available).  In [3] I rewrote the merging logic to always choose the value from the old tree for each key shared by the old tree and the inserted tree.
-
-One possible issue with the patch in [3] is that it removes functionality.  The key tree previously supported merging a tree with multiple branches into an existing revision tree.  We have etap tests exercising that feature, but it's never used in CouchDB proper.  It still works to some extent, but that's mostly by accident.  I was definitely writing for the case of a linear revision history being merged into a tree (again, that's the only way this code is currently being used in CouchDB).
-
-If we need to support full commutative tree merging there's probably a reasonable way to add it.  Otherwise I think we need to strip out some of the 060-kt-merging tests which now overstate the capabilities of couch_key_tree.  The new merge code is really merging a path into a tree, not merging two trees.
-
-[1]: https://github.com/kocolosk/couchdb/tree/968-duplicate-seq-entries
-[2]: https://github.com/kocolosk/couchdb/commit/eaed064f6113b10a59f05da2497be41c748b175a
-[3]: https://github.com/kocolosk/couchdb/commit/09ff2f1b419ab9949e6a690ecda7faffc6c55210
-              </div></li><li><div><div><b>body:</b> Thinking about how to repair DBs that have these dupes in them.  The following patch should cover the 80% case, but to be really bulletproof I think the compaction also needs to run in Retry = true mode (i.e. the mode that causes the compactor to check the .compact file for old data about a document before saving).  I mused in IRC about exposing the Retry flag to the end user, but maybe it doesn't make sense to leak those implementation details for a single bug.
-
-diff --git a/src/couchdb/couch_db_updater.erl b/src/couchdb/couch_db_updater.erl
-index e5c6019..caa46af 100644
---- a/src/couchdb/couch_db_updater.erl
-+++ b/src/couchdb/couch_db_updater.erl
-@@ -775,7 +775,10 @@ copy_rev_tree_attachments(SrcDb, DestFd, Tree) -&gt;
-         end, Tree).
-             
- 
--copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq, Retry) -&gt;
-+copy_docs(Db, #db{fd=DestFd}=NewDb, InfoBySeq0, Retry) -&gt;
-+    % COUCHDB-968, make sure we prune duplicates during compaction
-+    InfoBySeq = lists:usort(fun(#doc_info{id=A}, #doc_info{id=B}) -&gt; A =&lt; B end,
-+        InfoBySeq0),
-     Ids = [Id || #doc_info{id=Id} &lt;- InfoBySeq],
-     LookupResults = couch_btree:lookup(Db#db.fulldocinfo_by_id_btree, Ids),
- 
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Rebased the 968 branch on my github on top of trunk and added a few new commits.  Cleaned up the interface, added spec strings to the merge code, etc.
-
-https://github.com/kocolosk/couchdb/tree/968-duplicate-seq-entries 
-
-I think this is basically ready to be committed.  It requires R13B04, so I'll write a slightly different version for the 1.0.x and earlier branches.
-
-One question is whether we should expose a flag that allows the user to trigger a compaction in "retry" mode, which should ensure that any dupes after removed (after my patches are applied).  Compacting normally will almost certainly remove them after at most 2 iterations, but it's not a bulletproof fix.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I'll commit this tomorrow if no one objects.
-              </div></li><li><div>
-                Adam, 
-
-We urgently need this fix on the 0.11.2 branch - any idea whether/when that might be available? This is for the BBC project.
-
-Rachel
-              </div></li><li><div>
-                Hi Rachel, I'll try to backport and see if it applies cleanly.
-              </div></li><li><div>
-                Anyone who wants this fix on 0.10.x should comment.
-              </div></li><li><div>
-                To summarize - the Fix Versions will no longer introduce duplicates in _all_docs and _changes.  If you have a DB with duplicates in either of those resources, here is to how to fix it:
-
-1) Upgrade to the appropriate patched version (0.11.3, 1.0.2, or 1.1.0)
-
-2) Create an empty &lt;dbname&gt;.couch.compact file in the database_dir for the affected DB, e.g. `touch foo.couch.compact`
-
-3) Compact the DB.
-              </div></li><li><div>
-                Adam,
-
-Thank you!
-
-Rachel
-              </div></li><li><div>
-                It turns out this series of patches does not merge key trees correctly in all cases.  It wrongly assumes that the "InsertTree" is always a linear path.  Now, it is true that every invocation of couch_key_tree:merge/2 has a linear revision path in the 2nd argument.  However, when couch_key_tree:merge_one/4 successfully merges the inserted revision path into one of the branches of an existing tree, creating a new "Merged" branch, it turns around and tries to merge that Merged branch into the next branch of the tree.  At this point, all bets are off -- the new InsertTree (a.k.a. Merged) is a full revision tree and can have an arbitrary number of siblings at each level.
-
-I believe this commit addresses the issue:
-
-https://github.com/kocolosk/couchdb/commit/a542113796653c6ff3673e05563fa20f041e6983
-              </div></li><li><div>
-                Ugh, the deeper I look the more issues I find.  That commit is not the whole fix, because siblings can show up in the Place = 0 function clauses too.  I've added two commits to my original branch for this ticket:
-
-https://github.com/kocolosk/couchdb/tree/968-duplicate-seq-entries-rebased
-
-In these commits I'm relying on the condition that (length(Ours) =:= 1 or length(Insert) =:= 1), which I think is justified because we start with a single root in both Ours and Insert, and we only "drill down" into one of the trees.
-
-You might recall that Damien's original code for the merge arranged the arguments to merge_at so that the the 3rd argument was always the tree that did not need to be drilled into.  That reduced the number of function clauses in merge_at, but it had the fatal flaw that, if the disk tree ended up in this position, the committed document body for a particular revision would be ignored in favor of saving a new copy of the same document body.  This was the original root cause of the dupes.
-
-Clearly this is some really subtle stuff.  I might see if I can teach myself how to use QuickCheck Mini in time to have it hammer on this algorithm and look for other bugs.
-              </div></li><li><div>
-                After mulling it over a bit more this morning I think I might have hit upon a simpler solution.  The problems I discovered last night arose from the fact that we take the result of a successful merge and try to merge that branch into the remaining branches of the tree.  I think we might able to skip that step because
-
-a) a "double-merge" must be really rare.  The only way I could come up with a successful double-merge would be to lower the _revs_limit and introduce two distinct edit branches that used to share a common trunk, then raise the _revs_limit and replicate in a version of the document which has the common trunk and shares at least one revision with each branch.  But more importantly,
-
-b) revision stemming should do the second merge for us.  Stemming involves exploding the tree into a list of paths, taking the Limit sublist of each one, and then merging them all back together one by one.  I'm pretty sure the "double-merge" gets covered here, i.e. the final result of the stem will be fully merged.  We always stem before completing a write, so the revision tree on disk would never be in a not-completely-merged state.
-
-I'll think it over some more and see if I can come up with a diabolical case in which the recursive merge would work but the path-based merging in the stemmer would not.  I'd prefer not to have to deal with sibling insert branches in the merge code; the code which merges just a single path into the list of paths is both cleaner and faster.
-              </div></li><li><div>
-                I can definitely come up with a case where the path-based merging will fail to fully collapse the tree, but it depends on the ordering of the paths.  For example, consider a tree with _revs_limit = 2 that has 3 branches which share a common trunk that has been stemmed away, like so (o for an available revision, x for one that has been stemmed):
-
-    o
-    o
-    x
-    x o o
-o o x
-    x
-
-Now I'll up the _revs_limit to 10 and replicate in path that fills in all the Xs.  If I skip the non-recursive merge I'll be left with 3 completely separate branches, when in reality they all share the first two revisions.  When I go to do the stemming the results will depend on the order in which the paths are merged.  If I sort the paths by how much they're cut off and add the longest one first, I'll be in good shape.  Eash subsequent path will attach the original one correctly.  If on the other hand I do the longest one last I'll be left with two distinct branches after the merge.
-
-If sorting the paths before merging them in the stemmer is all that's required this is a simple fix.  In fact, it looks like it already does this.  It doesn't go a global sort of all the paths, but it does appear to sort the paths that have nothing in common in order of how much they are cut off.  I think that may actually be sufficient.
-              </div></li><li><div><div><b>body:</b> Holy complicated-as-shit-algorithm, Batman!
-
-The complexity of our implementation vs the complexity of what we're actually doing is starting to worry me here. Perhaps we should consider revisiting things to make this easier.
-
-For instance, a simpler algorithm might look like such:
-
-  1. Break each tree into a sorted flat list of child/parent pairs.
-  2. Merge sort these lists making sure to pick the appropriate value when child/parent values match.
-  3. Build the new tree.
-  4. Assert the final tree is an actual tree.
-  5. Stem
-
-I'm starting to think that maybe once we added merging it broke too many assumptions in the tree merge code. While we could think of a stemmed tree as a tree with branches that don't exist, its actually become a forest. Merging disjoint forests is a bit different than two trees.
-
-Instead of trying to bend the tree merge to our will, I'd vote that we just rely on tree's having globally unique keys and use a different algorithm altogether.
-
-Thoughts?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I'm not sure I have the energy to embark on a complete rewrite of the revision tree.  Rewriting the merge logic has been hard enough.  For reference, here is the patch that would do away with recursive use of merge_one:
-
-https://github.com/kocolosk/couchdb/commit/9e6c3c343ccb54d7a34fa520035753f8b0140e59
-              </div></li><li><div>
-                The only remaining question I have for this is if we should combine the couch_key_tree:merge/2 and couch_key_tree:stem/2 into a single function call. Beyond that I think Adam's patch is the way forward for fixing 1.0.x and 1.1.x.
-
-I still think we should consider rewriting this algorithm. I'll open a ticket with a general description of the current and my earlier proposal so we can track any interest there.
-              </div></li><li><div><div><b>body:</b> Combining stem and merge is definitely an idea worth investigating.  I think for the external users of merge/2 it would be fine.  The compactor calls stem without merge, so that should probably still be available on its own.  And then of course there's the issue that stem is implemented as a series of merge calls :).
-
-I'll look into changing the interface so that merge stems by default, and so stem calls some internal function to avoid the infinite loop.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I'm only thinking of the trivial wrapper:
-
-merge(Paths, Path, Depth) -&gt;
-    {Merged, Conflicts} = merge(Paths, Path),
-    {stem(Merged, Depth), Conflicts}. 
-
-And then just change the export from merge/2 to merge/3.
-              </div></li><li><div>
-                Yep, that's nice and clean:
-
-https://github.com/kocolosk/couchdb/commit/c9c5026c59be97740111575dbba40c1ca1b14655
-https://github.com/kocolosk/couchdb/commits/968-dupes-no-recursion
-
-Tests all pass, haven't tried it under real load yet.
-              </div></li><li><div>
-                I've had this fix in production for one of our affected customers for a few days now.  I think it does what it claims to do.  There is a catch, though - the patch does nothing about the view groups for a corrupted DB.  Rebuilding the view groups should fix them, though I haven't explicitly confirmed this yet.
-
-We might be able to play some games with adding the dupes to a new purge block during compaction.  Theoretically, this would cause the view_indexer to remove them as soon as the compaction finishes.
-              </div></li><li><div>
-                Sounds good.
-
-As to views, I'm not sure what you mean about dupes and purge blocks. But I would agree if you meant "dupes detected, bump purge seq by 2".
-              </div></li><li><div>
-                Yeah, that's along the lines of what I was thinking, but forcibly resetting all of the user's indexes is pretty brutal.  I had hoped to identify the actual duplicates and save a single block of IdRevs to disk, updating the #db_header.purged_docs to point to it.  The the indexer could remove the dupes from the view indexes the next time it runs.
-
-Of course, catching all the specific dupes will be tricky.
-              </div></li><li><div>
-                Just wanted to note that Paul merged Adam's (https://github.com/kocolosk/couchdb/commits/968-dupes-no-recursion) and the 1.0.x branch: https://github.com/davisp/couchdb/tree/tisba-broke-it - and for the record, I didn't break it ;)
-              </div></li><li><div>
-                forgot one more thing: during my tests I've written a small script to search for dupes in _all_docs: https://gist.github.com/752003
-              </div></li><li><div>
-                Is there a summary available somewhere as to where we are with this?
-              </div></li><li><div>
-                AFAIK there is no summary. All relevant informations are here in these comments (and should be IMO). There were some additional discussions on IRC but AFAIK Adam's patch (and Paul's merge) isn't yet committed. From what I understand the only part which is missing to fully fix this issue is (besides the commit to affected branches) to figure out how to handle views that got corrupted by this bug.
-              </div></li><li><div>
-                Pretty much what Sebastian said. Current hold up is to figure out how to deal with views.
-
-While not a complete write up of this specific bug, COUCHDB-988 contains some narration on the background of the bug.
-              </div></li><li><div>
-                I've merged the 968-dupes-no-recursion changes into trunk, 1.1.x, 1.0.x, and 0.11.x.  I'm going to resolve this ticket and open a separate one for detecting and repairing view indexes affected by this bug.
               </div></li></ol></div></div></html>

@@ -1,289 +1,475 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 299
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div><div><b>comment:</b>  TODO See waitForSshable, which now handles if the node.getLoginCredentials has both a password+key
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Check if likely-looking bundle already installed to OSGi subsystem, but brooklyn not aware of it.
+ This will often happen on a karaf restart where bundle was cached by karaf, so we need to allow it;
+ can also happen if brooklyn.libraries references an existing bundle.
+
+ If we're not certain that the bundle is identical 
+              </div></li><li><div>
+                 search for already-installed bundles.
+              </div></li><li><div>
+                 e.g. Checksum would be missing if we brought under management a pre-installed bundle with an unusable url.
+              </div></li><li><div>
+                 Identical bundle (by osgi location or binary content) already installed; just bring that under management.
+ This will often happen on a karaf restart: bundles from persisted state match those cached by karaf,
+              </div></li><li><div>
+                 Check if exactly this bundle is already installed
+              </div></li><li><div>
+                 We were explicitly asked to bring an existing OSGi bundle under management; 
+ no equivalence check required
+              </div></li><li><div>
+                 Uninstall and re-install the bundle.
+ This is a good idea for brooklyn managed bundles that were in the karaf cache (when we can't 
+ determine that they are definitely identical).
+ It's less good for pre-installed bundles, but if the user has said to deploy it or has
+ referenced it in `brooklyn.libraries` then we'll go for it anyway! Let's hope they didn't 
+ reference `org.apache.brooklyn.core` or some such.
+ 
+ We are this extreme because we want rebind to always work! If a user did a `force` install
+ of a bundle, then we want to do the same on rebind (rather than risk failing).
+
+ Instead of uninstall, we could update the bundle.
+ Note however either way we won't be able to rollback if there is a failure
+              </div></li><li><div>
+                 Specifically, we treat as "managed bundles" (to extract their catalog.bom) the contents of:
+   - org.apache.brooklyn.core
+   - org.apache.brooklyn.policy
+   - org.apache.brooklyn.test-framework
+   - org.apache.brooklyn.software-*
+   - org.apache.brooklyn.library-catalog
+   - org.apache.brooklyn.karaf-init (not sure why this one could end up in persisted state!)
+              </div></li><li><div>
+                 No such Brooklyn-managed bundle.
+              </div></li><li><div>
+                 e.g. happens if pre-installed bundle is brought under management, and then add it again via a mvn-style url.
+ We wouldn't know the checksum from the pre-installed bundle.
+              </div></li><li><div>
+                 e.g. repeatedly installing the same bundle
+              </div></li><li><div>
+                *
+     * Gets the (internal) value to be used as the location in bundleContext.install(location). 
+     * It thus allows us to tell if a cached OSGi bundle is the same as a bundle we are about to 
+     * install (e.g. one we get from persisted state), or have retrieved from the initial catalog.
+     * 
+     * Care should be taken to set the checksum &lt;em&gt;before&lt;/em&gt; using the OSGi unique url.
+     
+              </div></li><li><div>
+                 Launch brooklyn, with initial catalog pointing at bundle that points at system bundle.
+ Should bring it under brooklyn-management (without re-installing it).
+              </div></li><li><div>
+                 Launch brooklyn again (because will have persisted the pre-installed bundle)
+              </div></li><li><div>
+                 Launch brooklyn again (because will have persisted both those bundles)
+              </div></li><li><div>
+                *
+     * Whether we reuse OSGi Framework depends if we want it to feel like rebinding on a new machine 
+     * (so no cached bundles), or a local restart. We can also use {@code reuseOsgi = true} to emulate
+     * system bundles (by pre-installing them into the reused framework at the start of the test).
+     
+              </div></li><li><div>
+                 Launch brooklyn, with initial catalog pointing at system bundle.
+ Should bring it under brooklyn-management (without re-installing it).
+              </div></li><li><div>
+                 Launch brooklyn, and explicitly install pre-existing bundle.
+ Should bring it under brooklyn-management (should not re-install it).
+              </div></li><li><div>
+                 Aled thought we supported version ranges in 'brooklyn.libraries', but doesn't work here.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PR #867: incorporate review comments
+                </div><div><b>message:</b> PR #867: incorporate review comments
+
+And better handle pre-existing bundles.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> BROOKLYN-546: fix rebind of system bundles
+                </div><div><b>body:</b> 
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div><div><b>body:</b> @ahgittin Still requires some more testing, but wanted to share this now for feedback.
+
+----
+As discussed with @ahgittin, there was an additional rebind issue when loading the initial catalog (and subsequently loading persisted bundles). Karaf will have cached OSGi bundles for that initial catalog. The initial catalog would duplicate some of these - it couldn't tell that the karaf bundle installed on the previous brooklyn run was identical to the bundle it wanted to install (it can't yet see the persisted brooklyn-managed records, and it can't understand osgi location `brooklyn:ID`).
+
+Possible solutions for that included:
+1) make `brooklyn:ID` osgi location be a checksum (so the same osgi location would be used for two identical brooklyn-managed bundles).
+2) clear the karaf cache of brooklyn-managed bundles (e.g. all those with location in the form `brooklyn:ID`), in the knowledge that the initial catalog and persisted state will reinstall them.
+3) load initial catalog _after_ persistence (but we expect the initial catalog to tell us whether to remove some items from persistence so this isn't a good option without major re-work).
+4) if we're not certain that it's identical, then uninstall and reinstall the bundle (which is what happens currently). This might be a problem if it's a core brooklyn module, but those should have `mvn:` urls so it _can_ confirm whether it's a duplicate).
+5) rework rebind / initial catalog load so that we load placeholders for bundles that have been persisted (enough to do the deduping or install things referenced in initial catalog load).
+
+We opted for doing (1) and (4).
+
+---
+Another issue (FAO @ahgittin) is that every time Brooklyn was started, we'd add to the persisted state another copy of each core brooklyn bundle!
+
+This is because the initial catalog references things like `org.apache.brooklyn.policy`. The `ManagedBundle` we create to represent it gets an auto-generated unique id. We see that the bundle is already installed, so we don't re-install it in karaf (good). But we do still persist it to the `/bundles` persisted state sub-directory.
+
+I've worked around that by black-listing `org.apache.brooklyn.*` from being persisted (see `OsgiArchiveInstaller.isBlacklistedForPersistence(ManagedBundle)`. The assumption is that those will always ship with Brooklyn - we should use just the version that is shipped with the given release of Brooklyn.
+
+---
+Another issue (similar, not yet fixed) is that we persist a new identical copy of `brooklyn-default-karaf-catalog` every time we restart Brooklyn. This is because the `ManagedBundle` for the initial catalog has an auto-generated unique id. As above, we do not install the duplicate bundle, but we still persist it.
+
+Luckily rebind is not as bad as you might think! It spots that an identical bundle is already installed, so doesn't install it or parse the catalog.bom of every copy that is in persisted state.
+
+Possible solutions for this include:
+1) changing the persistence file/object names to use the `symbolicName_version.jar` format (similar naming to the old `/catalog` directory).
+2) only persist the bundle if we actually installed it (i.e. it wasn't a duplicate).
+3) search persisted state for a duplicate, and don't add if it already exists.
+
+Option (1) is very tempting, given that is it's logical unique identity: we shouldn't be persisting (and thus installing) multiple things with the same name:version. We'd need to be careful with backwards compatibility if someone has `/bundles` that uses the unique ids. We could later add additional checks to only replace the persisted file if its checksum had actually changed.
+
+Option (2) feels wrong - what is persisted depends on what is in your karaf cache! For example, if you change the persisted state directory then we wouldn't write out the initial catalog to it because karaf would have cached those bundles from the previous run.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Re the last problem, catalog being persisted, I think I'm good with option (1).  I was leery of using something that might have collisions (`name_version`, as opposed to the unique ID) but I've grown more comfortable that this isn't an issue in this case.  I don't see backwards compatibility being too much of a problem, apart from the obvious.
+
+I'm not convinced by your argument against 2.  We could say to delete from persistence something if it is a duplicate of a different ID _brooklyn_-managed bundle, then being simply a karaf cache jar wouldn't be enough to block persistence.  The slight mess is still that the persisted ID for the default catalog changes on every restart but could live with this if it's easier/safer than (1).
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                 See https://issues.apache.org/jira/browse/BROOKLYN-186
- Handle where jclouds gives us the wrong login user (!) and both a password + ssh key.
- Try all the permutations to find the one that works.
+                retest this please
               </div></li><li><div>
-                 belt-and-braces, in case 
- already exists
+                @ahgittin can you take another look please: gone for option (2) as discussed: only persist the bundle if we actually installed it (so delete the bundle from persisted state if it is a duplicate of another brooklyn-managed-bundle.
+
+This was harder than I expected: promotion of an HA hot-standby behaved differently. See unit test and comments for more info.
               </div></li><li><div>
-                 already exists
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> BROOKLYN-186 workaround in JcloudsLocation
-                </div><div><b>message:</b> BROOKLYN-186 workaround in JcloudsLocation
+                Test failure is real: `org.apache.brooklyn.core.mgmt.ha.HotStandbyTest.testChangeMode`.
+I've begun to look into that, and will fix it in the morning.
+              </div></li><li><div>
+                @aledsage conflicts with #866 ^ :(
 
-If we get back a node with both a password and ssh key, and/or
-if that node has a different user from the overridden loginUser,
-then try all combinations of those credentials to try to login.
+#WhyBigPullReqsArentSoBadWhenCodeIsIntertwined  (this is causing pain for the reviewer as well as the author)
+              </div></li><li><div>
+                interesting subtlety on ha.  nice that black/white list is configurable.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> OpenStack deploy fails: get wrong loginUser, and password+key
-                </div><div><b>description:</b> I deployed an app to OpenStack (below is a cut-down app, which I have seen fail in the same way):
+minor comment re possibility of unmanaging new bundle rather than old.
 
-{noformat}
-name: machine @ bluebox
-location:
-  jclouds:openstack-nova:
-    endpoint:                                        https://myorg.openstack.blueboxgrid.com:5001/v2.0
-    identity:                                        mygroup:myname
-    credential:                                      mys3cr3t
-    minRam:                                          3072
-    jclouds.keystone.credential-type:                passwordCredentials
-    jclouds.openstack-nova.auto-create-floating-ips: true
-    jclouds.openstack-nova.auto-generate-keypairs:   true
-    useJcloudsSshInit:                               false
-    logCredentials:                                  true
-    destroyOnFailure:                                false
-    waitForSshable:                                  10m
-    templateOptions:
-      networks: [ "b780de77-a13b-483d-89e7-021297c04033" ]
-      floatingIpPoolNames: [['external']]
-      securityGroups: [ "everything" ]
-services:
-- type: org.apache.brooklyn.entity.machine.MachineEntity
-{noformat}
+otherwise good, once conflicts resolved and test fixed.
+              </div></li><li><div>
+                retest this please
+              </div></li><li><div>
+                retest this please
 
-The logging shows that, within jclouds, we get back a VM whose metadata says the login-user is "root" and it has both a password and a private ssh key. This is very surprising as the logged image metadata shows the login-user is "ubuntu".
+failure was the unrelated non-deterministic test `org.apache.brooklyn.core.entity.lifecycle.ServiceStateLogicTest.testStopsNicelyToo`
+              </div></li><li><div>
+                retest this please
 
-However, on other runs (maybe just for the same Brooklyn installed on other machines?) it seemed to give back the correct info - login-user of "ubuntu" and only the password.
+Excellent, jenkins build successful @ahgittin - I'm getting it to build again to make sure the new tests are reasonably reliable.
+              </div></li><li><div>
+                good stuff, merging
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div><div><b>body:</b> This return path only takes effect if passing the `canUpdate()` check on line 379 but presumably behaviour should be the same as for a non-snapshot version?
 
-When using the default {{useJcloudsSshInit=true}}, then jclouds repeatedly tried to ssh with {{root@}}.
+Is the checksum check we do in the other block (line 397 in new money) is equivalent or if we need a super-set check combining that line with `hasBundleOnInstall()`.
 
-When I tried with {{useJcloudsSshInit=false}}, then brooklyn tried to connect via {{root@}} using the password - which failed.
+Probably those checks and the two `ignoringAlreadyInstalled` returns should be moved to before line 379.
 
-I also tried with an explicit brooklyn.properties config of {{loginUser=ubuntu}}, but it still seemed to fail - it still tried to ssh as {{root@}}.
+I'd also rename the new `hasBundleOnInstall` method to `isEquivalentBundleAlreadyOsgiInstalled` or something else a little more descriptive.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I don't like this: it breaks transitivity for the equals method: if `x.equals(y) &amp;&amp; `y.equals(z)` then `x.equals(z)` should be true. It fails if `x` and `z` are `BasicManagedBundle` with different checksums or ids, but `y` is a `OsgiBundleWithUrl` with the same name:version and url.
 
-Below are logs from a failed run:
+However, that was already broken because of the checksum comparison (if an `OsgiBundleWithUrl` impl behaves in the way indicated in the pre-existing comments).
 
-{noformat}
-2015-10-13 22:34:42,630 DEBUG o.a.b.l.j.JcloudsLocation [brooklyn-execmanager-HjrEV9YC-5625]: jclouds using templateBuilder PortableTemplateBuilder[ports=[22], imageChooserFunction=org.apache.brooklyn.location.jclouds.BrooklynImageChooser$ImageChooserFromOrdering@58f87f64, minRam=3072] for provisioning in JcloudsLocation[openstack-nova:https://myorg.openstack.blueboxgrid.com:5001/v2.0:mygroup:myname/openstack-nova:https://myorg.openstack.blueboxgrid.com:5001/v2.0@MHmV3Nyz] for openstack-nova:https://myorg.openstack.blueboxgrid.com:5001/v2.0@NginxControllerImpl{id=vOEda2Y9}
+Longer term, I lean towards not trying to have equality with `OsgiBundleWithUrl`.
+              </div></li><li><div>
+                agree, should have explicit methods to check or compare the `VersionedName`s where that is the item of interest
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> On restart fails to install catalog bundles due to existing bundles installed with different location
+                </div><div><b>description:</b> Rebind will always fail on restart due to errors like the following:
+java.lang.IllegalStateException: Bundle BasicManagedBundle{symbolicName=org.apache.brooklyn.software-cm-ansible, version=1.0.0.SNAPSHOT, url=mvn:org.apache.brooklyn/brooklyn-software-cm-ansible/1.0.0-SNAPSHOT} failed installation: BundleException: Bundle symbolic name and version are not unique: org.apache.brooklyn.software-cm-ansible:1.0.0.SNAPSHOT
+This seems to have been "caused" by the change: https://github.com/apache/brooklyn-server/pull/862/commits/c4f9d95aa2113a1a5022da17768675599e528dd4
 
-2015-10-13 22:34:44,326 DEBUG o.a.b.l.j.JcloudsLocation [brooklyn-execmanager-HjrEV9YC-5625]: jclouds using template {image={id=RegionOne/91c8f9f1-597b-4f33-bf18-6fd0
-40d9e1ee, providerId=91c8f9f1-597b-4f33-bf18-6fd040d9e1ee, name=Ubuntu 14.04, location={scope=REGION, id=RegionOne, description=RegionOne, parent=openstack-nova}, os=
-{family=ubuntu, name=Ubuntu 14.04, version=14.04, description=Ubuntu 14.04, is64Bit=true}, description=Ubuntu 14.04, status=AVAILABLE, loginUser=root}, hardware={id=R
-egionOne/3, providerId=3, name=m1.medium, location={scope=REGION, id=RegionOne, description=RegionOne, parent=openstack-nova}, processors=[{cores=2.0, speed=1.0}], ra
-m=4096, volumes=[{type=LOCAL, size=40.0, bootDevice=true, durable=true}], supportsImage=Predicates.alwaysTrue()}, location={scope=REGION, id=RegionOne, description=Re
-gionOne, parent=openstack-nova}, options={inboundPorts=[22, 8000, 8443], securityGroups=[everything], userMetadata={Name=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-ngin
-x-voed-mcc4, brooklyn-user=aled, brooklyn-app-id=dLc10KLr, brooklyn-app-name=Bluebox - Riak Cluster with Webapp Cluster, brooklyn-entity-id=vOEda2Y9, brooklyn-entity-
-name=NginxController:vOEd, brooklyn-server-creation-date=2015-10-13-2234}, networks=[b780de77-a13b-483d-89e7-021297c04033], floatingIpPoolNames=[external], generateKe
-yPair=true, configDrive=false}} / options {inboundPorts=[22, 8000, 8443], securityGroups=[everything], userMetadata={Name=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-ngi
-nx-voed-mcc4, brooklyn-user=aled, brooklyn-app-id=dLc10KLr, brooklyn-app-name=Bluebox - Riak Cluster with Webapp Cluster, brooklyn-entity-id=vOEda2Y9, brooklyn-entity
--name=NginxController:vOEd, brooklyn-server-creation-date=2015-10-13-2234}, networks=[b780de77-a13b-483d-89e7-021297c04033], floatingIpPoolNames=[external], generateK
-eyPair=true, configDrive=false} to provision machine in openstack-nova:https://myorg.openstack.blueboxgrid.com:5001/v2.0@NginxControllerImpl{id=vOEda2Y9}
+This can be easily tested by starting brooklyn.  Stopping brooklyn.  And then starting brooklyn.
 
-2015-10-13 22:34:56,274 DEBUG o.a.b.l.j.JcloudsLocation [brooklyn-execmanager-HjrEV9YC-5625]: jclouds created {id=RegionOne/a6bd5583-0e5e-4f18-b154-a2db0d2df2e2, prov
-iderId=a6bd5583-0e5e-4f18-b154-a2db0d2df2e2, uri=http://myorg.openstack.blueboxgrid.com:8777/v2/bba97b44a7dd40b1ad8a0b90510129f7/servers/a6bd5583-0e5e-4f18-b1
-54-a2db0d2df2e2, name=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-nginx-voed-ef9, uri=http://myorg.openstack.blueboxgrid.com:8777/v2/bba97b44a7dd40b1ad8a0b905101
-29f7/servers/a6bd5583-0e5e-4f18-b154-a2db0d2df2e2, location={scope=HOST, id=721cdb3e1f7184999e3b4dbf6a116edb03ece628978cf5a9ffc4accb, description=721cdb3e1f7184999e3b
-4dbf6a116edb03ece628978cf5a9ffc4accb, parent=RegionOne}, group=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-nginx-voed, imageId=RegionOne/91c8f9f1-597b-4f33-bf18-6fd040d9
-e1ee, os={family=ubuntu, name=Ubuntu 14.04, version=14.04, description=Ubuntu 14.04, is64Bit=true}, status=RUNNING, loginPort=22, hostname=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-nginx-voed-ef9, privateAddresses=[192.168.1.170], publicAddresses=[158.85.166.42], hardware={id=RegionOne/3, providerId=3, name=m1.medium, location={scope=REGION, id=RegionOne, description=RegionOne, parent=openstack-nova}, processors=[{cores=2.0, speed=1.0}], ram=4096, volumes=[{type=LOCAL, size=40.0, bootDevice=tru
-e, durable=true}], supportsImage=Predicates.alwaysTrue()}, loginUser=root, userMetadata={brooklyn-app-name=Bluebox - Riak Cluster with Webapp Cluster, brooklyn-entity
--id=vOEda2Y9, brooklyn-app-id=dLc10KLr, brooklyn-user=aled, brooklyn-entity-name=NginxController:vOEd, brooklyn-server-creation-date=2015-10-13-2234, Name=brooklyn-nw
-6k1u-aled-bluebox-riak-c-dlc1-nginx-voed-mcc4, jclouds-group=brooklyn-nw6k1u-aled-bluebox-riak-c-dlc1-nginx-voed}} for openstack-nova:https://myorg.openstack.
-blueboxgrid.com:5001/v2.0@NginxControllerImpl{id=vOEda2Y9}
 
-2015-10-13 22:35:09,036 DEBUG o.a.b.l.j.JcloudsLocation [brooklyn-execmanager-HjrEV9YC-5625]: VM openstack-nova:https://myorg.openstack.blueboxgrid.com:5001/v2.0@NginxControllerImpl{id=vOEda2Y9}: reported online, now waiting 10m for it to be contactable on root@158.85.166.42:22 (setup user is different: aled); using credentials password=QP55w0rd; key=-----BEGIN RSA PRIVATE KEY-----
-{noformat}
-
-And here is the logging output from a successful run from somewhere else:
-
-{noformat}
-2015-10-13 17:50:30,992 DEBUG jclouds.compute [brooklyn-execmanager-OrWlmPRc-146]: &gt;&gt; running 1 node group(brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi) lo
-cation(RegionOne) image(RegionOne/91c8f9f1-597b-4f33-bf18-6fd040d9e1ee) hardwareProfile(RegionOne/3) options({scriptPresent=true, securityGroups=[everything], userMetadata={Name=brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi-vg4s, brooklyn-user=myname, brooklyn-app-id=uXFyqgbc, brooklyn-app-name=machine @ bluebox (Myname)
-, brooklyn-entity-id=yAOi3ze4, brooklyn-entity-name=MachineEntity:yAOi, brooklyn-server-creation-date=2015-10-13-1750}, networks=[b780de77-a13b-483d-89e7-021297c04033], floatingIpPoolNames=[external], generateKeyPair=true, configDrive=false})
-2015
-2015-10-13 17:50:40,684 DEBUG jclouds.wire [user thread 15]: &lt;&lt; "{"server": {"status": "ACTIVE", "updated": "2015-10-13T15:50:40Z", "hostId": "721cdb3e1f7184999e3b4dbf6a116edb03ece628978cf5a9ffc4accb", "OS-EXT-SRV-ATTR
-:host": "ds0011", "addresses": {"my-test-network": [{"OS-EXT-IPS-MAC:mac_addr": "fa:16:3e:85:8c:da", "version": 4, "addr": "192.168.1.151", "OS-EXT-IPS:type": "fixed"}]}, "links": [{"href": "http://myorg.openst
-ack.blueboxgrid.com:8777/v2/bba97b44a7dd40b1ad8a0b90510129f7/servers/ede2b45c-93e9-41ac-a5b7-d86b2fd7a5d3", "rel": "self"}, {"href": "http://myorg.openstack.blueboxgrid.com:8777/bba97b44a7dd40b1ad8a0b90510129f7
-/servers/ede2b45c-93e9-41ac-a5b7-d86b2fd7a5d3", "rel": "bookmark"}], "key_name": "jclouds-brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi-b2f", "image": {"id": "91c8f9f1-597b-4f33-bf18-6fd040d9e1ee", "links": [
-{"href": "http://myorg.openstack.blueboxgrid.com:8777/bba97b44a7dd40b1ad8a0b90510129f7/images/91c8f9f1-597b-4f33-bf18-6fd040d9e1ee", "rel": "bookmark"}]}, "OS-EXT-STS:task_state": null, "OS-EXT-STS:vm_state": "
-active", "OS-EXT-SRV-ATTR:instance_name": "instance-00000325", "OS-SRV-USG:launched_at": "2015-10-13T15:50:40.000000", "OS-EXT-SRV-ATTR:hypervisor_hostname": "ds0011.sjc01.blueboxgrid.com", "flavor": {"id": "3", "links
-": [{"href": "http://myorg.openstack.blueboxgrid.com:8777/bba97b44a7dd40b1ad8a0b90510129f7/flavors/3", "rel": "bookmark"}]}, "id": "ede2b45c-93e9-41ac-a5b7-d86b2fd7a5d3", "security_groups": [{"name": "everythin
-g"}], "OS-SRV-USG:terminated_at": null, "OS-EXT-AZ:availability_zone": "nova", "user_id": "54fec3f6661c488a9b2d3fbbf2a20b38", "name": "brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi-f37", "created": "2015-10-1
-3T15:50:35Z", "tenant_id": "bba97b44a7dd40b1ad8a0b90510129f7", "OS-DCF:diskConfig": "MANUAL", "os-extended-volumes:volumes_attached": [], "accessIPv4": "", "accessIPv6": "", "progress": 0, "OS-EXT-STS:power_state": 1,
-"config_drive": "", "metadata": {"brooklyn-app-name": "machine @ bluebox (Myname)", "brooklyn-entity-id": "yAOi3ze4", "brooklyn-app-id": "uXFyqgbc", "brooklyn-user": "myname", "brooklyn-entity-name": "MachineEntity:yAO
-i", "brooklyn-server-creation-date": "2015-10-13-1750", "Name": "brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi-vg4s", "jclouds-group": "brooklyn-z5rv-myname-machine-uxfy-machineentity-ya-yaoi"}}}"
-{noformat}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Full exception:
+
+java.lang.IllegalStateException: Bundle BasicManagedBundle{symbolicName=org.apache.brooklyn.software-cm-ansible, version=1.0.0.SNAPSHOT, url=mvn:org.apache.brooklyn/brooklyn-software-cm-ansible/1.0.0-SNAPSHOT} failed installation: BundleException: Bundle symbolic name and version are not unique: org.apache.brooklyn.software-cm-ansible:1.0.0.SNAPSHOT
+	at org.apache.brooklyn.core.mgmt.ha.OsgiArchiveInstaller.install(OsgiArchiveInstaller.java:644) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.ha.OsgiManager.installDeferredStart(OsgiManager.java:359) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.catalog.internal.CatalogInitialization.installBundle(CatalogInitialization.java:522) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.catalog.internal.CatalogInitialization.installBundles(CatalogInitialization.java:462) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.catalog.internal.CatalogInitialization.addPersistedCatalogImpl(CatalogInitialization.java:381) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.catalog.internal.CatalogInitialization.populateInitialAndPersistedCatalog(CatalogInitialization.java:240) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindIteration.installBundlesAndRebuildCatalog(RebindIteration.java:412) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindIteration.doRun(RebindIteration.java:254) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.InitialFullRebindIteration.doRun(InitialFullRebindIteration.java:69) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindIteration.run(RebindIteration.java:281) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindManagerImpl.rebindImpl(RebindManagerImpl.java:538) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindManagerImpl.lambda$rebind$0(RebindManagerImpl.java:494) ~[123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.util.core.task.BasicExecutionContext$1.call(BasicExecutionContext.java:143) [123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.util.core.task.BasicExecutionContext$1.call(BasicExecutionContext.java:141) [123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.util.core.task.BasicExecutionContext.runInSameThread(BasicExecutionContext.java:227) [123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.util.core.task.BasicExecutionContext.get(BasicExecutionContext.java:141) [123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.core.mgmt.rebind.RebindManagerImpl.rebind(RebindManagerImpl.java:493) [123:org.apache.brooklyn.core:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.launcher.common.BasicLauncher.startPersistenceWithoutHA(BasicLauncher.java:657) [127:org.apache.brooklyn.launcher-common:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.launcher.common.BasicLauncher.startPersistence(BasicLauncher.java:620) [127:org.apache.brooklyn.launcher-common:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.launcher.common.BasicLauncher.handlePersistence(BasicLauncher.java:516) [127:org.apache.brooklyn.launcher-common:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.launcher.common.BasicLauncher.startPartTwo(BasicLauncher.java:438) [127:org.apache.brooklyn.launcher-common:1.0.0.SNAPSHOT]
+	at org.apache.brooklyn.launcher.osgi.OsgiLauncherImpl.startOsgi(OsgiLauncherImpl.java:116) [274:org.apache.brooklyn.karaf-init:1.0.0.SNAPSHOT]
+	at Proxy3d746dc2_b3b5_47ec_a253_c74925a3baad.startOsgi(Unknown Source) [?:?]
+	at org.apache.brooklyn.launcher.osgi.start.OsgiLauncherCompleter.init(OsgiLauncherCompleter.java:36) [276:org.apache.brooklyn.karaf-start:1.0.0.SNAPSHOT]
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[?:?]
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62) ~[?:?]
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[?:?]
+	at java.lang.reflect.Method.invoke(Method.java:498) ~[?:?]
+	at org.apache.aries.blueprint.utils.ReflectionUtils.invoke(ReflectionUtils.java:299) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BeanRecipe.invoke(BeanRecipe.java:980) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BeanRecipe.runBeanProcInit(BeanRecipe.java:736) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BeanRecipe.internalCreate2(BeanRecipe.java:848) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BeanRecipe.internalCreate(BeanRecipe.java:811) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.di.AbstractRecipe$1.call(AbstractRecipe.java:79) [15:org.apache.aries.blueprint.core:1.8.2]
+	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:?]
+	at org.apache.aries.blueprint.di.AbstractRecipe.create(AbstractRecipe.java:88) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintRepository.createInstances(BlueprintRepository.java:255) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintRepository.createAll(BlueprintRepository.java:186) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintContainerImpl.instantiateEagerComponents(BlueprintContainerImpl.java:704) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintContainerImpl.doRun(BlueprintContainerImpl.java:410) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintContainerImpl.run(BlueprintContainerImpl.java:275) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintExtender.createContainer(BlueprintExtender.java:300) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintExtender.createContainer(BlueprintExtender.java:269) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintExtender.createContainer(BlueprintExtender.java:265) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.blueprint.container.BlueprintExtender.modifiedBundle(BlueprintExtender.java:255) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.util.tracker.hook.BundleHookBundleTracker$Tracked.customizerModified(BundleHookBundleTracker.java:500) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.util.tracker.hook.BundleHookBundleTracker$Tracked.customizerModified(BundleHookBundleTracker.java:433) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.util.tracker.hook.BundleHookBundleTracker$AbstractTracked.track(BundleHookBundleTracker.java:725) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.util.tracker.hook.BundleHookBundleTracker$Tracked.bundleChanged(BundleHookBundleTracker.java:463) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.aries.util.tracker.hook.BundleHookBundleTracker$BundleEventHook.event(BundleHookBundleTracker.java:422) [15:org.apache.aries.blueprint.core:1.8.2]
+	at org.apache.felix.framework.util.SecureAction.invokeBundleEventHook(SecureAction.java:1179) [?:?]
+	at org.apache.felix.framework.EventDispatcher.createWhitelistFromHooks(EventDispatcher.java:730) [?:?]
+	at org.apache.felix.framework.EventDispatcher.fireBundleEvent(EventDispatcher.java:485) [?:?]
+	at org.apache.felix.framework.Felix.fireBundleEvent(Felix.java:4563) [?:?]
+	at org.apache.felix.framework.Felix.startBundle(Felix.java:2173) [?:?]
+	at org.apache.felix.framework.Felix.setActiveStartLevel(Felix.java:1372) [?:?]
+	at org.apache.felix.framework.FrameworkStartLevelImpl.run(FrameworkStartLevelImpl.java:308) [?:?]
+	at java.lang.Thread.run(Thread.java:748) [?:?]
+Caused by: org.osgi.framework.BundleException: Bundle symbolic name and version are not unique: org.apache.brooklyn.software-cm-ansible:1.0.0.SNAPSHOT
+	at org.apache.felix.framework.BundleImpl.createRevision(BundleImpl.java:1344) ~[?:?]
+	at org.apache.felix.framework.BundleImpl.&lt;init&gt;(BundleImpl.java:113) ~[?:?]
+	at org.apache.felix.framework.Felix.installBundle(Felix.java:3026) ~[?:?]
+	at org.apache.felix.framework.BundleContextImpl.installBundle(BundleContextImpl.java:167) ~[?:?]
+	at org.apache.brooklyn.core.mgmt.ha.OsgiArchiveInstaller.install(OsgiArchiveInstaller.java:467) ~[?:?]
+	... 57 more
+
+              </div></li><li><div>
                 GitHub user aledsage opened a pull request:
 
-    https://github.com/apache/incubator-brooklyn/pull/977
+    https://github.com/apache/brooklyn-server/pull/867
 
-    BROOKLYN-186 workaround in JcloudsLocation
+    BROOKLYN-546: fix rebind of system bundles
 
-    Fixes BROOKLYN-186 by working around if jclouds gives us the wrong login user, or gives us both a password and ssh key (where only one of them works).
     
-    It's a bit messy doing this, but feels like the most robust thing to do.
-    
-    (The other commit about `MutableSet` is just to make that easier to use in my JcloudsLocation fix, and to improve test coverage while I was at it).
 
 You can merge this pull request into a Git repository by running:
 
-    $ git pull https://github.com/aledsage/incubator-brooklyn fix/jclouds-giving-passwordAndKey
+    $ git pull https://github.com/aledsage/brooklyn-server BROOKLYN-546
 
 Alternatively you can review and apply these changes as the patch at:
 
-    https://github.com/apache/incubator-brooklyn/pull/977.patch
+    https://github.com/apache/brooklyn-server/pull/867.patch
 
 To close this pull request, make a commit to your master/trunk branch
 with (at least) the following in the commit message:
 
-    This closes #977
+    This closes #867
     
 ----
-commit ddfb6e29a3df314ab4bc6c4aeefded6d61a4486d
+commit e9cdec64572ba1a422dc5d4d67120624f5eac567
 Author: Aled Sage &lt;aled.sage@gmail.com&gt;
-Date:   2015-10-20T20:35:35Z
+Date:   2017-10-23T12:53:10Z
 
-    Adds MutableSet.Builder.addIfNotNull
-    
-    - And adds MutableList.Builder.addIfNotNull
-    - Adds MutableSetTest
-
-commit 6ca7e26748e69365fe2d4d2d5231a3406197f877
-Author: Aled Sage &lt;aled.sage@gmail.com&gt;
-Date:   2015-10-14T10:19:07Z
-
-    BROOKLYN-186 workaround in JcloudsLocation
-    
-    If we get back a node with both a password and ssh key, and/or
-    if that node has a different user from the overridden loginUser,
-    then try all combinations of those credentials to try to login.
+    BROOKLYN-546: fix rebind of system bundles
 
 ----
 
               </div></li><li><div>
-                Github user neykov commented on the pull request:
+                Github user ahgittin commented on a diff in the pull request:
 
-    https://github.com/apache/incubator-brooklyn/pull/977#issuecomment-149797405
+    https://github.com/apache/brooklyn-server/pull/867#discussion_r146482165
   
-    LGTM
+    --- Diff: core/src/main/java/org/apache/brooklyn/core/mgmt/ha/OsgiArchiveInstaller.java ---
+    @@ -379,8 +379,15 @@ private synchronized void close() {
+                     if (canUpdate()) { 
+                         result.bundle = osgiManager.framework.getBundleContext().getBundle(result.getMetadata().getOsgiUniqueUrl());
+                         if (result.getBundle()==null) {
+    -                        log.warn("Brooklyn thought is was already managing bundle "+result.getMetadata().getVersionedName()+" but it's not installed to framework; reinstalling it");
+    -                        updating = false;
+    +                        if (hasBundleOnInstall(osgiManager, inferredMetadata, zipFile)) {
+    +                            // e.g. happens if system-bundle is brought under management, and then try to add it again:
+    +                            // if added from "initial catalog" has it, and then added from persisted state as well.
+    +                            result.setIgnoringAlreadyInstalled();
+    +                            return ReferenceWithError.newInstanceWithoutError(result);
+    --- End diff --
+    
+    This return path only takes effect if passing the `canUpdate()` check on line 379 but presumably behaviour should be the same as for a non-snapshot version?
+    
+    Is the checksum check we do in the other block (line 397 in new money) is equivalent or if we need a super-set check combining that line with `hasBundleOnInstall()`.
+    
+    Probably those checks and the two `ignoringAlreadyInstalled` returns should be moved to before line 379.
+    
+    I'd also rename the new `hasBundleOnInstall` method to `isEquivalentBundleAlreadyOsgiInstalled` or something else a little more descriptive.
 
               </div></li><li><div>
-                Github user aledsage commented on the pull request:
+                Github user aledsage commented on the issue:
 
-    https://github.com/apache/incubator-brooklyn/pull/977#issuecomment-149871179
+    https://github.com/apache/brooklyn-server/pull/867
   
-    Thanks @neykov - merging.
+    @ahgittin Still requires some more testing, but wanted to share this now for feedback.
+    
+    ----
+    As discussed with @ahgittin, there was an additional rebind issue when loading the initial catalog (and subsequently loading persisted bundles). Karaf will have cached OSGi bundles for that initial catalog. The initial catalog would duplicate some of these - it couldn't tell that the karaf bundle installed on the previous brooklyn run was identical to the bundle it wanted to install (it can't yet see the persisted brooklyn-managed records, and it can't understand osgi location `brooklyn:ID`).
+    
+    Possible solutions for that included:
+    1) make `brooklyn:ID` osgi location be a checksum (so the same osgi location would be used for two identical brooklyn-managed bundles).
+    2) clear the karaf cache of brooklyn-managed bundles (e.g. all those with location in the form `brooklyn:ID`), in the knowledge that the initial catalog and persisted state will reinstall them.
+    3) load initial catalog _after_ persistence (but we expect the initial catalog to tell us whether to remove some items from persistence so this isn't a good option without major re-work).
+    4) if we're not certain that it's identical, then uninstall and reinstall the bundle (which is what happens currently). This might be a problem if it's a core brooklyn module, but those should have `mvn:` urls so it _can_ confirm whether it's a duplicate).
+    5) rework rebind / initial catalog load so that we load placeholders for bundles that have been persisted (enough to do the deduping or install things referenced in initial catalog load).
+    
+    We opted for doing (1) and (4).
+    
+    ---
+    Another issue (FAO @ahgittin) is that every time Brooklyn was started, we'd add to the persisted state another copy of each core brooklyn bundle!
+    
+    This is because the initial catalog references things like `org.apache.brooklyn.policy`. The `ManagedBundle` we create to represent it gets an auto-generated unique id. We see that the bundle is already installed, so we don't re-install it in karaf (good). But we do still persist it to the `/bundles` persisted state sub-directory.
+    
+    I've worked around that by black-listing `org.apache.brooklyn.*` from being persisted (see `OsgiArchiveInstaller.isBlacklistedForPersistence(ManagedBundle)`. The assumption is that those will always ship with Brooklyn - we should use just the version that is shipped with the given release of Brooklyn.
+    
+    ---
+    Another issue (similar, not yet fixed) is that we persist a new identical copy of `brooklyn-default-karaf-catalog` every time we restart Brooklyn. This is because the `ManagedBundle` for the initial catalog has an auto-generated unique id. As above, we do not install the duplicate bundle, but we still persist it.
+    
+    Luckily rebind is not as bad as you might think! It spots that an identical bundle is already installed, so doesn't install it or parse the catalog.bom of every copy that is in persisted state.
+    
+    Possible solutions for this include:
+    1) changing the persistence file/object names to use the `symbolicName_version.jar` format (similar naming to the old `/catalog` directory).
+    2) only persist the bundle if we actually installed it (i.e. it wasn't a duplicate).
+    3) search persisted state for a duplicate, and don't add if it already exists.
+    
+    Option (1) is very tempting, given that is it's logical unique identity: we shouldn't be persisting (and thus installing) multiple things with the same name:version. We'd need to be careful with backwards compatibility if someone has `/bundles` that uses the unique ids. We could later add additional checks to only replace the persisted file if its checksum had actually changed.
+    
+    Option (2) feels wrong - what is persisted depends on what is in your karaf cache! For example, if you change the persisted state directory then we wouldn't write out the initial catalog to it because karaf would have cached those bundles from the previous run.
+
+              </div></li><li><div>
+                Github user ahgittin commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    Re the last problem, catalog being persisted, I think I'm good with option (1).  I was leery of using something that might have collisions (`name_version`, as opposed to the unique ID) but I've grown more comfortable that this isn't an issue in this case.  I don't see backwards compatibility being too much of a problem, apart from the obvious.
+    
+    I'm not convinced by your argument against 2.  We could say to delete from persistence something if it is a duplicate of a different ID _brooklyn_-managed bundle, then being simply a karaf cache jar wouldn't be enough to block persistence.  The slight mess is still that the persisted ID for the default catalog changes on every restart but could live with this if it's easier/safer than (1).
+
+              </div></li><li><div>
+                Github user aledsage commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    retest this please
+
+              </div></li><li><div>
+                Github user aledsage commented on a diff in the pull request:
+
+    https://github.com/apache/brooklyn-server/pull/867#discussion_r147279623
+  
+    --- Diff: core/src/main/java/org/apache/brooklyn/core/typereg/BasicManagedBundle.java ---
+    @@ -135,6 +145,9 @@ public boolean equals(Object obj) {
+                 // this makes equality with other OsgiBundleWithUrl items symmetric,
+                 // but for two MB's we look additionally at checksum
+                 if (!Objects.equal(checksum, ((ManagedBundle)other).getChecksum())) return false;
+    +            
+    +            // only equal if have the same ManagedBundle uid; important for persistence.changeListener().unmanage()
+    +            if (!Objects.equal(getId(), ((ManagedBundle)other).getId())) return false;
+    --- End diff --
+    
+    I don't like this: it breaks transitivity for the equals method: if `x.equals(y) &amp;&amp; `y.equals(z)` then `x.equals(z)` should be true. It fails if `x` and `z` are `BasicManagedBundle` with different checksums or ids, but `y` is a `OsgiBundleWithUrl` with the same name:version and url.
+    
+    However, that was already broken because of the checksum comparison (if an `OsgiBundleWithUrl` impl behaves in the way indicated in the pre-existing comments).
+    
+    Longer term, I lean towards not trying to have equality with `OsgiBundleWithUrl`.
+
+              </div></li><li><div>
+                Github user aledsage commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    @ahgittin can you take another look please: gone for option (2) as discussed: only persist the bundle if we actually installed it (so delete the bundle from persisted state if it is a duplicate of another brooklyn-managed-bundle.
+    
+    This was harder than I expected: promotion of an HA hot-standby behaved differently. See unit test and comments for more info.
+
+              </div></li><li><div>
+                Github user aledsage commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    Test failure is real: `org.apache.brooklyn.core.mgmt.ha.HotStandbyTest.testChangeMode`.
+    I've begun to look into that, and will fix it in the morning.
+
+              </div></li><li><div>
+                Github user ahgittin commented on a diff in the pull request:
+
+    https://github.com/apache/brooklyn-server/pull/867#discussion_r147382359
+  
+    --- Diff: core/src/main/java/org/apache/brooklyn/core/typereg/BasicManagedBundle.java ---
+    @@ -135,6 +145,9 @@ public boolean equals(Object obj) {
+                 // this makes equality with other OsgiBundleWithUrl items symmetric,
+                 // but for two MB's we look additionally at checksum
+                 if (!Objects.equal(checksum, ((ManagedBundle)other).getChecksum())) return false;
+    +            
+    +            // only equal if have the same ManagedBundle uid; important for persistence.changeListener().unmanage()
+    +            if (!Objects.equal(getId(), ((ManagedBundle)other).getId())) return false;
+    --- End diff --
+    
+    agree, should have explicit methods to check or compare the `VersionedName`s where that is the item of interest
+
+              </div></li><li><div>
+                Github user ahgittin commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    @aledsage conflicts with #866 ^ :(
+    
+    #WhyBigPullReqsArentSoBadWhenCodeIsIntertwined  (this is causing pain for the reviewer as well as the author)
+
+              </div></li><li><div>
+                Github user ahgittin commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    interesting subtlety on ha.  nice that black/white list is configurable.
+    
+    minor comment re possibility of unmanaging new bundle rather than old.
+    
+    otherwise good, once conflicts resolved and test fixed.
+
+              </div></li><li><div>
+                Github user ahgittin commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    retest this please
+
+              </div></li><li><div>
+                Github user aledsage commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    retest this please
+    
+    failure was the unrelated non-deterministic test `org.apache.brooklyn.core.entity.lifecycle.ServiceStateLogicTest.testStopsNicelyToo`
+
+              </div></li><li><div>
+                Github user aledsage commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    retest this please
+    
+    Excellent, jenkins build successful @ahgittin - I'm getting it to build again to make sure the new tests are reasonably reliable.
+
+              </div></li><li><div>
+                Github user ahgittin commented on the issue:
+
+    https://github.com/apache/brooklyn-server/pull/867
+  
+    good stuff, merging
 
               </div></li><li><div>
                 Github user asfgit closed the pull request at:
 
-    https://github.com/apache/incubator-brooklyn/pull/977
-
-              </div></li><li><div>
-                It is still worth investigating this more, to find out what is happening in jclouds / OpenStack.
-
-Unfortunately I don't have a jclouds wire log to see that so this would have to be reproduced.
-
-The workaround should hopefully fix it in Brooklyn, so marking as resolved.
-              </div></li><li><div><div><b>body:</b> Note that this workaround may require one to explicitly specify the {{loginUser}}, if jclouds is returning us the wrong value.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Github user geomacy commented on a diff in the pull request:
-
-    https://github.com/apache/brooklyn-server/pull/529#discussion_r97346292
-  
-    --- Diff: locations/jclouds/src/main/java/org/apache/brooklyn/location/jclouds/JcloudsLocation.java ---
-    @@ -2607,24 +2522,32 @@ public boolean apply(@Nullable WinRmMachineLocation machine) {
-             return credsSuccessful.get();
-         }
-     
-    -    protected LoginCredentials waitForSshable(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    -        LoginCredentials nodeCreds = node.getCredentials();
-    +    protected LoginCredentials waitForSshableGuessCredentials(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        // See https://issues.apache.org/jira/browse/BROOKLYN-186
-    +        // Handle where jclouds gives us the wrong login user (!) and both a password + ssh key.
-    +        // Try all the permutations to find the one that works.
-    +        Iterable&lt;LoginCredentials&gt; credentialsToTry = generateCredentials(node.getCredentials(), setup.get(LOGIN_USER));
-    +        return waitForSshable(computeService, node, managementHostAndPort, credentialsToTry, setup);
-    +    }
-    +
-    +    /** @deprecated Since 0.11.0. Use {@link #waitForSshableGuessCredentials} instead. */
-    +    @Deprecated
-    +    protected LoginCredentials waitForSshable(ComputeService computeService, NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        return waitForSshable(computeService, node, managementHostAndPort, setup);
-    --- End diff --
-    
-    Is this not recursive? Should be `waitForSshableGuessCredentials` I suppose.  This isn't hit in the unit tests, can we add one that will hit it?
-
-              </div></li><li><div>
-                Github user sjcorbett commented on a diff in the pull request:
-
-    https://github.com/apache/brooklyn-server/pull/529#discussion_r97610554
-  
-    --- Diff: locations/jclouds/src/main/java/org/apache/brooklyn/location/jclouds/JcloudsLocation.java ---
-    @@ -2607,24 +2522,32 @@ public boolean apply(@Nullable WinRmMachineLocation machine) {
-             return credsSuccessful.get();
-         }
-     
-    -    protected LoginCredentials waitForSshable(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    -        LoginCredentials nodeCreds = node.getCredentials();
-    +    protected LoginCredentials waitForSshableGuessCredentials(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        // See https://issues.apache.org/jira/browse/BROOKLYN-186
-    +        // Handle where jclouds gives us the wrong login user (!) and both a password + ssh key.
-    +        // Try all the permutations to find the one that works.
-    +        Iterable&lt;LoginCredentials&gt; credentialsToTry = generateCredentials(node.getCredentials(), setup.get(LOGIN_USER));
-    +        return waitForSshable(computeService, node, managementHostAndPort, credentialsToTry, setup);
-    +    }
-    +
-    +    /** @deprecated Since 0.11.0. Use {@link #waitForSshableGuessCredentials} instead. */
-    +    @Deprecated
-    +    protected LoginCredentials waitForSshable(ComputeService computeService, NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        return waitForSshable(computeService, node, managementHostAndPort, setup);
-    --- End diff --
-    
-    Good spot.
-
-              </div></li><li><div>
-                Github user neykov commented on a diff in the pull request:
-
-    https://github.com/apache/brooklyn-server/pull/529#discussion_r98000373
-  
-    --- Diff: locations/jclouds/src/main/java/org/apache/brooklyn/location/jclouds/JcloudsLocation.java ---
-    @@ -2610,24 +2514,32 @@ public boolean apply(@Nullable WinRmMachineLocation machine) {
-             return credsSuccessful.get();
-         }
-     
-    -    protected LoginCredentials waitForSshable(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    -        LoginCredentials nodeCreds = node.getCredentials();
-    +    protected LoginCredentials waitForSshableGuessCredentials(final ComputeService computeService, final NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        // See https://issues.apache.org/jira/browse/BROOKLYN-186
-    +        // Handle where jclouds gives us the wrong login user (!) and both a password + ssh key.
-    +        // Try all the permutations to find the one that works.
-    +        Iterable&lt;LoginCredentials&gt; credentialsToTry = generateCredentials(node.getCredentials(), setup.get(LOGIN_USER));
-    +        return waitForSshable(computeService, node, managementHostAndPort, credentialsToTry, setup);
-    +    }
-    +
-    +    /** @deprecated Since 0.11.0. Use {@link #waitForSshableGuessCredentials} instead. */
-    +    @Deprecated
-    +    protected LoginCredentials waitForSshable(ComputeService computeService, NodeMetadata node, HostAndPort managementHostAndPort, ConfigBag setup) {
-    +        return waitForSshableGuessCredentials(computeService, node, managementHostAndPort, setup);
-    +    }
-    +
-    +    /** @return An Iterable of credentials based on nodeCreds containing different parameters. */
-    +    Iterable&lt;LoginCredentials&gt; generateCredentials(LoginCredentials nodeCreds, @Nullable String loginUserOverride) {
-             String nodeUser = nodeCreds.getUser();
-    -        String loginUserOverride = setup.get(LOGIN_USER);
-             Set&lt;String&gt; users = MutableSet.of();
-    -
-             if (Strings.isNonBlank(nodeUser)) {
-                 users.add(nodeUser);
-             }
-    -
-             if (Strings.isNonBlank(loginUserOverride)) {
-                 users.add(loginUserOverride);
-             }
-    -
-    -        // See https://issues.apache.org/jira/browse/BROOKLYN-186
-    -        // Handle where jclouds gives us the wrong login user (!) and both a password + ssh key.
-    -        // Try all the permutations to find the one that works.
-    -        List&lt;LoginCredentials&gt; credentialsToTry = Lists.newArrayList();
-    +        List&lt;LoginCredentials&gt; credentialsToTry = new ArrayList&lt;&gt;();
-    +        Lists.newArrayList();
-    --- End diff --
-    
-    Remove.
+    https://github.com/apache/brooklyn-server/pull/867
 
               </div></li></ol></div></div></html>

@@ -1,163 +1,69 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 78
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-6030: remove fixed @Seed
-                </div><div><b>message:</b> LUCENE-6030: remove fixed @Seed
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-3520: fix test failure: call SIS.getVersion directly to avoid possible ACE if we are closed while being reopened
+                </div><div><b>message:</b> LUCENE-3520: fix test failure: call SIS.getVersion directly to avoid possible ACE if we are closed while being reopened
 
-git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/branch_5x@1659022 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/branch_3x@1184955 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add norms patched compression which uses table for most common values
-                </div><div><b>description:</b> We have added the PATCHED norms sub format in lucene 50, which uses a bitset to mark documents that have the most common value (when &gt;97% of the documents have that value).  This works well for fields that have a predominant value length, and then a small number of docs with some other random values.  But another common case is having a handful of very common value lengths, like with a title field.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> If the NRT reader hasn't changed then IndexReader.openIfChanged should return null
+                </div><div><b>description:</b> I hit a failure in TestSearcherManager (NOTE: doesn't always fail):
 
-We can use a table (see TABLE_COMPRESSION) to store the most common values, and save an oridinal for the "other" case, at which point we can lookup in the secondary patch table.
+{noformat}
+  ant test -Dtestcase=TestSearcherManager -Dtestmethod=testSearcherManager -Dtests.seed=459ac99a4256789c:-29b8a7f52497c3b4:145ae632ae9e1ecf
+{noformat}
+
+It was tripping the assert inside SearcherLifetimeManager.record,
+because two different IndexSearcher instances had different IR
+instances sharing the same version.  This was happening because
+IW.getReader always returns a new reader even when there are no
+changes.  I think we should fix that...
+
+Separately I found a deadlock in
+TestSearcherManager.testIntermediateClose, if the test gets
+SerialMergeScheduler and needs to merge during the second commit.
+
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                This patch adds a new PATCHED_TABLE implementation to the norms format.  It also does the following:
-* Renames PATCHED to PATCHED_BITSET
-* Refactors NormMap to allow reassigning ordinals in descending order of frequency for easier statistical analysis of top values.
-* Reduces memory usage of TABLE_COMPRESSED by restricting using a byte[] and limiting any docs iteration containing values outside a byte range to DELTA_COMPRESSED.
-              </div></li><li><div><div><b>body:</b> I've done some performance tests with luceneutil and the numbers are ok, but not great.  Hotspot seems to get confused sometimes, leading to a qps decline.
+                Patch.
+              </div></li><li><div>
+                mike, I just had a quick look but is this intentionally?
+{code}
+-      return IndexReader.openIfChanged(oldReader, writer, applyDeletes);
++      return IndexReader.openIfChanged(oldReader, applyDeletes);
+{code}
 
-On java7, using wikimedium10m:
-{noformat}
-                    TaskQPS baseline      StdDev   QPS patch      StdDev                Pct diff
-            OrNotHighMed       57.06      (8.9%)       49.56      (5.4%)  -13.2% ( -25% -    1%)
-            OrNotHighLow      121.53      (8.8%)      106.02      (5.7%)  -12.8% ( -25% -    1%)
-           OrNotHighHigh       58.92      (8.9%)       51.42      (5.4%)  -12.7% ( -24% -    1%)
-           OrHighNotHigh       68.08      (8.9%)       59.50      (5.5%)  -12.6% ( -24% -    1%)
-              OrHighHigh       25.97      (8.7%)       22.73      (5.3%)  -12.5% ( -24% -    1%)
-            OrHighNotLow       90.21      (8.8%)       80.24      (6.2%)  -11.1% ( -23% -    4%)
-                HighTerm      126.83      (1.8%)      112.85      (1.9%)  -11.0% ( -14% -   -7%)
-               OrHighLow      104.86      (8.8%)       93.32      (5.9%)  -11.0% ( -23% -    4%)
-            OrHighNotMed      109.46      (8.3%)      100.87      (6.0%)   -7.8% ( -20% -    7%)
-                 MedTerm      200.05      (1.7%)      187.49      (1.8%)   -6.3% (  -9% -   -2%)
-               OrHighMed      118.77      (8.0%)      113.79      (6.3%)   -4.2% ( -17% -   10%)
-                 Prefix3       82.16      (3.1%)       81.47      (4.4%)   -0.8% (  -8% -    6%)
-            HighSpanNear       14.16      (3.8%)       14.05      (4.1%)   -0.8% (  -8% -    7%)
-                  IntNRQ       11.53      (4.9%)       11.44      (6.4%)   -0.8% ( -11% -   11%)
-              HighPhrase        3.70     (14.2%)        3.67     (14.2%)   -0.7% ( -25% -   32%)
-        HighSloppyPhrase        4.46      (6.7%)        4.43      (6.1%)   -0.7% ( -12% -   12%)
-                  Fuzzy2       81.39      (2.5%)       81.43      (2.4%)    0.0% (  -4% -    5%)
-              AndHighLow     1104.54      (1.7%)     1105.90      (3.0%)    0.1% (  -4% -    4%)
-                Wildcard       42.71      (3.9%)       42.76      (3.6%)    0.1% (  -7% -    7%)
-                 Respell       74.16      (2.4%)       74.33      (1.9%)    0.2% (  -3% -    4%)
-             MedSpanNear       24.58      (3.3%)       24.69      (3.3%)    0.5% (  -5% -    7%)
-               LowPhrase       44.89      (2.1%)       45.17      (2.3%)    0.6% (  -3% -    5%)
-                  Fuzzy1       98.83      (2.5%)       99.49      (2.5%)    0.7% (  -4% -    5%)
-               MedPhrase      107.99      (6.0%)      109.06      (6.0%)    1.0% ( -10% -   13%)
-         MedSloppyPhrase       19.96      (3.0%)       20.24      (3.3%)    1.4% (  -4% -    8%)
-             LowSpanNear       37.75      (3.4%)       38.38      (3.5%)    1.7% (  -5% -    8%)
-         LowSloppyPhrase       31.39      (2.8%)       31.98      (3.2%)    1.9% (  -4% -    8%)
-             AndHighHigh       62.62      (1.0%)       64.48      (1.6%)    3.0% (   0% -    5%)
-              AndHighMed      187.48      (1.0%)      193.88      (1.6%)    3.4% (   0% -    6%)
-                 LowTerm      772.23      (2.9%)      970.78      (6.8%)   25.7% (  15% -   36%)
-{noformat}
+seems like you are not opening a NRT reader there anymore?
+              </div></li><li><div>
+                Thanks Simon.
 
-On java 8, the decline is less pronounced:
-{noformat}
-                    TaskQPS baseline      StdDev   QPS patch      StdDev                Pct diff
-                HighTerm      107.28      (4.2%)       92.63      (3.0%)  -13.7% ( -19% -   -6%)
-            OrNotHighLow      103.14     (10.2%)       94.37      (4.9%)   -8.5% ( -21% -    7%)
-            OrNotHighMed      103.75     (10.8%)       95.47      (5.3%)   -8.0% ( -21% -    9%)
-           OrNotHighHigh       39.62     (11.9%)       36.56      (6.3%)   -7.7% ( -23% -   11%)
-           OrHighNotHigh       31.88     (12.9%)       29.51      (7.1%)   -7.4% ( -24% -   14%)
-              OrHighHigh       26.44     (13.6%)       24.59      (7.9%)   -7.0% ( -25% -   16%)
-               OrHighLow       74.93     (14.5%)       70.41      (8.7%)   -6.0% ( -25% -   20%)
-            OrHighNotLow      106.31     (14.0%)      101.20      (8.7%)   -4.8% ( -24% -   20%)
-            OrHighNotMed       59.98     (13.5%)       57.84      (8.5%)   -3.6% ( -22% -   21%)
-              HighPhrase       78.65      (5.1%)       76.22      (4.5%)   -3.1% ( -12% -    6%)
-        HighSloppyPhrase       18.62      (6.5%)       18.32      (4.7%)   -1.6% ( -12% -   10%)
-               OrHighMed       79.70     (13.3%)       78.73      (9.0%)   -1.2% ( -20% -   24%)
-               MedPhrase       26.06      (3.4%)       25.94      (3.1%)   -0.5% (  -6% -    6%)
-                  Fuzzy2      114.17      (3.4%)      113.86      (3.5%)   -0.3% (  -6% -    6%)
-            HighSpanNear       27.20      (6.2%)       27.21      (5.0%)    0.0% ( -10% -   11%)
-               LowPhrase       36.88      (2.1%)       36.95      (2.1%)    0.2% (  -4% -    4%)
-                  Fuzzy1      136.96      (3.2%)      137.26      (3.5%)    0.2% (  -6% -    7%)
-              AndHighLow     1517.11      (4.2%)     1523.95      (4.1%)    0.5% (  -7% -    9%)
-                 Respell       87.37      (2.8%)       87.85      (2.6%)    0.5% (  -4% -    6%)
-         LowSloppyPhrase       63.60      (4.2%)       64.10      (3.5%)    0.8% (  -6% -    8%)
-                Wildcard       20.92      (4.7%)       21.09      (3.2%)    0.8% (  -6% -    9%)
-                 MedTerm      359.22      (3.1%)      362.24      (3.0%)    0.8% (  -5% -    7%)
-             MedSpanNear       14.74      (4.5%)       14.90      (4.3%)    1.0% (  -7% -   10%)
-                 Prefix3       51.84      (6.8%)       52.41      (5.0%)    1.1% (  -9% -   13%)
-                  IntNRQ       12.60      (8.0%)       12.79      (5.8%)    1.5% ( -11% -   16%)
-              AndHighMed      338.81      (1.5%)      345.34      (1.5%)    1.9% (  -1% -    5%)
-         MedSloppyPhrase       60.72      (6.1%)       61.97      (5.1%)    2.1% (  -8% -   14%)
-             AndHighHigh       77.59      (1.4%)       80.17      (1.4%)    3.3% (   0% -    6%)
-             LowSpanNear      215.18      (5.4%)      223.41      (4.4%)    3.8% (  -5% -   14%)
-                 LowTerm     1043.18      (5.0%)     1123.42      (5.9%)    7.7% (  -2% -   19%)
-{noformat}
+It should still be opening an NRT reader: if you have an NRT reader (which we do here) and pass that to IR.openIfChanged, you'll always get back a new NRT reader (this is the contract of IR.openIfChanged).
 
-However, this has a huge size impact.  For the wikimedium10m, the size of norms was reduced by about half:
-{noformat}
-rjernst@codex:~/code/ls-util$ du -cksh indices/wikimedium10m.trunk.Lucene50.nd10M/index/*.nvd
-1.8M    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_32.nvd
-1.8M    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_65.nvd
-1.8M    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_98.nvd
-1.8M    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_cb.nvd
-1.8M    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_fe.nvd
-180K    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_fp.nvd
-180K    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_g0.nvd
-180K    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_gb.nvd
-92K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_gm.nvd
-180K    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_gx.nvd
-20K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_gy.nvd
-12K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_gz.nvd
-12K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_h0.nvd
-12K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_h1.nvd
-12K     indices/wikimedium10m.trunk.Lucene50.nd10M/index/_h2.nvd
-4.0K    indices/wikimedium10m.trunk.Lucene50.nd10M/index/_h3.nvd
-9.5M    total
+So I believe passing writer here wasn't necessary?
+              </div></li><li><div>
+                Steve just took a stack trace (and aborted the build) of a test run started yesterday.
+I noticed "SearchManager" in one of the traces.  Maybe this issue fixes?
 
- du -cksh indices/wikimedium10m.patch.Lucene50.nd10M/index/*.nvd
-880K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_32.nvd
-880K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_65.nvd
-880K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_98.nvd
-880K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_cb.nvd
-880K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_fe.nvd
-92K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_fp.nvd
-92K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_g0.nvd
-92K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_gb.nvd
-92K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_gm.nvd
-92K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_gx.nvd
-12K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_gy.nvd
-12K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_gz.nvd
-12K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_h0.nvd
-12K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_h1.nvd
-12K     indices/wikimedium10m.patch.Lucene50.nd10M/index/_h2.nvd
-4.0K    indices/wikimedium10m.patch.Lucene50.nd10M/index/_h3.nvd
-4.9M    total
-{noformat}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Patch looks great!  +1 to commit.  The minor perf hit to already-fast queries seems worth it given the space savings.
+https://builds.apache.org/job/Lucene-Solr-tests-only-trunk/10840/console
+
+              </div></li><li><div><div><b>body:</b> bq.It should still be opening an NRT reader: if you have an NRT reader (which we do here) and pass that to IR.openIfChanged, you'll always get back a new NRT reader (this is the contract of IR.openIfChanged).
+
+hmm, however the signature of openIfChanged(IR, boolean) actually referes to openIfChanged(IndexReader oldReader, boolean readonly) which seems confusing when you pass applyDeletes to it, no?
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                +1
-              </div></li><li><div>
-                +1, very nice
-              </div></li><li><div>
-                Commit 1635854 from [~rjernst] in branch 'dev/trunk'
-[ https://svn.apache.org/r1635854 ]
+                bq. I noticed "SearchManager" in one of the traces. Maybe this issue fixes?
 
-LUCENE-6030: Add norms patched compression for a small number of common values
-              </div></li><li><div>
-                Commit 1635856 from [~rjernst] in branch 'dev/branches/branch_5x'
-[ https://svn.apache.org/r1635856 ]
+Indeed I think this fixes it; I just committed that test-only fix.
+              </div></li><li><div><div><b>body:</b> bq. hmm, however the signature of openIfChanged(IR, boolean) actually referes to openIfChanged(IndexReader oldReader, boolean readonly) which seems confusing when you pass applyDeletes to it, no?
 
-LUCENE-6030: Add norms patched compression for a small number of common values (merged 1635854)
-              </div></li><li><div>
-                Commit 1659020 from [~rcmuir] in branch 'dev/trunk'
-[ https://svn.apache.org/r1659020 ]
+Ugh, you're right!
 
-LUCENE-6030: remove fixed @Seed
-              </div></li><li><div>
-                Commit 1659022 from [~rcmuir] in branch 'dev/branches/branch_5x'
-[ https://svn.apache.org/r1659022 ]
+In fact we don't need to pass applyDeletes either; this too is inherited from the prior reader.  So I'll just reduce it to IR.openIfChanged(oldReader).  Hmm then we can simplify SearcherManager some.  I'll work out a new patch.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> New patch; I was able to simplify SearcherManager since both cases (open-from-writer (= NRT case) and open-from-dir (= non-NRT case)) now call the same IR.openIfChanged(oldReader).
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                bq. New patch; I was able to simplify SearcherManager since both cases (open-from-writer (= NRT case) and open-from-dir (= non-NRT case)) now call the same IR.openIfChanged(oldReader).
 
-LUCENE-6030: remove fixed @Seed
+yeah nice! looks good mike!
               </div></li><li><div>
-                Commit 1659025 from [~rcmuir] in branch 'dev/branches/lucene_solr_5_0'
-[ https://svn.apache.org/r1659025 ]
-
-LUCENE-6030: remove fixed @Seed
-              </div></li><li><div>
-                Bulk close after 5.0 release.
+                Bulk close after release of 3.5
               </div></li></ol></div></div></html>

@@ -1,197 +1,38 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 4
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> fix HsHa to respect max frame size
-                </div><div><b>message:</b> fix HsHa to respect max frame size
-patch by Pavel Yaskevich; reviewed by Tyler Hobbs (CASSANDRA-4573)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> fix recognizing uppercase SELECT keyword
+                </div><div><b>message:</b> fix recognizing uppercase SELECT keyword
+patch by Jonas Dohse and pcannon for CASSANDRA-4161
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> HSHA doesn't handle large messages gracefully
-                </div><div><b>description:</b> HSHA doesn't seem to enforce any kind of max message length, and when messages are too large, it doesn't fail gracefully.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> CQL 3.0 does not work in cqlsh with uppercase SELECT
+                </div><div><b>description:</b> Uppercase SELECT prevents usage of CQL 3.0 features like ORDER BY
 
-With debug logs enabled, you'll see this:
+Example:
 
-{{DEBUG 13:13:31,805 Unexpected state 16}}
-
-Which seems to mean that there's a SelectionKey that's valid, but isn't ready for reading, writing, or accepting.
-
-Client-side, you'll get this thrift error (while trying to read a frame as part of {{recv_batch_mutate}}):
-
-{{TTransportException: TSocket read 0 bytes}}
+select * from test ORDER BY number; # works
+SELECT * from test ORDER BY number; # fails
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                The attached repro.py reproduces the issue using pycassa, but I can also reproduce with phpcassa.  I'm testing against 1.1.4, with the only change to cassandra.yaml being a switch to hsha.
-              </div></li><li><div>
-                {quote}
-With debug logs enabled, you'll see this:
-DEBUG 13:13:31,805 Unexpected state 16
-{quote}
-Unexpected state 16 means the intrest operation is accept. 
-If you look at the code it is a while loop (the intrestOps can change between the if conditions) and will be handled in the next iteration.
+                Fix problem by converting command to lower case
+              </div></li><li><div><div><b>body:</b> Good catch, thanks. I do think that a slightly better solution is to do the downcasing in a more specific place, though, as attached. I would like to keep original case intact in cmdword, even if it's just for error messages right now.
 
-{quote}
-HSHA doesn't seem to enforce any kind of max message length
-{quote}
-neither does sync :) i can reproduce this error both in Sync and hsha, still trying to see where the timeout comes from though.
-              </div></li><li><div>
-                bq. neither does sync 
+Does this work for you?
 
-sync does enforce frame size
-              </div></li><li><div>
-                but Frame size is set for both HSHA and Sync
-
-{code}
-TNonblockingServer.Args serverArgs = new TNonblockingServer.Args(serverTransport).inputTransportFactory(inTransportFactory)
-                                                                                       .outputTransportFactory(outTransportFactory)
-{code}
-              </div></li><li><div>
-                Hi Tyler, I think the issue is related to GC pause can you conform you see the same?
-
-Run: tail -f /var/log/cassandra/system.log |grep GCInspector
-Enable GC logging.
-Run: python repro.py
-
-You would see timeout when you see "threads were stopped:" to be &gt; 1.5 Seconds or so.
-              </div></li><li><div><div><b>body:</b> Vijay, I'm actually not seeing very long garbage collections, if I'm reading the logs correctly.  These are the relevant logs, running with a heap of 2GB and young gen size of 400MB:
-
-{noformat}
-{Heap before GC invocations=0 (full 0):
- par new generation   total 368640K, used 327680K [0x2f200000, 0x48200000, 0x48200000)
-  eden space 327680K, 100% used [0x2f200000, 0x43200000, 0x43200000)
-  from space 40960K,   0% used [0x43200000, 0x43200000, 0x45a00000)
-  to   space 40960K,   0% used [0x45a00000, 0x45a00000, 0x48200000)
- concurrent mark-sweep generation total 1687552K, used 0K [0x48200000, 0xaf200000, 0xaf200000)
- concurrent-mark-sweep perm gen total 16384K, used 14333K [0xaf200000, 0xb0200000, 0xb3200000)
-2012-08-27T12:03:56.096-0500: [GC Before GC:
-Statistics for BinaryTreeDictionary:
-------------------------------------
-Total Free Space: 432013312
-Max   Chunk Size: 432013312
-Number of Blocks: 1
-Av.  Block  Size: 432013312
-Tree      Height: 1
-Before GC:
-Statistics for BinaryTreeDictionary:
-------------------------------------
-Total Free Space: 0
-Max   Chunk Size: 0
-Number of Blocks: 0
-Tree      Height: 0
-[ParNew
-Desired survivor size 20971520 bytes, new threshold 1 (max 1)
-- age   1:    2692712 bytes,    2692712 total
-: 327680K-&gt;2642K(368640K), 0.0564410 secs] 327680K-&gt;2642K(2056192K)After GC:
-Statistics for BinaryTreeDictionary:
-------------------------------------
-Total Free Space: 431996928
-Max   Chunk Size: 431996928
-Number of Blocks: 1
-Av.  Block  Size: 431996928
-Tree      Height: 1
-After GC:
-Statistics for BinaryTreeDictionary:
-------------------------------------
-Total Free Space: 0
-Max   Chunk Size: 0
-Number of Blocks: 0
-Tree      Height: 0
-, 0.0567720 secs] [Times: user=0.03 sys=0.00, real=0.06 secs] 
-Heap after GC invocations=1 (full 0):
- par new generation   total 368640K, used 2642K [0x2f200000, 0x48200000, 0x48200000)
-  eden space 327680K,   0% used [0x2f200000, 0x2f200000, 0x43200000)
-  from space 40960K,   6% used [0x45a00000, 0x45c94998, 0x48200000)
-  to   space 40960K,   0% used [0x43200000, 0x43200000, 0x45a00000)
- concurrent mark-sweep generation total 1687552K, used 0K [0x48200000, 0xaf200000, 0xaf200000)
- concurrent-mark-sweep perm gen total 16384K, used 14333K [0xaf200000, 0xb0200000, 0xb3200000)
-}
-Total time for which application threads were stopped: 0.0576140 seconds
-Total time for which application threads were stopped: 0.0080490 seconds
-Total time for which application threads were stopped: 0.0000810 seconds
-Total time for which application threads were stopped: 0.0000410 seconds
-Total time for which application threads were stopped: 0.0000360 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000360 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000320 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000370 seconds
-Total time for which application threads were stopped: 0.0000360 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000360 seconds
-Total time for which application threads were stopped: 0.0000320 seconds
-Total time for which application threads were stopped: 0.0000340 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000320 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000760 seconds
-Total time for which application threads were stopped: 0.0000490 seconds
-Total time for which application threads were stopped: 0.0000330 seconds
-Total time for which application threads were stopped: 0.0000370 seconds
-Total time for which application threads were stopped: 0.0000460 seconds
-Total time for which application threads were stopped: 0.0000350 seconds
-Total time for which application threads were stopped: 0.0004150 seconds
-Total time for which application threads were stopped: 0.0001230 seconds
-Total time for which application threads were stopped: 0.0035150 seconds
-{noformat}
-
-The client-side socket timeout is set to 3 seconds, so it's not hitting that timeout due to garbage collections.  I should also note that the client-side error is different when there is a client socket timeout (something like {{TTransportException: timed out reading 4 bytes}}).
+(also available in my 4161 branch in github: https://github.com/thepaul/cassandra/tree/4161)
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Hi Tyler, I am not able to re-produce it so far. I am running 2GB/400MB on AWS M4XL....
+                I'm wondering why CQL is being parsed in the client at all? Couldn't we just handle the exceptions thrown by cassandra? That way we wouldn't have to keep cqlsh in sync with CQL development on the C*-side.
+              </div></li><li><div>
+                Works for me™
+              </div></li><li><div>
+                bq. I'm wondering why CQL is being parsed in the client at all? Couldn't we just handle the exceptions thrown by cassandra? That way we wouldn't have to keep cqlsh in sync with CQL development on the C*-side.
 
-[ec2-user@ip-10-82-21-221 ~]$ grep -i ThriftServer.java /mnt/log/cassandra/system.log 
- INFO [main] 2012-09-11 21:52:43,702 ThriftServer.java (line 112) Binding thrift service to localhost/127.0.0.1:9160
- INFO [main] 2012-09-11 21:52:43,704 ThriftServer.java (line 121) Using TFastFramedTransport with a max frame size of 15728640 bytes.
- INFO [main] 2012-09-11 21:52:43,710 ThriftServer.java (line 191) Using custom half-sync/half-async thrift server on localhost/127.0.0.1 : 9160
- INFO [Thread-2] 2012-09-11 21:52:43,720 ThriftServer.java (line 200) Listening for thrift clients...
-[ec2-user@ip-10-82-21-221 ~]$ 
+cqlsh has to attempt to parse input in order to recognize keyspace switches, provide tab-completion, implement the cqlsh-specific commands, separate multiple statements, and (in the future) to allow things like CASSANDRA-3799.
 
-
-The Timeout happens both in Sync and HSHA servers (randomly and i am not able to reproduce both cases reliably) and the only thing which i can notice is that the client (pycassa) runs 100% CPU most of the time... other than that everything else looks normal.
+Yes, of course, if cqlsh can identify a CQL statement but can't parse it, and it doesn't recognize the command word as being cqlsh-specific, it should pass the CQL on untouched to Cassandra. The problem in this ticket was with cqlsh deciding incorrectly that the user intended to give a cqlsh-only command.
               </div></li><li><div>
-                We may be seeing this behavior in 1.2.6. I haven't enabled debug but we are definitely seeing a correlation between groups of 'Read an invalid frame size of 0' messages (dozens at a time) during the same second that we're seeing "large" (10 seconds or more) 'GC for ConcurrentMarkSweep' events.
-
-On a 9 node cluster we see this anywhere from 1 to 9 times a day.
-
-
+                +1 for 4161.patch.txt.
               </div></li><li><div>
-                Peter, Looks like your issue is because of the client timeout when you didn't receive a response for 10 sec. Time to tune the heap or add more nodes.
-
-Tyler, is this ticket still valid?
+                +1 for 4161.patch.txt
               </div></li><li><div>
-                bq. Tyler, is this ticket still valid?
-
-The changes for CASSANDRA-5582 probably make this invalid for 2.0, which I'm fine with.  I'll assign to myself, test against 2.0, close this ticket and open a new one for the 2.0 implementation if needed.
-              </div></li><li><div>
-                After a quick check, it looks like the CASSANDRA-5582 implementation also doesn't enforce the max frame size.
-              </div></li><li><div>
-                [~xedin], can you have a look?
-              </div></li><li><div><div><b>body:</b> It looks like strict read option was removed from TBinaryProtocol which has actually responsible for graceful failure, I also notice that Config.thrift_max_message_length_in_mb is marked as Deprecated, starting from 1.1 I can bring that back but curious is there any good reason behind that? 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Those are not the same thing as frame length, see THRIFT-820 and CASSANDRA-5529.
-              </div></li><li><div>
-                I actually this I know what is the problem, I will work on solution for distruptor server asap.
-              </div></li><li><div>
-                [~thobbs] Please try trunk with attached patch and replace thrift-server-0.2.1.jar in lib/ with the one attached. This would detect frame size violation right when it's read from the socket and report an error as well as close connection.
-              </div></li><li><div>
-                [~xedin] that looks good to me.  There's one problem with the patch: you changed the cassandra.yaml default to {{hsha}}; other than that, +1.
-              </div></li><li><div>
-                Thanks! Yaml change wasn't intentional :) I will release 0.2.2 version of thrift-server and commit changes to cassandra once it's in maven central. 
-              </div></li><li><div>
-                Committed to 2.0.0 branch (with updated disruptor hsha server to 0.3.0).
-              </div></li><li><div>
-                [~xedin], can you add the license file for thrift-server to lib/licences?
-              </div></li><li><div>
-                [~jbellis] Done, licences committed to cassandra-2.0.0 for thrift-server and LMAX disruptor.
+                committed
               </div></li></ol></div></div></html>

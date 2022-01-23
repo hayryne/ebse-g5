@@ -1,1552 +1,193 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 102
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 remove null -&gt; zero conversion when https://github.com/druid-io/druid/pull/5278 series of patches is merged
- we'll also need to change the serialized encoding so that it can represent numeric nulls
-              </div></li><li><div>
-                 remove null -&gt; zero conversion when https://github.com/druid-io/druid/pull/5278 series of patches is merged
-              </div></li><li><div>
-                 remove null -&gt; zero conversion when https://github.com/druid-io/druid/pull/5278 series of patches is merged
-              </div></li><li><div>
-                 remove null -&gt; zero conversion when https://github.com/druid-io/druid/pull/5278 series of patches is merged
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> More ParseException handling for numeric dimensions (#5312) (#5356)
-                </div><div><b>message:</b> More ParseException handling for numeric dimensions (#5312) (#5356)
-
-* Discard rows with unparseable numeric dimensions
-
-* PR comments
-
-* Don't throw away entire row on parse exception
-
-* PR comments
-
-* Fix import
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Numbers with commas break "float" and "long" dimensions
-                </div><div><b>body:</b> ### Issue
-Hey all, we are seeing a nasty exception when ingesting numbers in string format into dimensions of type "float" OR "long", specifically when those numbers contain a comma (e.g. "1,000.00"). 
-
-### Example
-Task spec (using "float" dimension type):
-```
-{
-  "type" : "index_kafka",
-  "id" : "index_kafka_druid_debug_d42d4adceaf4d4a_khfdhieo",
-  "resource" : {
-    "availabilityGroup" : "index_kafka_druid_debug_d42d4adceaf4d4a",
-    "requiredCapacity" : 1
-  },
-  "dataSchema" : {
-    "dataSource" : "druid_debug",
-    "parser" : {
-      "type" : "string",
-      "parseSpec" : {
-        "format" : "json",
-        "flattenSpec" : {
-          "useFieldDiscovery" : false,
-          "fields" : [ "example", "date" ]
-        },
-        "dimensionsSpec" : {
-          "dimensions" : [ {
-            "name" : "example",
-            "type" : "float"
-          }, "date" ],
-          "dimensionsExclusions" : [ ]
-        },
-        "timestampSpec" : {
-          "format" : "auto",
-          "column" : "date"
-        }
-      }
-    },
-    "metricsSpec" : [ {
-      "type" : "count",
-      "name" : "count"
-    } ],
-    "granularitySpec" : {
-      "type" : "uniform",
-      "segmentGranularity" : "HOUR",
-      "queryGranularity" : {
-        "type" : "none"
-      },
-      "rollup" : true,
-      "intervals" : null
-    }
-  },
-  "tuningConfig" : {
-    "type" : "KafkaTuningConfig",
-    "maxRowsInMemory" : 75000,
-    "maxRowsPerSegment" : 5000000,
-    "intermediatePersistPeriod" : "PT10M",
-    "basePersistDirectory" : "/mnt/imply/var/tmp/1506619740021-0",
-    "maxPendingPersists" : 0,
-    "indexSpec" : {
-      "bitmap" : {
-        "type" : "concise"
-      },
-      "dimensionCompression" : "lz4",
-      "metricCompression" : "lz4",
-      "longEncoding" : "longs"
-    },
-    "buildV9Directly" : true,
-    "reportParseExceptions" : false,
-    "handoffConditionTimeout" : 0,
-    "resetOffsetAutomatically" : true
-  },
-  "ioConfig" : {
-    "type" : "kafka",
-    "baseSequenceName" : "index_kafka_druid_debug_d42d4adceaf4d4a",
-    "startPartitions" : {
-      "topic" : "druid_debug",
-      "partitionOffsetMap" : {
-        "0" : 0
-      }
-    },
-    "endPartitions" : {
-      "topic" : "druid_debug",
-      "partitionOffsetMap" : {
-        "0" : 9223372036854775807
-      }
-    },
-    "consumerProperties" : {
-      "bootstrap.servers" : "{{KAFKA}}:9092"
-    },
-    "useTransaction" : true,
-    "pauseAfterRead" : false,
-    "minimumMessageTime" : null,
-    "skipOffsetGaps" : false
-  },
-  "context" : null,
-  "groupId" : "index_kafka_druid_debug",
-  "dataSource" : "druid_debug"
-}
-```
-
-Ingestion message:
-```
-{
-  "date": "2017-09-28T17:26:02",
-  "example": "1,000.00"
-}
-```
-
-Query:
-```
-{
-  "dataSource": "druid_debug",
-  "intervals": ["2016/2018"],
-  "queryType": "select", 
-  "granularity": "all",
-  "pagingSpec": {
-    "pagingIdentifiers": {},
-    "threshold": 10000
-  }
-}  
-```
-
-Query Result:
-```
-{
-  "error": "Unknown exception",
-  "errorMessage": null,
-  "errorClass": "java.lang.NullPointerException",
-  "host": "REDACTED"
-}
-```
-
-Exception in task log (when using "long" dimension type):
-```
-2017-09-28T17:30:40,266 ERROR [select_druid_debug_[2017-09-28T17:00:00.000Z/2017-09-28T18:00:00.000Z]] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) [guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) [?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) [guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T17:30:40,273 ERROR [processing-0] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T17:30:40,277 WARN [qtp1465146431-72[select_[druid_debug]_8fb83e14-1234-461a-89a4-f691721afa98]] io.druid.server.QueryResource - Exception occurred on request [SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T17:00:00.000Z/2017-09-28T18:00:00.000Z, version='2017-09-28T17:30:03.556Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=5, fromNext=true}}]
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-```
-
-Exception in task log (when using "float" dimension type):
-```
-2017-09-28T20:36:12,567 ERROR [select_druid_debug_[2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z]] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) [guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) [?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) [guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,572 ERROR [processing-0] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,574 WARN [qtp1465146431-79[select_[druid_debug]_ba95dc9a-5dc8-4fbe-8a11-42e230ecd44b]] io.druid.server.QueryResource - Exception occurred on request [SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z, version='2017-09-28T20:35:46.771Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=10000, fromNext=true}}]
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,580 ERROR [qtp1465146431-79[select_[druid_debug]_ba95dc9a-5dc8-4fbe-8a11-42e230ecd44b]] io.druid.server.QueryResource - Exception handling request: {class=io.druid.server.QueryResource, exceptionType=class java.lang.NullPointerException, exceptionMessage=null, exception=java.lang.NullPointerException, query=SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z, version='2017-09-28T20:35:46.771Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=10000, fromNext=true}}, peer=REDACTED}
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-```
-
-Unfortunately, once this data has made it into druid, every subsequent query on the impacted datasource produces this same result.
-Is this a known issue? Or perhaps we are doing something wrong in the way we are going about ingesting this data? Please let me know if there is any other information I can provide.
-
-Thanks for your time,
+                *
  
--- Jared
-                </div></div></li><li><div><div><b>title:</b> Numbers with commas break "float" and "long" dimensions
-                </div><div><b>body:</b> ### Issue
-Hey all, we are seeing a nasty exception when ingesting numbers in string format into dimensions of type "float" OR "long", specifically when those numbers contain a comma (e.g. "1,000.00"). 
-
-### Example
-Task spec (using "float" dimension type):
-```
-{
-  "type" : "index_kafka",
-  "id" : "index_kafka_druid_debug_d42d4adceaf4d4a_khfdhieo",
-  "resource" : {
-    "availabilityGroup" : "index_kafka_druid_debug_d42d4adceaf4d4a",
-    "requiredCapacity" : 1
-  },
-  "dataSchema" : {
-    "dataSource" : "druid_debug",
-    "parser" : {
-      "type" : "string",
-      "parseSpec" : {
-        "format" : "json",
-        "flattenSpec" : {
-          "useFieldDiscovery" : false,
-          "fields" : [ "example", "date" ]
-        },
-        "dimensionsSpec" : {
-          "dimensions" : [ {
-            "name" : "example",
-            "type" : "float"
-          }, "date" ],
-          "dimensionsExclusions" : [ ]
-        },
-        "timestampSpec" : {
-          "format" : "auto",
-          "column" : "date"
-        }
-      }
-    },
-    "metricsSpec" : [ {
-      "type" : "count",
-      "name" : "count"
-    } ],
-    "granularitySpec" : {
-      "type" : "uniform",
-      "segmentGranularity" : "HOUR",
-      "queryGranularity" : {
-        "type" : "none"
-      },
-      "rollup" : true,
-      "intervals" : null
-    }
-  },
-  "tuningConfig" : {
-    "type" : "KafkaTuningConfig",
-    "maxRowsInMemory" : 75000,
-    "maxRowsPerSegment" : 5000000,
-    "intermediatePersistPeriod" : "PT10M",
-    "basePersistDirectory" : "/mnt/imply/var/tmp/1506619740021-0",
-    "maxPendingPersists" : 0,
-    "indexSpec" : {
-      "bitmap" : {
-        "type" : "concise"
-      },
-      "dimensionCompression" : "lz4",
-      "metricCompression" : "lz4",
-      "longEncoding" : "longs"
-    },
-    "buildV9Directly" : true,
-    "reportParseExceptions" : false,
-    "handoffConditionTimeout" : 0,
-    "resetOffsetAutomatically" : true
-  },
-  "ioConfig" : {
-    "type" : "kafka",
-    "baseSequenceName" : "index_kafka_druid_debug_d42d4adceaf4d4a",
-    "startPartitions" : {
-      "topic" : "druid_debug",
-      "partitionOffsetMap" : {
-        "0" : 0
-      }
-    },
-    "endPartitions" : {
-      "topic" : "druid_debug",
-      "partitionOffsetMap" : {
-        "0" : 9223372036854775807
-      }
-    },
-    "consumerProperties" : {
-      "bootstrap.servers" : "{{KAFKA}}:9092"
-    },
-    "useTransaction" : true,
-    "pauseAfterRead" : false,
-    "minimumMessageTime" : null,
-    "skipOffsetGaps" : false
-  },
-  "context" : null,
-  "groupId" : "index_kafka_druid_debug",
-  "dataSource" : "druid_debug"
-}
-```
-
-Ingestion message:
-```
-{
-  "date": "2017-09-28T17:26:02",
-  "example": "1,000.00"
-}
-```
-
-Query:
-```
-{
-  "dataSource": "druid_debug",
-  "intervals": ["2016/2018"],
-  "queryType": "select", 
-  "granularity": "all",
-  "pagingSpec": {
-    "pagingIdentifiers": {},
-    "threshold": 10000
-  }
-}  
-```
-
-Query Result:
-```
-{
-  "error": "Unknown exception",
-  "errorMessage": null,
-  "errorClass": "java.lang.NullPointerException",
-  "host": "REDACTED"
-}
-```
-
-Exception in task log (when using "long" dimension type):
-```
-2017-09-28T17:30:40,266 ERROR [select_druid_debug_[2017-09-28T17:00:00.000Z/2017-09-28T18:00:00.000Z]] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) [guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) [?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) [guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T17:30:40,273 ERROR [processing-0] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T17:30:40,277 WARN [qtp1465146431-72[select_[druid_debug]_8fb83e14-1234-461a-89a4-f691721afa98]] io.druid.server.QueryResource - Exception occurred on request [SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T17:00:00.000Z/2017-09-28T18:00:00.000Z, version='2017-09-28T17:30:03.556Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=5, fromNext=true}}]
-java.lang.NullPointerException
-	at io.druid.segment.LongDimensionIndexer$1IndexerLongColumnSelector.get(LongDimensionIndexer.java:115) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:143) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$LongSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:132) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-```
-
-Exception in task log (when using "float" dimension type):
-```
-2017-09-28T20:36:12,567 ERROR [select_druid_debug_[2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z]] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) [guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) [?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) [guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) [guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) [guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) [java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,572 ERROR [processing-0] io.druid.query.ChainedExecutionQueryRunner - Exception with one of the sequences!
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) [?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) [druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) [?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) [?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,574 WARN [qtp1465146431-79[select_[druid_debug]_ba95dc9a-5dc8-4fbe-8a11-42e230ecd44b]] io.druid.server.QueryResource - Exception occurred on request [SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z, version='2017-09-28T20:35:46.771Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=10000, fromNext=true}}]
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-2017-09-28T20:36:12,580 ERROR [qtp1465146431-79[select_[druid_debug]_ba95dc9a-5dc8-4fbe-8a11-42e230ecd44b]] io.druid.server.QueryResource - Exception handling request: {class=io.druid.server.QueryResource, exceptionType=class java.lang.NullPointerException, exceptionMessage=null, exception=java.lang.NullPointerException, query=SelectQuery{dataSource='druid_debug', querySegmentSpec=MultipleSpecificSegmentSpec{descriptors=[SegmentDescriptor{interval=2017-09-28T20:00:00.000Z/2017-09-28T21:00:00.000Z, version='2017-09-28T20:35:46.771Z', partitionNumber=0}]}, descending=false, dimFilter=null, granularity=AllGranularity, dimensions=null, metrics=null, virtualColumns=[], pagingSpec=PagingSpec{pagingIdentifiers={}, threshold=10000, fromNext=true}}, peer=REDACTED}
-java.lang.NullPointerException
-	at io.druid.segment.FloatDimensionIndexer$1IndexerFloatColumnSelector.get(FloatDimensionIndexer.java:141) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:158) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$FloatSelectColumnSelectorStrategy.addRowValuesToSelectResult(SelectQueryEngine.java:148) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine.singleEvent(SelectQueryEngine.java:287) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:252) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.select.SelectQueryEngine$1.apply(SelectQueryEngine.java:215) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:68) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.QueryRunnerHelper$1.apply(QueryRunnerHelper.java:63) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappingAccumulator.accumulate(MappingAccumulator.java:42) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:46) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.MappedSequence.accumulate(MappedSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.FilteredSequence.accumulate(FilteredSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.MoreExecutors$SameThreadExecutorService.execute(MoreExecutors.java:297) ~[guava-16.0.1.jar:?]
-	at java.util.concurrent.AbstractExecutorService.submit(AbstractExecutorService.java:134) ~[?:1.8.0_131]
-	at com.google.common.util.concurrent.AbstractListeningExecutorService.submit(AbstractListeningExecutorService.java:58) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:117) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1.apply(ChainedExecutionQueryRunner.java:109) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at com.google.common.collect.Iterators$8.transform(Iterators.java:794) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.TransformedIterator.next(TransformedIterator.java:48) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Iterators.addAll(Iterators.java:357) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:147) ~[guava-16.0.1.jar:?]
-	at com.google.common.collect.Lists.newArrayList(Lists.java:129) ~[guava-16.0.1.jar:?]
-	at io.druid.query.ChainedExecutionQueryRunner$1.make(ChainedExecutionQueryRunner.java:105) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.BaseSequence.accumulate(BaseSequence.java:43) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.LazySequence.accumulate(LazySequence.java:40) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.SequenceWrapper.wrap(SequenceWrapper.java:55) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.CPUTimeMetricQueryRunner$1.wrap(CPUTimeMetricQueryRunner.java:78) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$2.accumulate(SpecificSegmentQueryRunner.java:83) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence$1.get(WrappingSequence.java:50) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.doNamed(SpecificSegmentQueryRunner.java:169) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner.access$200(SpecificSegmentQueryRunner.java:43) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.spec.SpecificSegmentQueryRunner$3.wrap(SpecificSegmentQueryRunner.java:149) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.WrappingSequence.accumulate(WrappingSequence.java:45) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.java.util.common.guava.Sequences.toList(Sequences.java:150) ~[java-util-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:129) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at io.druid.query.ChainedExecutionQueryRunner$1$1$1.call(ChainedExecutionQueryRunner.java:119) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.FutureTask.run(FutureTask.java:266) ~[?:1.8.0_131]
-	at io.druid.query.PrioritizedListenableFutureTask.run(PrioritizedExecutorService.java:271) ~[druid-processing-0.10.0-iap5.jar:0.10.0-iap5]
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149) ~[?:1.8.0_131]
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624) ~[?:1.8.0_131]
-	at java.lang.Thread.run(Thread.java:748) [?:1.8.0_131]
-```
-
-Unfortunately, once this data has made it into druid, every subsequent query on the impacted datasource produces this same result.
-Is this a known issue? Or perhaps we are doing something wrong in the way we are going about ingesting this data? Please let me know if there is any other information I can provide.
-
-Thanks for your time,
+              </div></li><li><div>
+                
+ * Licensed to Metamarkets Group Inc. (Metamarkets) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. Metamarkets licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  
--- Jared
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+              </div></li><li><div>
+                *
+ 
+              </div></li><li><div>
+                
+ * Licensed to Metamarkets Group Inc. (Metamarkets) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. Metamarkets licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> druid.coordinator.asOverlord.enabled flag at coordinator to make it an overlord too (#3711)
+                </div><div><b>message:</b> druid.coordinator.asOverlord.enabled flag at coordinator to make it an overlord too (#3711)
 
-This is a different approach to #4509 
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [Proposal] eventual removal of separate overlord node
+                </div><div><b>body:</b> It has been a desire to merge coordinator and overlord nodes into a single node for simplifying druid cluster deployments. it has been discussed multiple times and agreed upon.
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+it can be achieved in following stages...
 
-This is a different approach to #4509 
+1) Add a boolean flag(say, "beOverlordToo", true by default) on coordinator that makes the coordinator process also behave as an overlord process. In this stage, it will look like that there is an overlord running on the same host:port as that of coordinator. Everything else would remain same.
+At this point, we deprecate the standalone overlord node.
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
+2) Consolidate the code for "similar" things done by coordinator and overlord e.g. just do one leader election instead of two, and maybe some consolidation on background periodical activities.
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
 
-This is a different approach to #4509 
+                </div></div></li><li><div><div><b>title:</b> [Proposal] eventual removal of separate overlord node
+                </div><div><b>body:</b> It has been a desire to merge coordinator and overlord nodes into a single node for simplifying druid cluster deployments. it has been discussed multiple times and agreed upon.
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
+it can be achieved in following stages...
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+1) Add a boolean flag(say, "beOverlordToo", true by default) on coordinator that makes the coordinator process also behave as an overlord process. In this stage, it will look like that there is an overlord running on the same host:port as that of coordinator. Everything else would remain same.
+At this point, we deprecate the standalone overlord node.
 
-This is a different approach to #4509 
+2) Consolidate the code for "similar" things done by coordinator and overlord e.g. just do one leader election instead of two, and maybe some consolidation on background periodical activities.
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
+                This issue has been marked as stale due to 280 days of inactivity. It will be closed in 2 weeks if no further activity occurs. If this issue is still relevant, please simply write any comment. Even if closed, you can still revive the issue at any time or discuss it on the dev@druid.apache.org list. Thank you for your contributions.
 
-This is a different approach to #4509 
+              </div></li><li><div>
+                This issue has been closed due to lack of activity. If you think that is incorrect, or the issue requires additional review, you can revive the issue at any time.
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
+              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> enable coordinator to act as overlord as well
+                </div><div><b>body:</b> depends on #3700 [MERGED]
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+enables a configuration at coordinator that lets it act as an overlord as well. see doc update to `coordinator.md` for more information.
 
-This is a different approach to #4509 
+related to #3696
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div><div><b>body:</b> @himanshug can we update the tutorials?
 
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
+Also all the docs that mention overlord
 
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
+Probably need to update architecture diagrams as well
                 </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
+                </div></div></li><li><div>
+                @fjy i think we should update docs to remove overlord concept sometime after this patch is released in community and its proven in production that mixing coordinator+overlord together in a process presents no issues. Also, around that time we would do stage-2 described in https://github.com/druid-io/druid/issues/3696 as well.
+              </div></li><li><div>
+                @fjy also regarding changes to "overlord" vs "ingestion" etc , let us conclude something in https://groups.google.com/forum/?utm_medium=email&amp;utm_source=footer#!msg/druid-development/6Lz7CGgkgBI/0oBcZHBxDwAJ
+              </div></li><li><div><div><b>body:</b> I'm 👍  on this as this. There's additional documentation work and whatnot that can be done, but it can wait until some discussion conclude.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                :+1:
+              </div></li><li><div>
+                If a user deploys a coordinator with this patch, would this break existing deployments (i.e., could the new hybrid coordinator/overlord take leadership from the existing overlord, with the user having configured their environment to point to only that old overlord?)
 
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li><li><div><div><b>title:</b> More ParseException handling for numeric dimensions
-                </div><div><b>body:</b> Fixes #4879 
-
-This is a different approach to #4509 
-
-The patch also adjusts InputRowSerde to serialize dimension values with the types specified in the ingestion schema, instead of serializing all values as Strings. ParseException handling for dimensions has been added to InputRowSerde.toBytes();
-
-Regarding null/unparseable value handling:
-- Unparseable strings in numeric dimensions will cause the column value to be replaced with a default zero when reportParseExceptions is false (this null-&gt;zero conversion should be removed when the #5278 series of patches is merged). When reportParseExceptions is true, unparseable strings in a numeric dimension will throw ParseException.
-- The empty string in a numeric dimension is an unparseable value, it is not equivalent to null
-- An actual null value (if a row explictly has a null value for a numeric dimension, or if the row is missing that dimension altogether) will still be converted to 0 for now. This should also change after #5278 allows Druid to store nulls for numeric columns
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div><div><b>body:</b> @gianm I addressed your comments aside from the ones regarding rejecting entire rows on parse errors vs. replacing unparseable values with a default value.
-
-I went with the row rejection approach since I think ingesting a partially correct row is introducing more "corruption" into the data than just throwing the row away, on some datasets zero could be a significant value for a numeric dimension and adding the unparseable rows would lead to confusing results. 
-
-I saw that the metrics handle parse exceptions by skipping the aggregator, but I also lean towards throwing entire rows away in that case (maybe you have a set of metrics that are somewhat related/correlated, like maybe you have a metric for a total count + a metric for a related flow rate, if there's a parse error in one of the values I think it's arguably weird to ingest the row), that would require a significant refactor though I believe.
-
-I don't feel super strongly about this though, and it's not absolutely clear to me that "partially correct" rows are better/worse than missing rows, so I'll defer to your judgment or the community's if others wish to comment on this.
+If so, let's mark this incompatible or set the `beOverlord` to false by default for now
+              </div></li><li><div><div><b>body:</b> This looks a little messy to me but I cannot think of any other way apart from creating an entirely new node type so 👍 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                @jon-wei my feeling is that if you want total integrity then that is what `reportParseExceptions` is for. You will know for sure if you get a bad value because ingestion will just stop and wait for you to fix it. If you don't set reportParseExceptions then I think it makes sense to ingest whatever columns we can ingest. It means that for queries that don't touch this column then they will be more correct (since all other columns are fine). Queries that do touch this column will be worse off, but there are more other-columns than this-columns, so I think the balance is in favor of zeroing out the column and keeping the rest of the row.
+                @jon-wei  that should not be a problem , it should still work as this makes coordinator process equivalent of a (coordinator+overlord) process.
+originally, I had `beOverlord ` set to false by default but it was decided to make it true by default to encourage customers to use it. In any case, let us hold on from merging this till next dev sync and we can rethink the decision on that.
               </div></li><li><div>
-                @gianm That reasoning sounds good to me, I've updated the patch to replace unparseable numeric dimension values with zeros when reportParseExceptions is false
+                Since it's a major change I think it's best to make it false by default in the code (for better compat with existing installs). But we can certainly change the quickstart configs to include beOverlord=true. I find that generally people start from the quickstart configs and copy them to start a prod config, so that'll have the effect of encouraging people to use it.
               </div></li><li><div>
-                I'm reviewing this PR.
+                @jon-wei @gianm @fjy @cheddar it was discussed in the dev sync today and conclusion was to keep `beOverlord:true` by default
               </div></li><li><div>
-                @jihoonson 
+                @gianm by integration testing you mean... use this config while running the existing integration tests, that will automatically happen on our builds given that it is enabled by default . on our builds we'll have both (coordinator+overlord) and overlord running when this PR is merged.
 
-&gt; What do you think about supporting configurable default values for unparseable values?
-
-I think that'd be a useful feature.
-
-I think it would be better to implement default values for unparseable values in a separate PR (this one is mainly to fix an NPE bug), and get #5278 in before that patch to avoid introducing more potential conflicts there since that's a big "Development Blocker" patch that's been open for a while.
+or did you mean a separate integration test.. but what would that do and will it test anything extra?
               </div></li><li><div>
-                @jon-wei ok. That sounds good to me.
+                @himanshug by integration testing, I mean having two test configs:
+
+- one with separate coordinator and overlord
+- one that _only_ has a coordinator to make sure it's actually able to perform these functions
+
+With the current test config (coordinator+overlord) it's possible the coordinator is unable to properly be an overlord, but we don't know because the standalone overlord is taking over.
+              </div></li><li><div><div><b>body:</b> @himanshug now that I started think about doc updates, I think we'll need some to avoid confusing users if we are going to actively encourage this setting to be on, either by making it default in code, or by setting it true in the quickstart sample configs.
+
+That's because if the config is on by default, or true in the sample configs, then new users will not really come into the project with a concept of an "overlord node" (they'll think the coordinator does everything) and so many existing docs are going to be confusing. Most of this is not necessary if we're doing this "quietly" (not on by default or in sample configs) since the risk of user confusion with a quiet addition of the feature is low.
+
+Some doc places that should get an update if we have beOverlord on by default, or true in sample configs:
+
+- tutorial/cluster.md: maybe we should change the recommendation from "coordination server to host the Coordinator and Overlord processes" to just having a coordinator acting as overlord. If we make this change then the open ports list needs adjustment as well.
+- configuration/indexing-service.md (maybe add an infobox that if beOverlord is true, all the refs to "overlord" here should apply to coordinator instead)
+- design/indexing-service.md should mention that overlord functionality can be handled by the Coordinator node as well
+- batch-ingestion.md, tasks.md reference "posted to a running instance of a Druid overlord" and "Once an overlord node accepts a task", those should mention coordinators acting as overlords are fine too
+- tutorial/quickstart.md: references to running overlord and to "overlord console"
+- tutorial/tutorial-batch.md: references to "POST to the Druid Overlord" and "overlord console"
+- Various docs: Assumption that overlord functionality is on port 8090
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div><div><b>body:</b> @himanshug can you also please write a blurb for the release notes about how to do a rolling update? We generally include those new features that need "special" migration procedures.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                @gianm  I have changed it slightly to allow for full rolling upgrade. Now if coordinator is configured to acts as overlord then it insists on another configuration overlordService to be provided which it uses to publish as overlord. that will take care of rolling upgrades. see `coordinator.md` updates.
+
+i have also made coordinator to not be overlord by default in this PR, so nothing changes for the users by this PR being merged. That makes this PR merge-able without risks and don't want this to block 0.10.0 release. We will use that configuration internally on some of the clusters to gain more confidence on it.
+
+I will do a separate PR to change quickstart guide and for integration testing configs which wouldn't necessarily be in 0.10.0 milestone.
+              </div></li><li><div>
+                @pjain1 @fjy @jon-wei @nishantmonu51 anyone interested to take another look after the most recent changes?
               </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Why'd you need to add these? Why would the counters not be set?
-              </div></li><li><div><div><b>body:</b> Too many newlines here.
+                default true?
+              </div></li><li><div>
+                can we call this coordinateIngestion
+              </div></li><li><div>
+                handleIngestion?
+              </div></li><li><div>
+                standalone?
+              </div></li><li><div><div><b>body:</b> have u tested this? are u sure both consoles work?
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                yes, i tested this.  with this flag,
+
+coordinator console - http://host:port/
+overlord console - http://host:port/console.html
+
+              </div></li><li><div>
+                this seems related to discussion in https://groups.google.com/d/topic/druid-development/6Lz7CGgkgBI/discussion, so&nbsp;we should resolve that thread first.
+              </div></li><li><div>
+                made true by default
+              </div></li><li><div>
+                changed
+              </div></li><li><div>
+                can you also verify that http://coordinator-host:port/#/indexing-service works ?
+              </div></li><li><div><div><b>body:</b> Would prefer a tighter check here. As-is, setting to "no" or "FALSE" or "false " with some whitespace would make the coordinator be an overlord. How about throwing an exception if the property is set, but is not "true" or "false"?
+
+Or, at the very least, log a warning.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Please add `@Nullable` and a javadoc explaining what it means when this returns null (probably it means there was a parse exception and `reportParseExceptions` is false? Is it possible for this to return null if `reportParseExceptions` is true?).
+                The need to change `druid.selectors.indexing.serviceName` means migration can't be done totally smoothly:
+
+- If you set beOverlord on coordinators first, one of them might grab leadership and now other servers can't find the overlord service (since they would look for the old serviceName and the new leader won't announce on that one).
+- If you update druid.selectors.indexing.serviceName on other servers first, then they won't be able to find the current leader if it's still an overlord.
+
+This could be fixed by letting the coordinator announce the overlord service name for a while too, just so stuff can find it. Then the order for migration would be: first update coordinators to beOverlord and announce both services, then update other Druid servers to set druid.selectors.indexing.serviceName equal to the coordinator name, then (optionally) update coordinators to stop announcing the old overlord service name.
               </div></li><li><div>
-                Replace the switch with `VALUE_TYPE_HELPER_ARRAY[dimensionSchema.getValueType().ordinal()]` ?
-              </div></li><li><div><div><b>body:</b> `void serialize(DataOutput out, Object value)` would be better - avoid needless byte[] allocations.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Writing the type ordinal isn't necessary since the reader should know the type from the name of the dim.
+                that sounds good to enable rolling deploy, will explore how to enable that.
+we probably will have to create another ServiceAnnouncer at coordinator using druid.selectors.indexing.serviceName property . however, that would mean users would need to correctly specify `druid.selectors.indexing.serviceName` at coordinators also which wasn't necessary till now.
               </div></li><li><div>
-                `T deserialize(DataInput in)` is better for similar reasons.
-              </div></li><li><div><div><b>body:</b> This comment is attached to the wrong line. It should go with toBytes.
+                considering, user needs to take explicit step to make things work, I am thinking of actually keeping `beOverlord` false by default and rather test it on our clusters first. @gianm @fjy what do you think?
+              </div></li><li><div>
+                I'm happy with beOverlord being false by default. At the same time we can set it to true in the quickstart configs and remove overlord from the quickstart. That gets us a lot of the simplicity benefit for new users without making life difficult for already existing deployments.
+              </div></li><li><div><div><b>body:</b> Btw, that makes me think: could you please update indexing-service.md docs too? They say a lot of "this property must be set on overlord" etc etc. If beOverlord is true and they're combined, the properties actually need to be set on the coordinator. Some language clarifying that would be helpful since without it, there is potential for users to be even more confused than they are now!
                 </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> I think it would be better to just use a "default" value for this column like zero. It's more in line with what aggregators do (see the below log message "Encountered parse error, skipping aggregator"). That way, at least we retain _something_ from the row (namely: all other columns).
-                </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I think this might never return null if you take one of the other suggestions (skip column instead of skip whole row on parse error).
-              </div></li><li><div>
-                This should increment INVALID_ROW_COUNTER and log a debug message. However, this comment may be moot if you take the suggestion to skip just the column and not the entire row.
-              </div></li><li><div><div><b>body:</b> If we get an unparseable string value here, and reportParseExceptions is false, I think it'd be better to replace it with zero than to skip the entire row. That way we aren't throwing away as much data.
-
-If reportParseExceptions is true then yes, we should throw an exception out.
-
-(+ similar comment for other numeric types)
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                It happened on a task failure when I was testing the ParseExceptions, didn't look further into why the job counters weren't set
-              </div></li><li><div>
-                fixed
-              </div></li><li><div>
-                Added a counter increment and debug message for now
-              </div></li><li><div>
-                Moved comment
-              </div></li><li><div>
-                changed to  `void serialize(ByteArrayDataOutput out, Object value)`
-              </div></li><li><div>
-                I kept the switch statement but dropped the array, it wasn't being used anymore after removing the type ordinals from the serialized form
-              </div></li><li><div>
-                dropped the type ordinal
-              </div></li><li><div><div><b>body:</b> nit: Probably better to add a method `DimensionHandlerUtils.convertObjectToDouble(value)` which internally calls `DimensionHandlerUtils.convertObjectToDouble(value, false)` for convenience.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Added a method without the parseException boolean
+                yes it works
               </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

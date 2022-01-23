@@ -1,187 +1,391 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 342
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 abs(Long.MIN_VALUE) == Long.MIN_VALUE... 
-              </div></li><li><div>
-                 abs(Long.MIN_VALUE) == Long.MIN_VALUE... 
-              </div></li><li><div>
-                 abs(Long.MIN_VALUE) == Long.MIN_VALUE... 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-2160 review fixes
-                </div><div><b>message:</b> ACCUMULO-2160 review fixes
+                *
+   * Provide an immutable snapshot view of migrating tablets. Objects contained in the set may still be mutable.
+   
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-4143 Make protective copy of migrations
+                </div><div><b>message:</b> ACCUMULO-4143 Make protective copy of migrations
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Run findbugs for 1.6
-                </div><div><b>description:</b> 
+Makes a protective copy of the master's migrations, when requested, to prevent
+ConcurrentModificationExceptions when the requestor iterates over the set at the
+same time the master is updating it.
+
+This closes #68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ACCUMULO-4143 Make protective copy of migrations
+                </div><div><b>body:</b> Makes a protective copy of the master's migrations, when requested, to prevent
+ConcurrentModificationExceptions when the requestor iterates over the set at the
+same time the master is updating it.
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                looks good to me too.  I don't have a strong opinion about the immutable set.   It was a thought i had while looking at the code.
+
+              </div></li><li><div>
+                &gt;  I don't have a strong opinion about the immutable set. It was a thought i had while looking at the code.
+
+Likewise for me. I thought I remembered seeing other immutable wrappers in the Master similar to your change, but there's nothing wrong with this as-is.
+
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                could return an immutable set
+
+              </div></li><li><div><div><b>body:</b> Seems to put an unnecessary restriction on how other tools might use it, though. Didn't think that was necessary.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                My thinking is that we don't expect the caller to modify it.  Now that a copy is made, its ok if caller modifies.  But if in the future the implementation uses a concurrent map and does not copy, would not want caller of method to modify.  Also the previous implementation didn't expect caller to modify, just read. 
+
+              </div></li><li><div>
+                +1
+
+              </div></li><li><div><div><b>body:</b> I was thinking a bigger risk would be that a user would accidentally introduce a RuntimeException (UnsupportedOperationException) because they tried to do something which worked against some implementations of the interface, but not others, and because wrapped immutability is not something which we can check at compile-time. It just seems an unnecessary restriction to me.
+
+It's internal-only code, so we can change it any way we like in the future... and I think the risk you're highlighting is lower than the risk of somebody accidentally calling an unsupported method... and it's also much easier to protect against at the time the implementation changes. If it changes from a protective copy to another implementation, I would think it'd be obvious for the implementor to check to see if that breaks usage at that time.
+
+For now, I think it makes sense to treat the interface as "snapshot of migrations", and the protective copy (vs. another implementation) matches up to that interface semantics. We could change the interface method name to "migrationsSnapshot()" to be clear, though, and to avoid careless future impl changes which change that semantics.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> &gt; We could change the interface method name to "migrationsSnapshot()" to be clear, though, and to avoid careless future impl changes which change that semantics.
+
+:+1: I like this general approach. I think migrations are just one place that we follow this pattern and could benefit from more descriptive method names.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                &gt;  I was thinking a bigger risk would be that a user would accidentally introduce a RuntimeException 
+
+My hope was that the runtime exception would possibly expose a bug (in addition to causing a bug).  However, there are certainly cases where it would only cause problems and not expose any bugs.
+
+&gt; wrapped immutability is not something which we can check at compile-time
+
+That would be nice to have.
+
+              </div></li><li><div><div><b>body:</b> I'll go ahead and do the immutability, as well as rename the method... but I'll add a Javadoc to clearly state that it's immutible. It looks like the other (test) implementations are already immutable anyway.
+
+                </div><div><b>label:</b> documentation
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> DeleteTableDuringSplitIT.test() fails occasionally
+                </div><div><b>description:</b> Saw this twice during 1.6.5-rc1 failing:
+
+{code}
+test(org.apache.accumulo.test.functional.DeleteTableDuringSplitIT)  Time elapsed: 182.218 sec  &lt;&lt;&lt; ERROR!
+java.util.concurrent.ExecutionException: java.lang.RuntimeException: org.apache.accumulo.core.client.AccumuloException: Internal error processing waitForFateOperation
+	at java.util.concurrent.FutureTask.report(FutureTask.java:122)
+	at java.util.concurrent.FutureTask.get(FutureTask.java:188)
+	at org.apache.accumulo.test.functional.DeleteTableDuringSplitIT.test(DeleteTableDuringSplitIT.java:94)
+Caused by: java.lang.RuntimeException: org.apache.accumulo.core.client.AccumuloException: Internal error processing waitForFateOperation
+	at org.apache.accumulo.test.functional.DeleteTableDuringSplitIT$2.run(DeleteTableDuringSplitIT.java:80)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:471)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:262)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+	at org.apache.accumulo.trace.instrument.TraceRunnable.run(TraceRunnable.java:47)
+	at org.apache.accumulo.core.util.LoggingRunnable.run(LoggingRunnable.java:34)
+	at java.lang.Thread.run(Thread.java:745)
+Caused by: org.apache.accumulo.core.client.AccumuloException: Internal error processing waitForFateOperation
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doFateOperation(TableOperationsImpl.java:336)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doFateOperation(TableOperationsImpl.java:294)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doTableFateOperation(TableOperationsImpl.java:1592)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.delete(TableOperationsImpl.java:679)
+	at org.apache.accumulo.test.functional.DeleteTableDuringSplitIT$2.run(DeleteTableDuringSplitIT.java:78)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:471)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:262)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+	at org.apache.accumulo.trace.instrument.TraceRunnable.run(TraceRunnable.java:47)
+	at org.apache.accumulo.core.util.LoggingRunnable.run(LoggingRunnable.java:34)
+	at java.lang.Thread.run(Thread.java:745)
+Caused by: org.apache.thrift.TApplicationException: Internal error processing waitForFateOperation
+	at org.apache.thrift.TApplicationException.read(TApplicationException.java:111)
+	at org.apache.thrift.TServiceClient.receiveBase(TServiceClient.java:71)
+	at org.apache.accumulo.core.master.thrift.FateService$Client.recv_waitForFateOperation(FateService.java:174)
+	at org.apache.accumulo.core.master.thrift.FateService$Client.waitForFateOperation(FateService.java:159)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.waitForFateOperation(TableOperationsImpl.java:266)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doFateOperation(TableOperationsImpl.java:308)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doFateOperation(TableOperationsImpl.java:294)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.doTableFateOperation(TableOperationsImpl.java:1592)
+	at org.apache.accumulo.core.client.impl.TableOperationsImpl.delete(TableOperationsImpl.java:679)
+	at org.apache.accumulo.test.functional.DeleteTableDuringSplitIT$2.run(DeleteTableDuringSplitIT.java:78)
+	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:471)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:262)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+	at org.apache.accumulo.trace.instrument.TraceRunnable.run(TraceRunnable.java:47)
+	at org.apache.accumulo.core.util.LoggingRunnable.run(LoggingRunnable.java:34)
+	at java.lang.Thread.run(Thread.java:745)
+{code}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Commit 5bd4e27cbc4dd800d88188c4b39f59447e02e44a in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=5bd4e27 ]
+                Looked at the master logs, and it looks like the fate operation threw up with:
+{code}
+java.lang.RuntimeException: java.util.ConcurrentModificationException
+  at org.apache.accumulo.server.master.state.TabletStateChangeIterator.setMigrations(TabletStateChangeIterator.java:237)
+  at org.apache.accumulo.server.master.state.MetaDataTableScanner.configureScanner(MetaDataTableScanner.java:89)
+  at org.apache.accumulo.master.tableOps.CleanUp.isReady(DeleteTable.java:101)
+  at org.apache.accumulo.master.tableOps.CleanUp.isReady(DeleteTable.java:63)
+  at org.apache.accumulo.master.tableOps.TraceRepo.isReady(TraceRepo.java:44)
+  at org.apache.accumulo.fate.Fate$TransactionRunner.run(Fate.java:66)
+  at org.apache.accumulo.fate.util.LoggingRunnable.run(LoggingRunnable.java:34)
+  at java.lang.Thread.run(Thread.java:745)
+Caused by: java.util.ConcurrentModificationException
+  at java.util.TreeMap$PrivateEntryIterator.nextEntry(TreeMap.java:1115)
+  at java.util.TreeMap$KeyIterator.next(TreeMap.java:1169)
+  at org.apache.accumulo.server.master.state.TabletStateChangeIterator.setMigrations(TabletStateChangeIterator.java:233)
+  ... 7 more
+{code}
 
-ACCUMULO-2160 fixed up a lot of findbugs/pmd complaints
+Problem appears to be caused by the master's tracking of migrations being modified while the table is being deleted.
+              </div></li><li><div>
+                bq. Problem appears to be caused by the master's tracking of migrations being modified while the table is being deleted.
+
+Yup, Saw the same exact thing over here.
+              </div></li><li><div>
+                Further regression from ACCUMULO-3601?
+              </div></li><li><div>
+                Possibly. A solution seems to be to make the master just provide a protective copy of the keySet.
+              </div></li><li><div>
+                GitHub user ctubbsii opened a pull request:
+
+    https://github.com/apache/accumulo/pull/68
+
+    ACCUMULO-4143 Make protective copy of migrations
+
+    Makes a protective copy of the master's migrations, when requested, to prevent
+    ConcurrentModificationExceptions when the requestor iterates over the set at the
+    same time the master is updating it.
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/ctubbsii/accumulo ACCUMULO-4143
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/accumulo/pull/68.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #68
+    
+----
+commit 7c5ab89ff70f5d25f764981e4f7c70da52bc8fef
+Author: Christopher Tubbs &lt;ctubbsii@apache.org&gt;
+Date:   2016-02-11T20:55:16Z
+
+    ACCUMULO-4143 Make protective copy of migrations
+    
+    Makes a protective copy of the master's migrations, when requested, to prevent
+    ConcurrentModificationExceptions when the requestor iterates over the set at the
+    same time the master is updating it.
+
+----
 
               </div></li><li><div>
-                Commit 5bd4e27cbc4dd800d88188c4b39f59447e02e44a in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=5bd4e27 ]
+                Github user keith-turner commented on a diff in the pull request:
 
-ACCUMULO-2160 fixed up a lot of findbugs/pmd complaints
-
-              </div></li><li><div><div><b>body:</b> Do we really want PasswordToken to return a copy on getPassword()? Will that violate it's "Destroyable"-ness in any way (maybe when it's overridden)? I'm not sure. Just want to make sure we're not doing something we don't want to do.
-
-I also wonder how many of these changes can be represented as warnings in Eclipse (or your IDE of choosing) and whether we should make them standards. Eclipse may even support some of these things (like stripping redundant modifiers off interfaces) as save-actions.
-
-Also, I noticed that many changes here added trailing whitespace (including indented blank lines).
-
-In TestLruBlockCache (perhaps elsewhere also), it should probably have used JUnit's Assert.assertArrayEquals(), for more informative failure messages, rather than assertTrue(Arrays.equals())
-
-It's curious that Math.abs was inline'd into the class. What's the reasoning for that in the examples?
-
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Oh, I probably shouldn't have inlined abs in the examples.  It's too confusing.  Random.nextLong() can return Long.MIN_VALUE.  Math.abs(Long.MIN_VALUE) == Long.MIN_VALUE, which is still negative.  I should at least make the function return Long.MAX_VALUE or zero or something. 
-
-I have tried to get the formatter to work for me, but for some reason it doesn't.  I'll spend some time on that.
-
-Unfortunately, there's no immutable array type.  findbugs was not happy about keeping or returning refs to mutable arrays.  PasswordToken is still Destroyable, but it may have leaked the password, but that was already possible.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Commit 2d51e329e1784ccf18bd089dcc7bb4c932909581 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=2d51e32 ]
-
-ACCUMULO-2160 review fixes
+    https://github.com/apache/accumulo/pull/68#discussion_r52667397
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    could return an immutable set
 
               </div></li><li><div>
-                Commit 2d51e329e1784ccf18bd089dcc7bb4c932909581 in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=2d51e32 ]
+                Github user ctubbsii commented on a diff in the pull request:
 
-ACCUMULO-2160 review fixes
-
-              </div></li><li><div>
-                bq. Unfortunately, there's no immutable array type. findbugs was not happy about keeping or returning refs to mutable arrays. PasswordToken is still Destroyable, but it may have leaked the password, but that was already possible.
-
-Guava has some immutable array wrappers
-              </div></li><li><div>
-                {quote}
-Unfortunately, there's no immutable array type. findbugs was not happy about keeping or returning refs to mutable arrays. PasswordToken is still Destroyable, but it may have leaked the password, but that was already possible.
-{quote}
-
-I believe the way to do this with base JDK components is a read-only ByteBuffer.
-              </div></li><li><div>
-                Commit 5dd6f84bc1858d894cfbaedbdecfb9acae15f877 in branch refs/heads/1.4.5-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=5dd6f84 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit 6d49e1a48af4dfb0b9d5a8bcf152567b97dd9c79 in branch refs/heads/1.4.5-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=6d49e1a ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
+    https://github.com/apache/accumulo/pull/68#discussion_r52668001
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    Seems to put an unnecessary restriction on how other tools might use it, though. Didn't think that was necessary.
 
               </div></li><li><div>
-                Commit 5dd6f84bc1858d894cfbaedbdecfb9acae15f877 in branch refs/heads/1.5.1-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=5dd6f84 ]
+                Github user keith-turner commented on a diff in the pull request:
 
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit cb50a743dee006bcbe1bf196ff224af5557722f6 in branch refs/heads/1.5.1-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=cb50a74 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit 6d49e1a48af4dfb0b9d5a8bcf152567b97dd9c79 in branch refs/heads/1.5.1-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=6d49e1a ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit 5dd6f84bc1858d894cfbaedbdecfb9acae15f877 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=5dd6f84 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
+    https://github.com/apache/accumulo/pull/68#discussion_r52669078
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    My thinking is that we don't expect the caller to modify it.  Now that a copy is made, its ok if caller modifies.  But if in the future the implementation uses a concurrent map and does not copy, would not want caller of method to modify.  Also the previous implementation didn't expect caller to modify, just read. 
 
               </div></li><li><div>
-                Commit cb50a743dee006bcbe1bf196ff224af5557722f6 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=cb50a74 ]
+                Github user joshelser commented on a diff in the pull request:
 
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit e135e039a33c1e3917bed87c16efcf6535418d15 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=e135e03 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit 2af251552e93b41875cf9d97aa927a448d7d7b00 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=2af2515 ]
-
-ACCUMULO-2160 back-port serious findbugs/pmd issues to 1.5/1.4
-
-              </div></li><li><div>
-                Commit cb50a743dee006bcbe1bf196ff224af5557722f6 in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=cb50a74 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
+    https://github.com/apache/accumulo/pull/68#discussion_r52669338
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    +1
 
               </div></li><li><div>
-                Commit e135e039a33c1e3917bed87c16efcf6535418d15 in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=e135e03 ]
+                Github user ctubbsii commented on a diff in the pull request:
 
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit e4db592367099b53c6880ca2c94a851963b76efc in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=e4db592 ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
-
-              </div></li><li><div>
-                Commit 2af251552e93b41875cf9d97aa927a448d7d7b00 in branch refs/heads/master from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=2af2515 ]
-
-ACCUMULO-2160 back-port serious findbugs/pmd issues to 1.5/1.4
-
-              </div></li><li><div><div><b>body:</b> Thanks for doing this. I'm a huge Findbugs fan. Some items that jumped out at me:
-
-* In several places you switched out {{Math.random()}} for {{Random.nextInt()}}. It may be worthwhile creating a single {{Random}} instance for all code to use, so that there aren't a bunch of them around. The downside is that {{Random}} isn't thread-safe, so a shared instance would have to be synchronized. I'll leave it to you whether that is an issue for performance ({{Math.random()}} had to synchronize anyway).
-* The change in the {{equals()}} methods of {{Condition}} and {{ConditionalMutation}} mean that their subclasses can now be considered equal to superinstances. That might matter, it might not.
-* I saw some stubbed {{hashCode()}} methods, which makes sense for this ticket, but we'll need to fix those.
-* The correction in {{Authorizations.contains(String)}} seems like it could be huge, since before it would always return false. Did that have any impact?
-* The correction in {{TabletServer.AssignmentHandler.run()}} also seems like it could have some significance in making {{recentlyUnloadedCache}} work better - maybe causing more {{UNLOAD_FAILURE_NOT_SERVING}} messages to be generated. (Looks like a good thing.)
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                bq. Math.random() for Random.nextInt()
-I'm guessing that making new instances is cheap enough, but I don't know.
-
-bq. mean that their subclasses can now be considered equal to superinstances
-Right, that was the findbugs complaint: that it wouldn't work for subclasses.
-
-bq. Authorizations.contains(String) seems like it could be huge
-I'm not sure it changes the behavior at all.
-
-bq. making recentlyUnloadedCache work better
-Yep.  I ported it back to 1.4 and 1.5, too.
-
-              </div></li><li><div><div><b>body:</b> bq. Right, that was the findbugs complaint: that it wouldn't work for subclasses.
-
-Yeah, it's that whole thing about whether {{equals()}} should rely on {{getClass()}} or {{instanceof}}. I'm not judging which is better, and apparently Findbugs prefers {{instanceof}}; only that this is a change of some significance. I think the only effect currently is this, which as I said may or may not matter.
-
-{noformat}
-ConditionalWriterImpl.QCMutation qcm = something;  // extends ConditionalMutation
-ConditionalMutation cm = (ConditionalMutation) something.clone();  // suppose clone works
-assertTrue(cm.equals(qcm));  // used to be false
-assertFalse(qcm.equals(cm));  // no symmetry
-{noformat}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Commit 6d49e1a48af4dfb0b9d5a8bcf152567b97dd9c79 in branch refs/heads/1.6.0-SNAPSHOT from [~ecn]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=6d49e1a ]
-
-ACCUMULO-2160 back-port real bugs found by findbugs
+    https://github.com/apache/accumulo/pull/68#discussion_r52676712
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    I was thinking a bigger risk would be that a user would accidentally introduce a RuntimeException (UnsupportedOperationException) because they tried to do something which worked against some implementations of the interface, but not others, and because wrapped immutability is not something which we can check at compile-time. It just seems an unnecessary restriction to me.
+    
+    It's internal-only code, so we can change it any way we like in the future... and I think the risk you're highlighting is lower than the risk of somebody accidentally calling an unsupported method... and it's also much easier to protect against at the time the implementation changes. If it changes from a protective copy to another implementation, I would think it'd be obvious for the implementor to check to see if that breaks usage at that time.
+    
+    For now, I think it makes sense to treat the interface as "snapshot of migrations", and the protective copy (vs. another implementation) matches up to that interface semantics. We could change the interface method name to "migrationsSnapshot()" to be clear, though, and to avoid careless future impl changes which change that semantics.
 
               </div></li><li><div>
-                Reopen if there's something more you want to fix for 1.6.
+                Github user joshelser commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/68#discussion_r52678587
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    &gt; We could change the interface method name to "migrationsSnapshot()" to be clear, though, and to avoid careless future impl changes which change that semantics.
+    
+    :+1: I like this general approach. I think migrations are just one place that we follow this pattern and could benefit from more descriptive method names.
+
               </div></li><li><div>
-                FindBugs now runs in the build and automatically finds serious issues. (ACCUMULO-2697)
+                Github user keith-turner commented on the pull request:
+
+    https://github.com/apache/accumulo/pull/68#issuecomment-183087366
+  
+    looks good to me too.  I don't have a strong opinion about the immutable set.   It was a thought i had while looking at the code.
+
+              </div></li><li><div>
+                Github user joshelser commented on the pull request:
+
+    https://github.com/apache/accumulo/pull/68#issuecomment-183091912
+  
+    &gt;  I don't have a strong opinion about the immutable set. It was a thought i had while looking at the code.
+    
+    Likewise for me. I thought I remember seeing other immutable wrappers in the Master similar to your change, but there's nothing wrong with this as-is.
+
+              </div></li><li><div>
+                Github user keith-turner commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/68#discussion_r52682644
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    &gt;  I was thinking a bigger risk would be that a user would accidentally introduce a RuntimeException 
+    
+    My hope was that the runtime exception would possibly expose a bug (in addition to causing a bug).  However, there are certainly cases where it would only cause problems and not expose any bugs.
+    
+    &gt; wrapped immutability is not something which we can check at compile-time
+    
+    That would be nice to have.
+
+              </div></li><li><div>
+                Github user ctubbsii commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/68#discussion_r52684501
+  
+    --- Diff: server/master/src/main/java/org/apache/accumulo/master/Master.java ---
+    @@ -1336,7 +1332,11 @@ public void assignedTablet(KeyExtent extent) {
+       }
+     
+       @Override
+    -  public Collection&lt;KeyExtent&gt; migrations() {
+    -    return migrations.keySet();
+    +  public Set&lt;KeyExtent&gt; migrations() {
+    +    Set&lt;KeyExtent&gt; migrationsCopy = new HashSet&lt;KeyExtent&gt;();
+    +    synchronized (migrations) {
+    +      migrationsCopy.addAll(migrations.keySet());
+    +    }
+    +    return migrationsCopy;
+    --- End diff --
+    
+    I'll go ahead and do the immutability, as well as rename the method... but I'll add a Javadoc to clearly state that it's immutible. It looks like the other (test) implementations are already immutable anyway.
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/accumulo/pull/68
+
+              </div></li><li><div>
+                While technically, this bug only existed in the 1.6 branch, because it had already been fixed in newer branches, the changes to the interface and some cleanup was applied to all branches.
               </div></li></ol></div></div></html>

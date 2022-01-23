@@ -1,289 +1,104 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 199
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+                 Initialize with non-empty onlineSegments
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Broker time segment pruner(#6189): (#6462)
+                </div><div><b>message:</b> Broker time segment pruner(#6189): (#6462)
+
+- Fix bug in init().
+- Add support for IN operator, e.g. select * from mytable where timeColumn in (2001-01-01, 2021-01-01)
+- Add tests for simple date format.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Support Timestamp Pruning of segments in Broker
+                </div><div><b>body:</b> For time based tables, segments can easily pile up. High qps would lead to a lot of unnecessary work being done server side to read and eliminate segments. 
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> For time range pruning on broker we have two solutions:
+
+1. **Naive O(n)**
+Currently, for each table, brokers keep track of all its online segments. PartitionSegmentPruner maintains a mapping from segment names to partition info. Same as partition pruning, we can have a time range pruner which keeps a mapping from segment names to time range. Pruning is done by looping through online segments, getting their partition infos and filtering against query time range, this will cost O(n)(n is # of online segments).
+
+    **Pros**: easy to implement
+**Cons**: long time to compute the segment pruning for tables with large number of segments
+
+2. **O(m*logn)** using some specialized data structure
+Instead of keeping the time range to segment mapping, we can have some specialized ordered data structure (e.g. interval search tree: a augmented balanced BST) optimized for searching intercepted ranges against query range. Pruning is done by searching all intercepted ranges from the interval search tree, and checking if  they are online. This will cost O(m*logn) (m is # of qualified segments).
+There’s two implementations: 
+   
+    **Implementation 1**: a concurrent augmented bst
+   **Implementation 2**: a read only augmented bst, a new tree will be built and atomicly swapped with the old one when there’s an external view change or a segment metadata updates 
+
+   **Pros**: reduced time to prune for large number of segments
+**Cons**:  
+    * More data (1.5 - 2 * naive solution) stored on brokers because of  additional    pointers and auxiliary info for tree node
+    * For Implementation 1, hard to code (a research topic), and reading performance will be harmed due to locking
+    * For Implementation 2, when there’s an external view change or segment metadata updates, the whole tree needs to be gced.
+
+Due to performance requirements and since the pruner is read heavy (thousands qps in production, and external view change happens few times a day), the solution 2 implementation 2 is considered a better approach.
+
  
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                The particular cases where this is necessary is when we have a large amount of data necessitating a large number of segments. In this particular situation, we want to make sure this scales.
+
+The naive solution does not scale particularly well on time when you get to millions of segments. 
+
+The specialized data structure scales well on time, but is potentially a memory hog. The brokers like to keep _all_ of the routing tables in memory. That's going to get hungry. Can we quantify this? If there's 20 million segments across 10 tables, is it a gig of memory? 100 gigs?
+
+On the difficulty to implement front, why not just start with a [Java Sorted Set](https://docs.oracle.com/javase/8/docs/api/java/util/SortedSet.html) on start timestamp? Then filter on end timestamp on those results? Or use a pre canned library built for this specific task. 
+
               </div></li><li><div>
-                *
- * The primary key of a record. Note that the value used in the primary key must be single-value.
- 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Add the primary key reading from the GenericRow (#6102)
-                </div><div><b>message:</b> Add the primary key reading from the GenericRow (#6102)
+                In fact, why not create a generic SortedSet based pruner that can be used for any numeric or sortable column?Then, this can be used for other columns such as sequence numbers. Which would be another very valuable use case for us
+              </div></li><li><div><div><b>body:</b> @noahprince22 If we keep the start timestamp only, we cannot effectively prune segments because we don't know the upper bound. Keeping start time may help for your use case but it's not a generic solution. (i.e. time filter on queries can be made with no end timestamp)
 
-Part of a series of PRs for #4261
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
+Simple math:
 
-Some initial requirements for the upsert projects:
+Let's assume that we roughly store 100bytes for each segment ( we need to store segment name, start &amp; end timestamps, and some other info).
+```
+100 bytes /segment * 20 million segments =  ~2GB
+```
 
-1. Only support for full update to pinot event
+It indeed requires GBs of memory; however, having 20millions of segments for Pinot cluster is a bit extreme use cases. If you set your segment size to be a reasonable size (200-300MB per segment), you won't have 20million segments. (200MB * 20 million segments = 4PB). To support this many segments, we probably need to read the metadata from disk instead of keeping everything in memory. Also, we probably will need to do a lot of other optimizations on brokers to support the cluster at this scale.
 
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
+IMO, we can first start with what @jtao15 suggested and see how they perform on your use case. How do you think?
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div></div></li><li><div><div><b>title:</b> implement upsert support on pinot
-                </div><div><b>body:</b> Pinot is a distributed real-time OLAP engine that can provide second-level data freshness by ingesting kafka events and capacity to manage months of historical data load from various data sources such as HDFS, schemaless, etc. However, Pinot right now mostly functions as an append-only storage system. It doesn’t allow modify/delete of existing records with the exception of overriding all data within a time range with offline tables. This limits the applicability of pinot system due to a lot of use-cases requiring updates to their data due to the nature of their events or needs for data correction/backfill. In order to extend the capacity of pinot and serve more use-cases, we are going to implement the upsert features in Pinot which allows users to update existing records in Pinot tables with its kafka data input stream.
-
-Some initial requirements for the upsert projects:
-
-1. Only support for full update to pinot event
-
-2. Only support for Kafka-compatible queue ingestion model
-
-3. Single pinot server/table can handle 10k/sec ingestion message rate
-
-4. Each pinot server can handle 1 Billion records or 1TB storage
-
-5. Ingestion latency overhead compared to non-upsert model &lt; 1min
-
-6. Query latency overhead compared to non-upsert model &lt; 50%
-
-7. Data retention &lt; 2 weeks
-
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> summary on 1st discussion of upsert design (May 15th):
-
-1. @Jackie-Jiang points out that current design of rewriting queries for upsert table is problematic as this cause too much overhead in pinot query process with so many or-conditions. We should look into method to reduce the query overhead in upsert table
-
-2. We should look into message delivery from coordinator service to pinot server. @Jackie-Jiang proposed methods on re-using existing download API on coordinator service to deliver messages from coordinator to server for unified API.
-
-3. How to handle kafka topic partition change. @mcvsubbu suggested that we should look into how to handle accidental expand of kafka topic if that happens.
+                </div></div></li><li><div>
+                Copied and pasted the discussion from slack channel: [slack discussions](https://docs.google.com/document/d/1qbiwzTVNeO_syBrvDL-Y-s_xep8nUtJAi1S9KJFfq4A/edit?usp=sharing)
+              </div></li><li><div><div><b>body:</b> I would suggest going with the easier approach (approach 1) and establish some baseline first. I would doubt that we can run into performance issue for the naive implementation as the partition based one works pretty good so far. The naive one should also work better if we have multiple pruners chained together. We can start the advanced one if we really observe performance issue from the naive one.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> @jamesyfshao can you add a pointer to your design doc in this issue? thanks
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> &gt; @jamesyfshao can you add a pointer to your design doc in this issue? thanks
-
-please use this design doc for now https://docs.google.com/document/d/1SFFir7ByxCff-aVYxQeTHpNhPXeP5q7P4g_6O2iNGgU/edit. We might have permission issue for new ppl as it is still WIP to keep the discussion more organized. Once it is more close to "ready" state I will put it on apache site
+                </div></div></li><li><div><div><b>body:</b> @jtao15 Can you please confirm if this feature is done and tested? Also, is there any documentation for how to enable it?
                 </div><div><b>label:</b> documentation
                 </div></div></li><li><div>
-                It has been a while since the upsert work started. We'd like to reflect on the challenges encountered, share some learnings and also a [revisit on the upsert design](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt). 
-
-              </div></li><li><div>
-                Added the docs at https://docs.pinot.apache.org/basics/data-import/upsert
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li><li><div><div><b>title:</b> Add the primary key reading from the GenericRow
-                </div><div><b>body:</b> ## Description
-Part of a series of PRs for #4261
-Check this [doc](https://docs.google.com/document/d/1qljEMndPMxbbKtjlVn9mn2toz7Qrk0TGQsHLfI--7h8/edit#heading=h.lsfmyoyyxtgt) out for the new design
-
-Related to https://github.com/apache/incubator-pinot/pull/6096
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                @Jackie-Jiang thanks for the review. Comments addressed.
-              </div></li><li><div>
-                @Jackie-Jiang done. Thanks for taking another look
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Cache `primaryKeyColumns.size()` into a local variable
-              </div></li><li><div>
-                Suggest renaming it to `values`
-              </div></li><li><div>
-                Suggest renaming it to `_values`
-              </div></li><li><div>
-                Add some javadoc stating that the values should be SV (MV values won't work for equals and hashcode)
-              </div></li><li><div>
-                Yes. Table config shall validate this.
-              </div></li><li><div>
-                (nit)
-```suggestion
-    int numPrimaryKeyColumns = primaryKeyColumns.size();
-    Object[] values = new Object[numPrimaryKeyColumns];
-    for (int i = 0; i &lt; numPrimaryKeyColumns; i++) {
+                @Jackie-Jiang Yes, the feature is done and tested. 
+It can be enabled by specifying time pruner in routing config: 
 ```
-              </div></li><li><div>
-                (nit)
-```suggestion
-  public PrimaryKey(Object[] values) {
-    _values = values;
+"routing": {
+    "segmentPrunerTypes": ["Time"]
+  }
 ```
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+The supported query operators are `RANGE`, `=`, `&lt;`, `&lt;=`, `&gt;`, `&gt;=`, `IN`, `AND`,`OR`. 
+E.g. `Select * FROM table WHERE timeColumn BETWEEN 20 AND 30 OR timeColumn &gt;= 40`. Time pruner will filter out segments which don't have records in [20, 30] or [40, *).
+
+              </div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

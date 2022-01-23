@@ -1,509 +1,87 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 133
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 namenode requested a registration - at start or if NN lost contact
- Just logging the claiming state is OK here instead of checking the
- actor state by obtaining the lock
+                 the threshold is reached or was reached before
               </div></li><li><div>
-                *
-   * This method should handle commands from Standby namenode except
-   * DNA_REGISTER which should be handled earlier itself.
-   
-              </div></li><li><div>
-                
-     * Datanode Registration can be done asynchronously here. No need to hold
-     * the lock. for more info refer HDFS-5014
-     
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay.
-                </div><div><b>message:</b> HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay.
+                 SafeModeMonitor thread
+ if smmthread is already running, the block threshold must have been 
+ reached before, there is no need to enter the safe mode again
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao.
+                </div><div><b>message:</b> HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao.
 
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1543861 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1518899 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> BPOfferService#processCommandFromActor() synchronization on namenode RPC call delays IBR to Active NN, if Stanby NN is unstable
-                </div><div><b>description:</b> In one of our cluster, following has happened which failed HDFS write.
-
-1. Standby NN was unstable and continously restarting due to some errors. But Active NN was stable.
-2. MR Job was writing files.
-3. At some point SNN went down again while datanode processing the REGISTER command for SNN. 
-4. Datanodes started retrying to connect to SNN to register at the following code  in BPServiceActor#retrieveNamespaceInfo() which will be called under synchronization.
-{code}      try {
-        nsInfo = bpNamenode.versionRequest();
-        LOG.debug(this + " received versionRequest response: " + nsInfo);
-        break;{code}
-Unfortunately in all datanodes at same point this happened.
-5. For next 7-8 min standby was down, and no blocks were reported to active NN at this point and writes have failed.
-
-
-So culprit is {{BPOfferService#processCommandFromActor()}} is completely synchronized which is not required.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error
+                </div><div><b>description:</b> While running namenode load generator with 100 threads for 10 mins namenode was being failed over ever 2 mins.
+The standby namenode shut itself down as it ran out of memory and was not able to create another thread.
+When we searched for 'Safe mode extension entered' in the standby log it was present 55000+ times
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Attaching a draft patch, which avoids synchronization
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12593344/HDFS-5014.patch
-  against trunk revision .
+                Here is the stack trace from the standby namenode
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:red}-1 findbugs{color}.  The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4732//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/4732//artifact/trunk/patchprocess/newPatchFindbugsWarningshadoop-hdfs.html
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4732//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Attached updated patch to avoid findbug
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12594357/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4736//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4736//console
-
-This message is automatically generated.
-              </div></li><li><div><div><b>body:</b> Hi, [~vinayrpet].
-
-Before this patch, both {{BPOfferService#processCommandFromActor}} and {{BPOfferService#updateActorStatesFromHeartbeat}} were synchronized.  This meant that one {{BPServiceActor}} could prevent running commands from the other if the heartbeat response from its NN indicated that it had become the new active.
-
-With this patch, we could have a command in progress, and the other {{BPServiceActor}} takes over as active, but the change isn't visible.  (Basically, one thread won't see the other thread's update of {{BPOfferService#bpServiceToActive}}, and I don't think the addition of {{volatile}} helps.)  If that command is a block invalidate, then we could lose a block erroneously.
-
-I definitely can see how the synchronization could cause the problem you described though.  I don't yet have a suggestion for a different solution, but wanted to mention that the synchronization really does appear to be necessary.
-
-I'm linking this to HDFS-2627, which introduced the synchronization.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Thanks Chris for your inputs. I have re-looked the solution and came up with a solution using read-write lock.
-Please have a look on this. 
-              </div></li><li><div>
-                Updated patch with read/write lock mechanism instead of synchronization
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12599608/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:red}-1 findbugs{color}.  The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4871//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/4871//artifact/trunk/patchprocess/newPatchFindbugsWarningshadoop-hdfs.html
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4871//console
-
-This message is automatically generated.
-              </div></li><li><div><div><b>body:</b> bq. Updated patch with read/write lock mechanism instead of synchronization
-
-Nice work!  I think the basic approach is going to work.  However, I think {{updateActorStatesFromHeartbeat}} needs to hold the write lock for the entire method.  Otherwise, we could get some unfortunate interleavings of state in {{bpServiceToActive}}, {{bposThinksActive}}, {{lastActiveClaimTxId}}, and {{isMoreRecentClaim}}.
-
-bq. -1 findbugs. The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
-
-This is somewhat spurious, but your workaround from the earlier patch would still work to silence these warnings.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                {quote}However, I think updateActorStatesFromHeartbeat needs to hold the write lock for the entire method. 
-{quote}
-Actually if we try holding writeLock() throughout method, then that will be same as adding method level synchronization. where we would get the same issue as this jira.
-{quote}we could get some unfortunate interleavings of state in bpServiceToActive, bposThinksActive, lastActiveClaimTxId, and isMoreRecentClaim.{quote}
-I dint understand how we could get 'some unfortunate interleavings'. Can you please explain.. I thought since we are reading under lock, we would get correct state always.
-
-
-Regarding findbugs, I will try to fix it.
-              </div></li><li><div>
-                Adding the Updated patch
-
-1. Covered isMoreRecentClaim and lastActiveClaimTxId under locks
-
-2. covered bpNsInfo under synchronization to avoid the findbugs,
-              </div></li><li><div><div><b>body:</b> I'm going to be mostly offline until 9/2.  I'm not +1 for the current patch, but I would be +1 if it was changed to hold the write lock for all of {{updateActorStatesFromHeartbeat}}.  I'd like to seek out a second opinion though, because concurrency is hard.  :-)  [~tlipcon], maybe you could take a look since you originally coded HDFS-2627?
-
-Vinay, thank you for reporting the bug and working through the feedback on the patch.
-
-bq. I dint understand how we could get 'some unfortunate interleavings'. Can you please explain.. I thought since we are reading under lock, we would get correct state always.
-
-The challenge is that we are updating multiple pieces of data ({{bpServiceToActive}}, {{bposThinksActive}}, {{lastActiveClaimTxId}}, and {{isMoreRecentClaim}}), and the failover handling logic isn't correct unless those pieces of data are consistent with one another.  Without mutual exclusion, we can end up with {{bposThinksActive}} true even though {{bpServiceToActive}} has changed, or we could end up with {{isMoreRecentClaim}} true, even though a more recent transaction ID has been seen.
-
-In the following examples, assume T1 and T2 are separate threads for separate {{BPServiceActor}} instances/separate name nodes.
-
-Example 1: race on {{bposThinksActive}}
-
-# T1 acquires read lock.
-# T1 calculates {{bposThinksActive}} true.
-# T1 releases read lock.
-# The OS suspends T1 here.  (Note that T1 is holding neither read lock nor write lock at this point.)
-# T2 wakes up, processes a heartbeat, and executes all of {{updateActorStatesFromHeartbeat}}.  It determines that T2 is the new active, so it updates {{bpServiceToActive}}.
-# The OS suspends T2 here.
-# T1 resumes.  It still thinks {{bposThinksActive}} is true, even though the other thread has changed {{bpServiceToActive}}.
-# T1 now can fall into the block for {{else if (!nnClaimsActive &amp;&amp; bposThinksActive)}} and set {{bpServiceToActive}} null.
-# The OS suspends T1 and resumes T2.
-# T2 now erroneously skips commands from the active NN, because {{bpServiceToActive}} is null.
-
-Example 2: race on {{isMoreRecentClaim}}
-
-# T1 acquires read lock.
-# T1 calculates {{isMoreRecentClaim}} based on {{lastActiveClaimTxId}} 1 and {{txid}} 2 from the heartbeat.
-# T1 releases read lock.
-# The OS suspends T1 here.  (Note that T1 is holding neither read lock nor write lock at this point.)
-# T2 wakes up, processes a heartbeat, and executes all of {{updateActorStatesFromHeartbeat}}.  It updates {{lastActiveClaimTxId}} to 3.
-# The OS suspends T2 here.
-# T1 resumes.  It still thinks {{isMoreRecentClaim}} is true, even though the other thread has changed {{lastActiveClaimTxId}}.
-# T1 now can set {{bpServiceToActive}} to itself instead of going into the split-brain warning path.
-# The OS suspends T1 and resumes T2.
-# T2 now erroneously skips commands from the active NN, because {{bpServiceToActive}} was changed.
-
-bq. Actually if we try holding writeLock() throughout method, then that will be same as adding method level synchronization. where we would get the same issue as this jira.
-
-My understanding is that you had an actor get stuck in the re-registration loop when it got a {{DNA_REGISTER}} request from a flapping namenode.  Since {{processCommandFromActor}} was synchronized, this also blocked the actor thread for the healthy namenode from making progress.  Therefore, we can solve the problem by allowing concurrent executions of {{processCommandFromActor}}, so that the healthy actor can make progress even if the unhealthy actor gets stuck.  However, we don't need to allow concurrent execution of the heartbeat/HA failover processing (and I think it would be incorrect to do so based on the examples above).
-
-Unlike {{processCommandFromActor}}, the {{updateActorStatesFromHeartbeat}} method only changes local in-memory state.  There is no polling loop or RPC involved, so there is no risk that one actor gets stuck inside this method and blocks the other.  I expect minimal lock contention on the write lock.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12599799/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4875//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4875//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Updated patch to solve the concurrency issues, illustrated by chris. Please review.
-In both examples, adding a double check in case of state changes would solve the issue.
-
-Removed the lock for processing standby commands to avoid the following case in prev patch.
-1. Standby NN was unstable and asked DN to register.
-2. DN acquired the readlock and started registering, but by this time Standby NN went down. So DN will keep trying in this point with readlock held.
-3. Now any state changes from ANN, will block in getting writeLock().
-
-I feel lock not required while processing commands from standby as no data modification commands will be processed here. Please correct me if I am wrong. :)
-  
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12599907/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4888//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4888//console
-
-This message is automatically generated.
-              </div></li><li><div><div><b>body:</b> Hi, [~vinayrpet].  I'm coming back to this one after a while.  The latest patch still has some concurrency problems:
-* {{updateActorStatesFromHeartbeat}}: It's possible for state to change after releasing the read lock, but before the if statement executes.  The method would then execute logic assuming the old values of {{bpServiceToActive}} and {{lastActiveClaimTxId}}.
-* {{processCommandFromActor}}: Even though the read lock is not held during {{processCommandFromStandby}}, it's still possible to have the same problem that you saw in your cluster, but on the active instead of the standby.  If the active requests re-registration of datanodes, and then immediately goes into a bad state or a network partition prevents communication, then datanodes will be stuck inside the re-register polling loop while holding the read lock.  This will prevent the other one from taking over as active, which requires holding the write lock.
-
-I'm starting to think that we can't fix this bug by just tuning locks in {{BPOfferService}}.  Instead, I'm starting to think that we need to work out a way for the re-register polling loops to yield the lock in case of repeated failure, to give the other {{BPServicActor}} a chance.  If a {{BPServiceActor}} yields like this, then it must also have a way to trigger the other {{BPServiceActor}} to repeat its heartbeat *before executing any additional commands*.  It's vital to re-check current state of the other one before proceeding to handle its commands.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> {quote}It's possible for state to change after releasing the read lock, but before the if statement executes. The method would then execute logic assuming the old values of bpServiceToActive and lastActiveClaimTxId.{quote}
-But in this case always double check is done if there are any changes in the current call. I dont think this will be a problem
-{code:java}+        // double check of any state changes
-+        if (bposThinksActive != (bpServiceToActive == actor)
-+            || isMoreRecentClaim != (txid &gt; lastActiveClaimTxId)) {
-+          // don't update anything here, as another actor have updated the
-+          // latest details
-+          return;
-         }{code}
-
-{quote}processCommandFromActor: Even though the read lock is not held during processCommandFromStandby, it's still possible to have the same problem that you saw in your cluster, but on the active instead of the standby. If the active requests re-registration of datanodes, and then immediately goes into a bad state or a network partition prevents communication, then datanodes will be stuck inside the re-register polling loop while holding the read lock. This will prevent the other one from taking over as active, which requires holding the write lock.{quote}
-
-Yes, I agree .. In extreme case this can happen. But chances of this will be rare when compare to current issue.
-
-{quote}I'm starting to think that we can't fix this bug by just tuning locks in BPOfferService. Instead, I'm starting to think that we need to work out a way for the re-register polling loops to yield the lock in case of repeated failure, to give the other BPServicActor a chance. {quote}
-I am attaching a patch for this. I hope this change alone will solve the current issue. But still I would like read/write locks to be in place which helps in allow faster processing of commands during normal cluster state.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Attached the patch, please review.
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12609790/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:red}-1 javac{color:red}.  The patch appears to cause the build to fail.
-
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5258//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div>
-                Fixed the build failure problem
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12609819/HDFS-5014.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5261//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5261//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Hi, Any more update required on this patch..?
-              </div></li><li><div><div><b>body:</b> Hi [~vinayrpet].  I just wanted to send a quick note to let you know that this patch is still on my TODO list to review.  I haven't forgotten, but I do have some other priorities to get done first.  :-)
-
-Meanwhile, I did want a second set of eyes reviewing this patch anyway, because I think it's a very tricky issue.  Is anyone else out there interested in catching up on the discussion and looking at the current patch?
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div>
-                Thanks Chris. 
-
-Please can someone else too look at the patch. ? Thanks in advance.
-              </div></li><li><div><div><b>body:</b> Thanks for working on this. I think there is no problem in allowing resignation commands alone concurrently right?
-I am bit worrying on the above locking and putting double checks to handle specific cases of race conditions. Instead making code complex, how about allowing registaration commands allowing without lock and all other command should go under lock. ex: if command is register, then don't take lock and simply process it. else go with current flow by taking lock on BPService itself. (bit odd to process some commands out of switch, but this looks simpler to me as of now :-) )Do you guys seeing any concurrent issue in processing registrations commands concurrently?  [Correct me if did not follow you guys]
-
-{quote}
- I'm starting to think that we need to work out a way for the re-register polling loops to yield the lock in case of repeated failure, to give the other BPServicActor a chance. If a BPServiceActor yields like this, then it must also have a way to trigger the other BPServiceActor to repeat its heartbeat before executing any additional commands. It's vital to re-check current state of the other one before proceeding to handle its commands.
-{quote}
-I am not sure what is your idea here. But providing solution with out spreading locks would be great I think. 
-Good efforts.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Thanks Uma for looking at the Jira.
-I think it should work fine with BPOfferService#registrationSucceeded(..) synchronized.
-Will post a patch soon after verifying it. 
-              </div></li><li><div>
-                Attached HDFS-5014-v2.patch with the suggested approach.
-registerting to namenode outside synchronization of BPOS, but updating to BPOS with synchronized {{BPOS#registrationSucceeded()}}
-              </div></li><li><div>
-                Please review and let me know your thoughts.. thanks
-              </div></li><li><div>
-                [~umamaheswararao], thank you for joining the review.
-
-bq. I am not sure what is your idea here.
-
-My last idea was to keep holding the lock during the register attempt, but then release the lock after there is a timeout.  IOW, don't hold the lock during the {{Thread#sleep}} time of {{BPServiceActor#register}}.
-
-bq. how about allowing registaration commands allowing without lock and all other command should go under lock.
-
-Great idea!  That's a much simpler version of what I was trying to achieve.
-
-bq. I think it should work fine with BPOfferService#registrationSucceeded(..) synchronized.
-
-Yes, I agree that {{BPOfferService#registrationSucceeded}} now needs to be synchronized.  [~vinayrpet], thanks for covering this in the most recent patch.
-
-The new patch looks good.  Just one small thing: the log messages used to say whether it was processing a {{DNA_REGISTER}} request from the active or the standby.  With the patch, we lose that information, because the log message is the same regardless of which NN sent the command.  Can we restore active vs. standby in the log message?  That's potentially useful information for troubleshooting.
-              </div></li><li><div>
-                Attaching updated patch for restoring the log.
-
-I thought it would be sufficient to log the claiming state of the actor instead of locking again and checking the state.
-Please review.
-              </div></li><li><div>
-                +1 for the patch, pending successful Jenkins test-patch run.
-
-Note that it's possible for the HA state to be null (e.g. if heartbeats are disabled for tests).  I think this is acceptable for the sake of logging.  It would just convert to the string "null".
-
-[~umamaheswararao], any other feedback before this gets committed?  I plan to commit by end of day Tuesday, 11/19 (again assuming a good Jenkins run).
-              </div></li><li><div>
-                Looks like jenkins didnt detect the latest patch.
-Attaching the same patch again to make it happy..
-              </div></li><li><div>
-                Please give me some time, I am busy with some meeting today(full day).
-I would like to review this patch as well. If you are busy at that time, Please let me know I will commit this after my review. 
-Thanks for the patch Vinay and thanks for the review Chris.
-              </div></li><li><div>
-                Jenkins running for long time. https://builds.apache.org/job/PreCommit-HDFS-Build/5478/console , dont know whats the problem :(
-              </div></li><li><div><div><b>body:</b> Patch mostly looks good. I have one comment here to cleanup.
-I think, this peace of code unnecesary as this method responsibility only to process non-register commands now. This method does not handle really registartions now. So, either we should indicate that in method name or at least in javadoc at the top saying this is a method to process non-registration commands.
 {code}
-case DatanodeProtocol.DNA_REGISTER:
--      // namenode requested a registration - at start or if NN lost contact
--      LOG.info("DatanodeCommand action: DNA_REGISTER");
--      actor.reRegister();
-+      // this command should be already handled.
-       break;
+2013-08-28 08:58:45,519 INFO  hdfs.StateChange (FSNamesystem.java:reportStatus(4677)) - STATE* Safe mode extension entered.
+The reported blocks 833 has reached the threshold 1.0000 of total blocks 833. The number of live datanodes 3 has reached the minimum number 0. Safe mode will be turned off automatically in 29 seconds.
+2013-08-28 08:58:45,524 ERROR namenode.FSEditLogLoader (FSEditLogLoader.java:loadEditRecords(203)) - Encountered exception on operation CloseOp [length=0, inodeId=0, path=/user/hrt_qa/ha-loadgenerator/100-threads/dir3/dir2/dir5/dir4/dir2/dir1/hostname63, replication=3, mtime=1377680236411, atime=1377680236320, blockSize=134217728, blocks=[blk_1073940431_205511], permissions=hrt_qa:hrt_qa:rw-r--r--, clientName=, clientMachine=, opCode=OP_CLOSE, txid=1141116]
+java.lang.OutOfMemoryError: unable to create new native thread
+        at java.lang.Thread.start0(Native Method)
+        at java.lang.Thread.start(Thread.java:640)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem$SafeModeInfo.checkMode(FSNamesystem.java:4521)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem$SafeModeInfo.incrementSafeBlockCount(FSNamesystem.java:4568)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem$SafeModeInfo.access$1900(FSNamesystem.java:4275)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem.incrementSafeBlockCount(FSNamesystem.java:4854)
+        at org.apache.hadoop.hdfs.server.blockmanagement.BlockManager.completeBlock(BlockManager.java:596)
+        at org.apache.hadoop.hdfs.server.blockmanagement.BlockManager.completeBlock(BlockManager.java:608)
+        at org.apache.hadoop.hdfs.server.blockmanagement.BlockManager.forceCompleteBlock(BlockManager.java:621)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.updateBlocks(FSEditLogLoader.java:696)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.applyEditLogOp(FSEditLogLoader.java:372)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.loadEditRecords(FSEditLogLoader.java:198)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.loadFSEdits(FSEditLogLoader.java:111)
+        at org.apache.hadoop.hdfs.server.namenode.FSImage.loadEdits(FSImage.java:733)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer.doTailEdits(EditLogTailer.java:227)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.doWork(EditLogTailer.java:321)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.access$200(EditLogTailer.java:279)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread$1.run(EditLogTailer.java:296)
+        at org.apache.hadoop.security.SecurityUtil.doAsLoginUserOrFatal(SecurityUtil.java:456)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.run(EditLogTailer.java:292)
+2013-08-28 08:58:45,597 FATAL ha.EditLogTailer (EditLogTailer.java:doWork(328)) - Unknown error encountered while tailing edits. Shutting down standby NN.
+java.io.IOException: Failed to apply edit log operation CloseOp [length=0, inodeId=0, path=/user/hrt_qa/ha-loadgenerator/100-threads/dir3/dir2/dir5/dir4/dir2/dir1/hostname63, replication=3, mtime=1377680236411, atime=1377680236320, blockSize=134217728, blocks=[blk_1073940431_205511], permissions=hrt_qa:hrt_qa:rw-r--r--, clientName=, clientMachine=, opCode=OP_CLOSE, txid=1141116]: error unable to create new native thread
+        at org.apache.hadoop.hdfs.server.namenode.MetaRecoveryContext.editLogLoaderPrompt(MetaRecoveryContext.java:94)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.loadEditRecords(FSEditLogLoader.java:204)
+        at org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.loadFSEdits(FSEditLogLoader.java:111)
+        at org.apache.hadoop.hdfs.server.namenode.FSImage.loadEdits(FSImage.java:733)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer.doTailEdits(EditLogTailer.java:227)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.doWork(EditLogTailer.java:321)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.access$200(EditLogTailer.java:279)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread$1.run(EditLogTailer.java:296)
+        at org.apache.hadoop.security.SecurityUtil.doAsLoginUserOrFatal(SecurityUtil.java:456)
+        at org.apache.hadoop.hdfs.server.namenode.ha.EditLogTailer$EditLogTailerThread.run(EditLogTailer.java:292)
+2013-08-28 08:58:45,636 INFO  util.ExitUtil (ExitUtil.java:terminate(124)) - Exiting with status 1
+{code}
+              </div></li><li><div><div><b>body:</b> Looks like the problem is caused by the following code (FSNamesystem#checkMode):
+{code}
+      reached = now();
+      smmthread = new Daemon(new SafeModeMonitor());
+      smmthread.start();
+      reportStatus("STATE* Safe mode extension entered.", true);
 {code}
 
+In SBN, because the block threshold keeps being adjusted while tailing the editlog, we may have the following scenarios:
 
-BTW, I have just triggered a build for you. 
-{noformat}
-pending  #5485	cancel this build (pending—Waiting for next available executor on Hadoop) ISSUE_NUM=5014
-{noformat} Before next revision if it reports any issues please take care of them. Thanks.
+reach the block threshold, enter the final 30 seconds of safemode --&gt; block threshold is adjusted, and the number of safe block cannot reach the threshold --&gt; reach the block threshold again....
+
+Because of the above code, each time the block threshold is met, a new safemode monitor thread will be created while the old one keeps running behind. Thus a large number of safemode monitor threads can be created. This code is fine in the active NN (or the NN in non-HA setup) because we do not adjust block threshold there and once the NN goes out of the safemode it will not go in again.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Thanks Uma, for the comments.
-I have updated the java docs and removed unnecessary DNA_REGISTER command.
+                </div></div></li><li><div><div><b>body:</b> Thus the simplest fix is to check if a non-null smmthread is already running before we start a new one in the checkMode() method. In the meanwhile, because of the 30 seconds waiting time in safemode, and the block threshold can keep being adjusted, the SBN may be in safemode for a long time. 
 
-By this time jenkins was still running. I will update again if any issues from jenkins.
-                </div><div><b>label:</b> documentation
+One possible solution is that once the SBN finds itself can leave the safemode, it will not enter the safemode again, even if the block threshold is increased later. But in this way, the safemode in the SBN can not cover the same transaction range as the active NN. Another way is that the SBN fetch the latest transaction id in the beginning, and keeps tracking the block number for safemode only till that transaction id. But this may add some unnecessary complexity.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> I think if SBN crosses the threshold and is in the process of moving out of safemode, it does not make sense to enter safemode again. +1 for not going back to safemode as the block count keeps changing. Other alternative solutions seem needlessly complicated at no obvious benefits.
+                </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Seems like there is an issue with the path. 
-We should move the cmd null check before DNA_REGISTER if condition.
-{noformat}
-2013-11-19 14:08:33,394 ERROR datanode.DataNode (BPServiceActor.java:run(719)) - Exception in BPOfferService for Block pool BP-1297942247-67.195.138.31-1384870112818 (storage id DS-234026112-67.195.138.31-43443-1384870113355) service to localhost/127.0.0.1:48821
-java.lang.NullPointerException
-	at org.apache.hadoop.hdfs.server.datanode.BPOfferService.processCommandFromActor(BPOfferService.java:507)
-	at org.apache.hadoop.hdfs.server.datanode.BPServiceActor.processCommand(BPServiceActor.java:745)
-	at org.apache.hadoop.hdfs.server.datanode.BPServiceActor.offerService(BPServiceActor.java:597)
-	at org.apache.hadoop.hdfs.server.datanode.BPServiceActor.run(BPServiceActor.java:717)
-	at java.lang.Thread.run(Thread.java:662)
-{noformat}
-
-This would be the reason for timeouts in Jenkins.
-              </div></li><li><div>
-                Thanks Uma for finding out the failure reason.
-
-Its strange that cmd is null. Need to check.
-Here is the updated patch to check for null for cmd before using it.
-              </div></li><li><div>
-                I think it can happen here (I guess).
-{code}
-DatanodeCommand cmd = blockReport();
- processCommand(new DatanodeCommand[]{ cmd });
-{code}
-We can check null here itself. But That's ok I think. Let me check the latest patch.
+                Thanks for the comments, Suresh. Upload the initial patch.
               </div></li><li><div>
                 {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12614728/HDFS-5014-v2.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:red}-1 findbugs{color}.  The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The patch failed these unit tests in hadoop-hdfs-project/hadoop-hdfs:
-
-                  org.apache.hadoop.hdfs.server.namenode.ha.TestBootstrapStandbyWithQJM
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5494//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/5494//artifact/trunk/patchprocess/newPatchFindbugsWarningshadoop-hdfs.html
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5494//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Attached the findbug fixed patch.
-
-Test failure seems unrelated. same test passed in my local.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12614777/HDFS-5014-v2.patch
+  http://issues.apache.org/jira/secure/attachment/12600642/HDFS-5140.001.patch
   against trunk revision .
 
     {color:green}+1 @author{color}.  The patch does not contain any @author tags.
@@ -526,44 +104,71 @@ Test failure seems unrelated. same test passed in my local.
 
     {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
 
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5497//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5497//console
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4910//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4910//console
 
 This message is automatically generated.
               </div></li><li><div>
-                +1 on the latest patch. I will commit this patch shortly. 
+                smmthread should be set to null in SafemodeMonitor holding the writeLock.
               </div></li><li><div>
-                +1 for the latest from me too.  [~vinayrpet], thanks so much for providing a patch for this tricky issue and responding to all of the code review feedback.
+                Update the patch to address Suresh's comment.
               </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-trunk-Commit #4768 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/4768/])
-HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay. (umamahesh: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1543861)
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12600695/HDFS-5140.002.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
+
+    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4912//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4912//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> +1 for the patch.
+
+The current code in SafeModeInfo#canLeave() checks needEnter() again. This is bothersome, since in case of secondary we could flip flop about leaving and entering safemode. The whole safemode seems to have become complicated in case of secondary. We should perhaps create a jira about at least not checking needEnter() again.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Thanks for the review, Suresh! I've committed this to trunk, branch-2 and branch-2.1-beta. Also filed HDFS-5145 to revisit the needEnter check in SafeModeInfo#canLeave.
+              </div></li><li><div>
+                SUCCESS: Integrated in Hadoop-trunk-Commit #4352 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/4352/])
+HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1518899)
 * /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
 
               </div></li><li><div>
-                I have committed this to trunk, branch-2 and 2.2, Thanks a lot for the reviews Chris and thanks Vinay for patch
-              </div></li><li><div>
-                Thanks chris and uma.  
-              </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Yarn-trunk #398 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/398/])
-HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay. (umamahesh: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1543861)
+                SUCCESS: Integrated in Hadoop-Yarn-trunk #317 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/317/])
+HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1518899)
 * /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
 
               </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Hdfs-trunk #1589 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1589/])
-HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay. (umamahesh: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1543861)
+                FAILURE: Integrated in Hadoop-Hdfs-trunk #1507 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1507/])
+HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1518899)
 * /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
 
               </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1615 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1615/])
-HDFS-5014. Process register commands with out holding BPOfferService lock. Contributed by Vinay. (umamahesh: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1543861)
+                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1534 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1534/])
+HDFS-5140. Too many safemode monitor threads being created in the standby namenode causing it to fail with out of memory error. Contributed by Jing Zhao. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1518899)
 * /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/namenode/FSNamesystem.java
 
               </div></li></ol></div></div></html>

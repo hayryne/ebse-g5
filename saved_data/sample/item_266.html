@@ -1,94 +1,62 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 266
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 excluding it until the issue is fixed (AMQ-1112), so we can have successful builds 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> excluding the test for https://issues.apache.org/activemq/browse/AMQ-1112 until it's fixed, so we can have successful builds
-                </div><div><b>message:</b> excluding the test for https://issues.apache.org/activemq/browse/AMQ-1112 until it's fixed, so we can have successful builds
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> http://issues.apache.org/activemq/browse/AMQ-789
+                </div><div><b>message:</b> http://issues.apache.org/activemq/browse/AMQ-789
 
-git-svn-id: https://svn.apache.org/repos/asf/activemq/trunk@790526 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/incubator/activemq/trunk@423784 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> remove expired messages from Store and update Message cursors
-                </div><div><b>description:</b> Ensure messages that are expired are removed from message store and message cursrors are also updated consistently
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> WireFormatNegotiator could hang a client or server connection if the peer disconnects before sending the wire format info
+                </div><div><b>description:</b> 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                added an affected version
-              </div></li><li><div>
-                optimizedDispatch makes this test hang, so I commented it out for the moment. It should be investigated more.
-              </div></li><li><div>
-                some further context from the user list:
-http://www.nabble.com/Expired-messages-are-not-being-removed-from-queues-tt21967682.html#a22773666
-              </div></li><li><div>
-                Am guessing this jira is still open because the mechanism for expiry is non deterministic, It occurs on ack and on message dispatch but not independently. For example a message enqueue with no more work on the broker will not be removed when it expires. 
-There needs to be a task that periodically checks and expriies messages independent of normal message processing.
-Current behavior is that expired messages will not  be delivered to a consumer, but they remain till some destination activity occurs.
+                Fix in trunk revision 418497
 
-I imagine a destinationPolicy.expiryPeriod=60000 - which indicates that a task will fire every minute and iterate through the in memory messages and expiry any that warrent it.
-Possilby there is another destinationPolicy,expireStoredMessages=true which indicates that the expiry task will iterate through the entire store to locate messages that have expired. there may even be a limit, destinationPolicy.expiryTaskDuration=500 that limits a task duration to some period.
-
-In all these would make message expiry deterministic for a destination.
-
+We now wait up to 15 seconds before timeing out the wireformat negociation phase.
               </div></li><li><div>
-                optimizedDispatch makes this test hang (producer hangs)
-              </div></li><li><div><div><b>body:</b> just fyi I am highlighting the workaround from the post linked above.
-{quote}In the end I implemented a workaround that was simply a thread that periodically cleared my queues of expired messages. The way it did so was to use a MessageConsumer and use a JMSSelector to consume only those messages that had expired. I don't believe the consumer itself actually ever receives any messages, but the act of looking for them causes ActiveMQ to expunge the expired messages.
+                This should also be backported to 4.0 branch
+              </div></li><li><div>
+                commited in 4.0 branch in rev 423792
+              </div></li><li><div>
+                A hang could also happen if the transport is stop()ed while a send is being concurrently done.
+              </div></li><li><div><div><b>body:</b> I think I might be seeing this in 4.1.1.  
+2007-12-13 01:08:16,917 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - Thread-3 - Waking up reconnect task
+2007-12-13 01:08:16,965 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - ActiveMQ Task - Attempting connect to: tcp://***.***.***.***:***?wireFormat.maxInactivityDuration=600000&amp;soTi
+meout=10000
+2007-12-13 01:08:17,232 DEBUG [org.apache.activemq.transport.WireFormatNegotiator] - ActiveMQ Task - Sending: WireFormatInfo { version=2, properties={CacheSize=1024, CacheEnabled=true, SizePrefixDi
+sabled=false, TcpNoDelayEnabled=true, MaxInactivityDuration=600000, TightEncodingEnabled=true, StackTraceEnabled=true}, magic=[A,c,t,i,v,e,M,Q]}
+2007-12-13 01:08:17,236 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - ActiveMQ Task - Connection established
+2007-12-13 01:08:17,237 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - Thread-3 - Started.
+2007-12-13 01:08:17,240 INFO [com.highergear.lead.jms.JMSFactoryConnectionUtil] - Thread-3 - Created Connection
+... That's all it says for hours.
 
-e.g:
-                MessageConsumer c = sess.createConsumer(dest, "JMSExpiration &lt; " + System.currentTimeMillis());
-                Message m = c.receiveNoWait();
-                if (m != null) log.error("Returned an expired message");
-{quote}
+Upon restarting both broker and client:
+
+2007-12-13 08:46:40,633 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - Thread-3 - Waking up reconnect task
+2007-12-13 08:46:40,680 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - ActiveMQ Task - Attempting connect to: tcp://***.***.***.***:***?wireFormat.maxInactivityDuration=600000&amp;soTi
+meout=10000
+2007-12-13 08:46:40,955 DEBUG [org.apache.activemq.transport.WireFormatNegotiator] - ActiveMQ Task - Sending: WireFormatInfo { version=2, properties={CacheSize=1024, CacheEnabled=true, SizePrefixDi
+sabled=false, TcpNoDelayEnabled=true, MaxInactivityDuration=600000, TightEncodingEnabled=true, StackTraceEnabled=true}, magic=[A,c,t,i,v,e,M,Q]}
+2007-12-13 08:46:40,959 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - ActiveMQ Task - Connection established
+2007-12-13 08:46:40,961 DEBUG [org.apache.activemq.transport.failover.FailoverTransport] - Thread-3 - Started.
+2007-12-13 08:46:40,963 INFO [com.highergear.lead.jms.JMSFactoryConnectionUtil] - Thread-3 - Created Connection
+2007-12-13 08:46:40,999 DEBUG [org.apache.activemq.transport.WireFormatNegotiator] - ActiveMQ Transport: tcp:///***.***.***.***:*** - Received WireFormat: WireFormatInfo { version=2, properties={Cache
+Size=1024, CacheEnabled=true, SizePrefixDisabled=false, TcpNoDelayEnabled=false, MaxInactivityDuration=600000, TightEncodingEnabled=false, StackTraceEnabled=true}, magic=[A,c,t,i,v,e,M,Q]}
+2007-12-13 08:46:41,001 DEBUG [org.apache.activemq.transport.WireFormatNegotiator] - ActiveMQ Transport: tcp:///***.***.***.***:*** - tcp:///***.***.***.***:*** before negotiation: OpenWireFormat{version
+=2, cacheEnabled=false, stackTraceEnabled=false, tightEncodingEnabled=false, sizePrefixDisabled=false}
+2007-12-13 08:46:41,001 DEBUG [org.apache.activemq.transport.WireFormatNegotiator] - ActiveMQ Transport: tcp:///***.***.***.***:*** - tcp:///***.***.***.***:*** after negotiation: OpenWireFormat{version=
+2, cacheEnabled=true, stackTraceEnabled=true, tightEncodingEnabled=false, sizePrefixDisabled=false}
+2007-12-13 08:46:41,158 INFO [com.highergear.lead.jms.JMSFactoryConnectionUtil] - Thread-3 - Started Connection
+
+The WireFormatNegotiation is not completing and no timeout occurs that allows the client to recognize the connection is bad.
 
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I created a quick python script that hits the web ui, finds all the queues and then browses each which causes any expired messages to actually be removed from the queue.  We put this as a cron job that runs every 5 min.
-
-If you pass no arguments it looks at localhost otherwise you can pass in as many host names as you want to hit.
-
-I tried attaching it but no go so here is the source.
-
---------------------------------------------------------------------------------
-
-#! /usr/bin/env python
-
-import sys, urllib2, re
-
-pattern = re.compile('browse.jsp\?JMSDestination=([a-zA-Z.]*)')
-
-def expireMsgs(host='localhost'):
-    url = 'http://' + host + ':8161'
-    html = urllib2.urlopen(url + '/admin/queues.jsp').read()
-    for queue in set(pattern.findall(html)):
-        urllib2.urlopen(url + '/admin/browse.jsp?JMSDestination=' + queue).read()
-
-if not sys.argv[1:]:
-    expireMsgs()
-else:
-    for arg in sys.argv[1:]:
-        expireMsgs(arg)
+                I'm seeing this issue in 4.1.1 as well. Looking at the code I don't see the 15 sec. timeout mentioned in the JIRA.
               </div></li><li><div>
-                issue with optimizedDispatch resolved in 812214 
-              </div></li><li><div>
-                warning, my above fix runs into this 
+                OK, the first comment answered my question. Fixed in  418497.
 
-https://issues.apache.org/activemq/browse/AMQ-2169
-              </div></li><li><div>
-                Need to update the schema to allow the configuration of  the expireMessagesPeriod attribute using activemq-broker.xml.
 
-Currently activemq fails with a org.springframework.beans.factory.xml.XmlBeanDefinitionStoreException if you try define the attribute.
-
----Jaco
               </div></li><li><div>
-                schema updated in r807969
+                Already fixed
               </div></li><li><div>
-                Modified test so that it has larger expiry time, which helps it pass on slower machines. But if you have small enough expiry time, it will fail
-              </div></li><li><div><div><b>body:</b> r791881
-Added a new expireMessagesPeriod (default 30 seconds) periodic task on a queue that iterates though maxExpirePageSize(default 400) queued messages (or draws them into memory) to implement deterministic message expiry. Can be disabled by setting expireMessagesPeriod==0 through a PolicyEntry. A producer with no consumer will not longer be blocked on memory limits if a message expiry is configured on a message as they will be actively expired every 30 seconds.
-There is an additional expiredCount attribute in the destination statistics to track the count of expired messages.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                last piece resolved by AMQ-2481
-              </div></li><li><div>
-                last piece of this resolved by https://issues.apache.org/activemq/browse/AMQ-2481
-              </div></li><li><div>
-                This fix only applies to queues. Topics are a different matter as there is only persistence when there are durable consumers. there are pending message limit strategies that control the build up of messages for slow consumers. See: 
-http://svn.apache.org/viewvc/activemq/trunk/activemq-core/src/test/java/org/apache/activemq/MessageEvictionTest.java?view=markup for an example of configured message eviction.
+                What is the status of this issue? Has the fix been rolled into a release yet? --Rob
               </div></li></ol></div></div></html>

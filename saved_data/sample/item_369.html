@@ -1,108 +1,340 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 369
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> BOOKKEEPER-556: BookieServerMXBean#getServerState makes no sense (ivank via sijie)
-                </div><div><b>message:</b> BOOKKEEPER-556: BookieServerMXBean#getServerState makes no sense (ivank via sijie)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+         * Gets and clears queuedType
+         
+              </div></li><li><div>
+                *
+         * Mark pending operation PARTIAL if not full and return true if there is no in-progress operation
+         *
+         * @return True if we should execute a scan, False if there is already one running
+         
+              </div></li><li><div>
+                *
+     * Performs scan described by instanceState using the cached bookie information
+     * in bookieInfoMap.
+     
+              </div></li><li><div>
+                *
+         * Removes bookie from bookieInfoMap
+         *
+         * @param bookie bookie on which we observed an error
+         
+              </div></li><li><div>
+                *
+         * Mark pending operation FULL and return true if there is no in-progress operation
+         *
+         * @return True if we should execute a scan, False if there is already one running
+         
+              </div></li><li><div>
+                *
+     * Tracks whether there is an execution in progress as well as whether
+     * another is pending.
+     
+              </div></li><li><div>
+                 We reread bookies missing from the map each time, so remove to ensure
+ we get to it on the next scan
+              </div></li><li><div>
+                *
+     * Method to allow tests to block until bookie info is available
+     *
+     * @param bookie to lookup
+     * @return None if absent, free disk space if present
+    synchronized Optional&lt;Long&gt; getFreeDiskSpace(BookieSocketAddress bookie) {
+        BookieInfo bookieInfo = bookieInfoMap.getInfo(bookie);
+        if (bookieInfo != null) {
+            return Optional.of(bookieInfo.getFreeDiskSpace());
+            return Optional.empty();
+        }
+    }
 
-git-svn-id: https://svn.apache.org/repos/asf/zookeeper/bookkeeper/trunk@1444340 13f79535-47bb-0310-9956-ffa450edef68
+    /* State to track scan execution progress as callbacks come in 
+              </div></li><li><div>
+                *
+         * Returns info for bookie, null if not known
+         *
+         * @param bookie bookie for which to get info
+         * @return Info for bookie, null otherwise
+         
+              </div></li><li><div>
+                *
+     * Tracks the most recently reported set of bookies from BookieWatcher as well
+     * as current BookieInfo for bookies we've successfully queried.
+     
+              </div></li><li><div>
+                *
+         * Contains the most recently reported set of bookies from BookieWatcher
+         * A partial query consists of every member of mostRecentlyReportedBookies
+         * minus the entries in bookieInfoMap.
+         
+              </div></li><li><div>
+                *
+         * Contains the most recently obtained information on the contained bookies.
+         * When an error happens querying a bookie, the entry is removed.
+         
+              </div></li><li><div>
+                *
+         * Get bookie info map
+         
+              </div></li><li><div>
+                *
+         * If queuedType != UNQUEUED, returns true, leaves running equal to true
+         * Otherwise, returns false and sets running to false
+         
+              </div></li><li><div>
+                *
+         * Report new info on bookie
+         *
+         * @param bookie bookie for which we obtained new info
+         * @param info the new info
+         
+              </div></li><li><div>
+                *
+     * Set the time interval between retries on unsuccessful GetInfo requests
+     *
+     *
+     * @param interval
+     * @param unit
+     * @return client configuration
+     
+              </div></li><li><div>
+                *
+     * Get the time interval between retries on unsuccessful bookie info request.  Default is
+     * 60s.
+     *
+     * @return
+     
+              </div></li><li><div>
+                 after delaySecs, advertise finalFreeDiskSpace; before that advertise initialFreeDiskSpace
+              </div></li><li><div>
+                 Sleep for double the time required to update the bookie infos, and then check each one
+              </div></li><li><div>
+                 the start of the test, and 3MB once useHigherValue is set
+              </div></li><li><div>
+                *
+     * Kill bookie by index and verify that it's stopped
+     *
+     * @param index index of bookie to kill
+     *
+     * @return configuration of killed bookie
+     
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> BOOKKEEPER-1102: Clarify BookieInfoReader and fix associated test flappers
+                </div><div><b>message:</b> BOOKKEEPER-1102: Clarify BookieInfoReader and fix associated test flappers
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> BookieServerMXBean#getServerState makes no sense
-                </div><div><b>description:</b> This got carried over from zookeeper during a copy paste. In ZooKeeper it's used to specify whether a server is standalone or not. This isn't relevant for BookKeeper.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Removed getServerState and more unused junk from the class.
+BookieInfoReader:
+
+The previous syncronization logic wasn't really correct, and the logic
+at the top of the method was far more complicated than it needed to be.
+Restrict bookies to be non-null.  Restructure the code to simply use
+the BookieInfoReader instance as a single lock.
+
+One significant behavioral change is that we scan every bookie not in
+the map, and we clear from the map bookies which returned an error.
+
+Also, explicitely cache the most recent bookie set reported by the
+BookieWatcher.  This eliminates the need to call into BookieWatcher
+from getReadWriteBookieInfo and the corresponding error path.  The
+periodic scan continues to explicitely check.
+
+Another departure is the addition of an explicit retry-on-error param to
+trigger retry if any of the requests failed
+(getBookieInfoRetryIntervalSeconds).  We'll only retry the ones that
+actually failed (along with any new additions since the last run).  This
+is useful because bookie startup triggers the addition of the bookie
+node to zk before the bookie actually becomes available for the bookie
+info request, so there can be rare races in the unit tests between
+BookieInfoReader requesting the info and the bookie actually being up.
+
+Also, add a method to allow tests to wait for updates to be reflected.
+
+PerChannelBookieClient: fix error handling for BookieInfo keys
+
+Passing a key corresponding to a GET_BOOKIE_INFO operation to
+errorOutReadKey results in a casting exception, clean up the invalid
+calls.
+
+BookKeeperClusterTestCase: add killBookieAndWaitForZK
+
+Should reduce the need for tests to wait for an arbitrary period to let
+the cluster "settle".
+
+BookKeeperDiskSpaceWeightedLedgerPlacementTest:
+
+This test was heavily time dependent, and the Thread.sleep values did
+not work universally.  Instead, eliminate the arbitrary Thread.sleep
+values and instead verify the free space changes on each change.
+
+Also, switch the delay on
+testDiskSpaceWeightedBookieSelectionWithPeriodicBookieInfoUpdate
+to simply use an atomic boolean to signal the value switch.
+
+Signed-off-by: Samuel Just &lt;sjustsalesforce.com&gt;
+
+Author: Samuel Just &lt;sjust@salesforce.com&gt;
+
+Reviewers: Enrico Olivelli &lt;eolivelli@gmail.com&gt;
+
+This patch had conflicts when merged, resolved by
+Committer: Sijie Guo &lt;sijie@apache.org&gt;
+
+This closes #275 from athanatos/forupstream/BOOKKEEPER-1102
+
                 </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> BOOKKEEPER-1102: Clarify BookieInfoReader and fix associated test flappers
+                </div><div><b>body:</b> BookieInfoReader:
+
+The previous syncronization logic wasn't really correct, and the logic
+at the top of the method was far more complicated than it needed to be.
+Restrict bookies to be non-null.  Restructure the code to simply use
+the BookieInfoReader instance as a single lock.
+
+One significant behavioral change is that we scan every bookie not in
+the map, and we clear from the map bookies which returned an error.
+
+Also, explicitely cache the most recent bookie set reported by the
+BookieWatcher.  This eliminates the need to call into BookieWatcher
+from getReadWriteBookieInfo and the corresponding error path.  The
+periodic scan continues to explicitely check.
+
+Another departure is the addition of an explicit retry-on-error param to
+trigger retry if any of the requests failed
+(getBookieInfoRetryIntervalSeconds).  We'll only retry the ones that
+actually failed (along with any new additions since the last run).  This
+is useful because bookie startup triggers the addition of the bookie
+node to zk before the bookie actually becomes available for the bookie
+info request, so there can be rare races in the unit tests between
+BookieInfoReader requesting the info and the bookie actually being up.
+
+Also, add a method to allow tests to wait for updates to be reflected.
+
+PerChannelBookieClient: fix error handling for BookieInfo keys
+
+Passing a key corresponding to a GET_BOOKIE_INFO operation to
+errorOutReadKey results in a casting exception, clean up the invalid
+calls.
+
+BookKeeperClusterTestCase: add killBookieAndWaitForZK
+
+Should reduce the need for tests to wait for an arbitrary period to let
+the cluster "settle".
+
+BookKeeperDiskSpaceWeightedLedgerPlacementTest:
+
+This test was heavily time dependent, and the Thread.sleep values did
+not work universally.  Instead, eliminate the arbitrary Thread.sleep
+values and instead verify the free space changes on each change.
+
+Also, switch the delay on
+testDiskSpaceWeightedBookieSelectionWithPeriodicBookieInfoUpdate
+to simply use an atomic boolean to signal the value switch.
+
+Signed-off-by: Samuel Just &lt;sjust@salesforce.com&gt;
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div><div><b>body:</b> I think that this patch does more than fixing a test case. Maybe we should change the title
+                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                Testing JIRA BOOKKEEPER-556
-
-
-Patch [0001-BOOKKEEPER-556-BookieServerMXBean-getServerState-mak.patch|https://issues.apache.org/jira/secure/attachment/12566329/0001-BOOKKEEPER-556-BookieServerMXBean-getServerState-mak.patch] downloaded at Thu Jan 24 17:20:42 UTC 2013
-
-----------------------------
-
-{color:green}+1 PATCH_APPLIES{color}
-{color:green}+1 CLEAN{color}
-{color:red}-1 RAW_PATCH_ANALYSIS{color}
-.    {color:green}+1{color} the patch does not introduce any @author tags
-.    {color:green}+1{color} the patch does not introduce any tabs
-.    {color:green}+1{color} the patch does not introduce any trailing spaces
-.    {color:green}+1{color} the patch does not introduce any line longer than 120
-.    {color:red}-1{color} the patch does not add/modify any testcase
-{color:green}+1 RAT{color}
-.    {color:green}+1{color} the patch does not seem to introduce new RAT warnings
-{color:green}+1 JAVADOC{color}
-.    {color:green}+1{color} the patch does not seem to introduce new Javadoc warnings
-{color:green}+1 COMPILE{color}
-.    {color:green}+1{color} HEAD compiles
-.    {color:green}+1{color} patch compiles
-.    {color:green}+1{color} the patch does not seem to introduce new javac warnings
-{color:red}-1 FINDBUGS{color}
-.    {color:red}-1{color} the patch seems to introduce 1 new Findbugs warning(s) in module(s) [bookkeeper-server]
-{color:green}+1 TESTS{color}
-.    Tests run: 790
-{color:green}+1 DISTRO{color}
-.    {color:green}+1{color} distro tarball builds with the patch 
-
-----------------------------
-{color:red}*-1 Overall result, please check the reported -1(s)*{color}
-
-
-The full output of the test-patch run is available at
-
-.   https://builds.apache.org/job/bookkeeper-trunk-precommit-build/252/
-              </div></li><li><div><div><b>body:</b> Fix findbug. There was one variable that was unused after the cleanup.
+                @athanatos is this your current code at Salesforce or is it just a proposal ? as far as I know you are the only current user of DiskSpaceWeightedLedgerPlacement functions
+              </div></li><li><div>
+                @eolivelli It is our current code at SF as of last week.
+              </div></li><li><div>
+                @athanatos could you address @sijie comments ? the patch is almost ready to go
+              </div></li><li><div>
+                @eolivelli Will do today.
+              </div></li><li><div>
+                @sijie @eolivelli Ok, updated.
+              </div></li><li><div>
+                Seems there is a conflicting file.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                is there any reason not using an Enum?
+              </div></li><li><div><div><b>body:</b> any reason the put exception as the first parameter? it is a common practice in slf4j to put exception as the last parameter, and you don't need '{}' for exceptions.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Testing JIRA BOOKKEEPER-556
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> org.apache.bookkeeper.client.BookKeeperDiskSpaceWeightedLedgerPlacementTest.testDiskSpaceWeightedBookieSelectionWithBookiesBeingAdded is unreliable
+                </div><div><b>description:</b> org.apache.bookkeeper.client.BookKeeperDiskSpaceWeightedLedgerPlacementTest.testDiskSpaceWeightedBookieSelectionWithBookiesBeingAdded can intermittently fail depending on the timing of the client receiving the info back from the bookies.
 
+Additionally, the synchronization in BookieInfoReader is more complicated than necessary and not entirely correct.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Issue resolved by merging pull request 275
+            [https://github.com/apache/bookkeeper/pull/275]
 
-Patch [0001-BOOKKEEPER-556-BookieServerMXBean-getServerState-mak.patch|https://issues.apache.org/jira/secure/attachment/12566344/0001-BOOKKEEPER-556-BookieServerMXBean-getServerState-mak.patch] downloaded at Thu Jan 24 19:12:57 UTC 2013
+            {noformat}
+            commit a5f8580f53464065243a9af038935f5893434166
+Author:     Samuel Just &lt;sjust@salesforce.com&gt;
+AuthorDate: Mon Jul 31 23:34:07 2017 -0700
+Commit:     Sijie Guo &lt;sijie@apache.org&gt;
+CommitDate: Mon Jul 31 23:34:07 2017 -0700
 
-----------------------------
+    BOOKKEEPER-1102: Clarify BookieInfoReader and fix associated test flappers
+    
+    BookieInfoReader:
+    
+    The previous syncronization logic wasn't really correct, and the logic
+    at the top of the method was far more complicated than it needed to be.
+    Restrict bookies to be non-null.  Restructure the code to simply use
+    the BookieInfoReader instance as a single lock.
+    
+    One significant behavioral change is that we scan every bookie not in
+    the map, and we clear from the map bookies which returned an error.
+    
+    Also, explicitely cache the most recent bookie set reported by the
+    BookieWatcher.  This eliminates the need to call into BookieWatcher
+    from getReadWriteBookieInfo and the corresponding error path.  The
+    periodic scan continues to explicitely check.
+    
+    Another departure is the addition of an explicit retry-on-error param to
+    trigger retry if any of the requests failed
+    (getBookieInfoRetryIntervalSeconds).  We'll only retry the ones that
+    actually failed (along with any new additions since the last run).  This
+    is useful because bookie startup triggers the addition of the bookie
+    node to zk before the bookie actually becomes available for the bookie
+    info request, so there can be rare races in the unit tests between
+    BookieInfoReader requesting the info and the bookie actually being up.
+    
+    Also, add a method to allow tests to wait for updates to be reflected.
+    
+    PerChannelBookieClient: fix error handling for BookieInfo keys
+    
+    Passing a key corresponding to a GET_BOOKIE_INFO operation to
+    errorOutReadKey results in a casting exception, clean up the invalid
+    calls.
+    
+    BookKeeperClusterTestCase: add killBookieAndWaitForZK
+    
+    Should reduce the need for tests to wait for an arbitrary period to let
+    the cluster "settle".
+    
+    BookKeeperDiskSpaceWeightedLedgerPlacementTest:
+    
+    This test was heavily time dependent, and the Thread.sleep values did
+    not work universally.  Instead, eliminate the arbitrary Thread.sleep
+    values and instead verify the free space changes on each change.
+    
+    Also, switch the delay on
+    testDiskSpaceWeightedBookieSelectionWithPeriodicBookieInfoUpdate
+    to simply use an atomic boolean to signal the value switch.
+    
+    Signed-off-by: Samuel Just &lt;sjustsalesforce.com&gt;
+    
+    Author: Samuel Just &lt;sjust@salesforce.com&gt;
+    
+    Reviewers: Enrico Olivelli &lt;eolivelli@gmail.com&gt;
+    
+    This patch had conflicts when merged, resolved by
+    Committer: Sijie Guo &lt;sijie@apache.org&gt;
+    
+    This closes #275 from athanatos/forupstream/BOOKKEEPER-1102
 
-{color:green}+1 PATCH_APPLIES{color}
-{color:green}+1 CLEAN{color}
-{color:red}-1 RAW_PATCH_ANALYSIS{color}
-.    {color:green}+1{color} the patch does not introduce any @author tags
-.    {color:green}+1{color} the patch does not introduce any tabs
-.    {color:green}+1{color} the patch does not introduce any trailing spaces
-.    {color:green}+1{color} the patch does not introduce any line longer than 120
-.    {color:red}-1{color} the patch does not add/modify any testcase
-{color:green}+1 RAT{color}
-.    {color:green}+1{color} the patch does not seem to introduce new RAT warnings
-{color:green}+1 JAVADOC{color}
-.    {color:green}+1{color} the patch does not seem to introduce new Javadoc warnings
-{color:green}+1 COMPILE{color}
-.    {color:green}+1{color} HEAD compiles
-.    {color:green}+1{color} patch compiles
-.    {color:green}+1{color} the patch does not seem to introduce new javac warnings
-{color:green}+1 FINDBUGS{color}
-.    {color:green}+1{color} the patch does not seem to introduce new Findbugs warnings
-{color:green}+1 TESTS{color}
-.    Tests run: 790
-{color:green}+1 DISTRO{color}
-.    {color:green}+1{color} distro tarball builds with the patch 
-
-----------------------------
-{color:red}*-1 Overall result, please check the reported -1(s)*{color}
-
-
-The full output of the test-patch run is available at
-
-.   https://builds.apache.org/job/bookkeeper-trunk-precommit-build/254/
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                lgtm +1.
+            {noformat}
+            
               </div></li><li><div>
-                committed as r1444340. thanks Ivan.
-              </div></li><li><div>
-                Integrated in bookkeeper-trunk #94 (See [https://builds.apache.org/job/bookkeeper-trunk/94/])
-    BOOKKEEPER-556: BookieServerMXBean#getServerState makes no sense (ivank via sijie) (Revision 1444340)
+                FAILURE: Integrated in Jenkins build bookkeeper-master #1836 (See [https://builds.apache.org/job/bookkeeper-master/1836/])
+BOOKKEEPER-1102: Clarify BookieInfoReader and fix associated test (sijie: [https://github.com/apache/bookkeeper/commit/a5f8580f53464065243a9af038935f5893434166])
+* (edit) bookkeeper-server/src/test/java/org/apache/bookkeeper/client/BookKeeperDiskSpaceWeightedLedgerPlacementTest.java
+* (edit) bookkeeper-server/src/main/java/org/apache/bookkeeper/conf/ClientConfiguration.java
+* (edit) bookkeeper-server/src/main/java/org/apache/bookkeeper/proto/PerChannelBookieClient.java
+* (edit) bookkeeper-server/src/main/java/org/apache/bookkeeper/client/BookieInfoReader.java
+* (edit) bookkeeper-server/src/test/java/org/apache/bookkeeper/test/BookKeeperClusterTestCase.java
 
-     Result = SUCCESS
-sijie : 
-Files : 
-* /zookeeper/bookkeeper/trunk/CHANGES.txt
-* /zookeeper/bookkeeper/trunk/bookkeeper-server/src/main/java/org/apache/bookkeeper/proto/BookieServerBean.java
-* /zookeeper/bookkeeper/trunk/bookkeeper-server/src/main/java/org/apache/bookkeeper/proto/BookieServerMXBean.java
-* /zookeeper/bookkeeper/trunk/bookkeeper-server/src/main/java/org/apache/bookkeeper/proto/ServerStats.java
-
-              </div></li><li><div>
-                Committed revision 1490376, to 4.2 branch
               </div></li></ol></div></div></html>

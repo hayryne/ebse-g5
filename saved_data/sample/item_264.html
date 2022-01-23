@@ -1,156 +1,43 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 264
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 remove the recursive reference if present
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merged revisions 1366314 via  svn merge from
-                </div><div><b>message:</b> Merged revisions 1366314 via  svn merge from
-https://svn.apache.org/repos/asf/cxf/branches/2.5.x-fixes
-
-........
-  r1366314 | ay | 2012-07-27 11:11:03 +0200 (Fri, 27 Jul 2012) | 17 lines
-  
-  Merged revisions 1366312 via  svn merge from
-  https://svn.apache.org/repos/asf/cxf/branches/2.6.x-fixes
-  
-  ........
-    r1366312 | ay | 2012-07-27 10:53:50 +0200 (Fri, 27 Jul 2012) | 9 lines
-    
-    Merged revisions 1366308 via  svn merge from
-    https://svn.apache.org/repos/asf/cxf/trunk
-    
-    ........
-      r1366308 | ay | 2012-07-27 10:49:03 +0200 (Fri, 27 Jul 2012) | 1 line
-      
-      protect against a recursive reference in responseContext (for CXF-4437)
-    ........
-    
-  ........
-  
-........
-
-
-git-svn-id: https://svn.apache.org/repos/asf/cxf/branches/2.4.x-fixes@1366315 13f79535-47bb-0310-9956-ffa450edef68
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Stack Overflow exception in org.apache.cxf.endpoint.ClientImpl when logging set to FINE
-                </div><div><b>description:</b> Hi,
-
-I can reproduce the issue in our code, but will probably struggle to
-create a test case.  
-
-I have narrowed down the culprit (in 2.6.1) to org.apache.cxf.endpoint.ClientImpl line 636
-
-The method protected Object[] processResult(Message message,
-                                   Exchange exchange,
-                                   BindingOperationInfo oi,
-                                   Map&lt;String, Object&gt; resContext)
-throws Exception {
-
-And the code:
-
-if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine("set responseContext to be" + resContext);
-                }
-
-
-The code to add all the properties from the message to resContext, creates a recursive reference, because the message already has a reference to resContext.  This causes the logging to fail as when it tries to serialise the content of the map, it gets a stack overflow.
-
-The org.apache.cxf.invocation.context contains the ResponseContext and
-the ResponseContext contains the org.apache.cxf.invocation.context
-
-To prove my hypothesis I added the following code to replace the log call:
-
-HashMap contextMap = (HashMap)
-resContext.get("org.apache.cxf.invocation.context");
-                        HashMap responseContextMap = (HashMap)
-contextMap.get("ResponseContext");
-                        HashMap secondContextMap = (HashMap)
-responseContextMap.get("org.apache.cxf.invocation.context");
-                        if (secondContextMap != null) {
-                                System.out.println("Oh boy here is the error!");
-                        }
-
-And I got the Oh boy here is the error! message back.
-
-The original stack trace is:
-
-
-java.lang.StackOverflowError
-        at java.util.HashMap$EntrySet.iterator(HashMap.java:950)
-        at java.util.AbstractMap.toString(AbstractMap.java:478)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-        at java.lang.String.valueOf(String.java:2826)
-        at java.lang.StringBuilder.append(StringBuilder.java:115)
-        at java.util.AbstractMap.toString(AbstractMap.java:490)
-
-&lt;snip&gt;
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> In addition in the same code I think the setContext method is not
-actually logging what is expected.
-
-Should it be adding all the request context info to the message or vice versa?
-
-Should it be:
-   message.putAll(ctx);
-
-Or:
-ctx.putAll(message);
-
-As for the processResult logging?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Hi Jason,
-I think we can guard against this situation by not allowing the invocation context to be put into the response context but I am wondering how the invocation context was inserted into the response context in your case. 
-
-Are you doing something particular in your code? For instance, copying the request message to the response message?
-Thanks.
-regards, aki
+                Validating RPC/Lit, make sure we don't try a root element name thing
               </div></li><li><div>
+                force xsi:type so types can be validated instead of trying to 
+use the RPC/lit element names that aren't in the schema 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merged revisions 831978 via svnmerge from 
+                </div><div><b>message:</b> Merged revisions 831978 via svnmerge from 
+https://svn.apache.org/repos/asf/cxf/trunk
+
+........
+  r831978 | dkulp | 2009-11-02 12:30:52 -0500 (Mon, 02 Nov 2009) | 1 line
+  
+  [CXF-1277] Enable schema validation for RPC/Lit
+........
+
+
+git-svn-id: https://svn.apache.org/repos/asf/cxf/branches/2.2.x-fixes@831980 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> JAXB schema validation fails for RPC
+                </div><div><b>description:</b> If I turn on schema validation in CXF in an RPC server, it always fails. This is because JAXB tries to validate the whole input message, and there's no schema in the wsdl for these things. It seems to me that there could be schema: they are just form-unqualified elements of the elements for the messages. Is there some reason-of-standardization why we can't just include this in wsdl we generate? If so, we could fabricate it for runtime validation, I guess.
+
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
                 
-I'm also wondering if it would make sense to just log the keySet instead of the whole map.... The values can contain things like passwords, credentials for security keysets, etc...   Maybe "FINEST" log everything.  Not really sure, but its a thought.
+I'm not sure that is possible.   With RPC, it's VERY conceivable to to have multiple operations with the same part name, but different types.   Example, the default for JAX-WS:
 
-              </div></li><li><div>
-                Hi,
+public Foo echoFoo(Foo f)
+public Bar echoBar(Bar b)
 
-Thanks for your comments. The problem occurs when we abort the outgoing chain and 
-Call the onMessage on the Message Observer. What we are not doing is creating a new Response message which. I guess is pretty stupid. I will change our code to do this and see if the issue goes away.
-              </div></li><li><div>
-                Hi Jason,
-that explains the reason. The request message contains the invocation context, whereas the response message does not. So, the current code that copies the response message properties into the response context should not create a recursive reference. However, if the request message is directly used as the response message, there will be a recursive reference.
+whould result in BOTH operations having an unqualified "arg0" element, but the "type" for one op would be foo and the "type" for the other would be Bar.   
 
-So, if you are not using the request message directly as the response message, this problem should not occur.
+To do this, we'd basically have to have internally created schemas for each Message object.     That might work.   Not really sure though.
 
-@Dan,
-to be on the protected side, we should change the code to not put the invocation context into the response context.
-In addition, should we even get rid of this log line or log only the keys? I don't know if it is okay to log the context properties from the security point of view even if the level is set to FINEST. 
+              </div></li><li><div><div><b>body:</b> The question then is: what is the status of schema validation as a product feature. We don't document it very clearly, but it seems possible that there should be a way to turn it on that either (a) carefully does nothing for RPC services, (b) carefully validates only below the level of the parts, or (c) depends on all the schema you are discussing.
 
-regards, aki
-
-              </div></li><li><div><div><b>body:</b> Removed the invocation context from the response context if present to protect against this kind of issue.
-
-Additionally, removed the code for logging the response context to avoid revealing potentially sensitive information.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                
+Managed to get JAXB to do this properly.   When writing, if you set the "declared type" for the JAXBElement to Object.class, it writes out an xsi:type that the validator uses so the element name is irrelevant.  When reading, I wrapper the XMLStreamReader with one that fakes an xsi:type (if a type isn't on the wire) so, again, the validator can figure out what to do.
 
 
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div></div></html>
+              </div></li></ol></div></div></html>

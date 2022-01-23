@@ -1,98 +1,116 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 68
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-7899: rename FieldValueQuery to DocValuesFieldExistsQuery
-                </div><div><b>message:</b> LUCENE-7899: rename FieldValueQuery to DocValuesFieldExistsQuery
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Use "" instead of str so don't consume chars
+ (fillBuffer) from the input on throwing IAE below:
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> LUCENE-3969: fix PatternTokenizer to not consume chars from the input Reader if it throws IAE
+                </div><div><b>message:</b> LUCENE-3969: fix PatternTokenizer to not consume chars from the input Reader if it throws IAE
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Rename FieldValueQuery to DocValuesFieldExistsQuery
-                </div><div><b>description:</b> I don't think we have a query today to efficiently test whether a doc values field exists (has any value) for each document in the index?
+git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/lucene3969@1311318 13f79535-47bb-0310-9956-ffa450edef68
 
-Now that we use iterators to access doc values, this should be an efficient query: we can return the DISI we get for the doc values.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Use all (non-deprecated) analysis ctors in TestRandomChains
+                </div><div><b>description:</b> We made TestRandomChains in LUCENE-3919, which reflects all
+analysis components from the classpath and builds analyzers from them,
+then checks consistency.
 
-ElasticSearch indexes its own field to record which field names occur in a document, so it's able to do "exists" for any field (not just doc values fields), but I think doc values fields we can just get "for free".
+but currently it only supports some tokenizers/tokenfilters/charfilters,
+because it hardcodes at certain ctors e.g. Tokenizer(Reader) and Tokenizer(Version+Reader).
 
-I haven't started on this ... just wanted to open the issue first for discussion.
+Instead we should use all ctors, just filling them in with random data of
+whatever argument type they take.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Isn't it what {{FieldValueQuery}} is about?
+                First cut at a patch: supports all of our analysis components, which means basically every time you run this test now, it finds a bug.
+
+The test ignores any invocations of UOE or IAE, and i fixed most/all trivial issues related to that, but there are serious problems...
               </div></li><li><div>
-                Aha, it is!  Thanks [~jpountz]!  Maybe we should rename it to something that has "doc values" and maybe "exists" in the name?
-              </div></li><li><div><div><b>body:</b> I think we should, I already failed multiple times to remember the name of this query even though I knew we had one. Something like {{DocValuesFieldExistsQuery}}? I'm tempted to go with a shorted name, but at the same time I'd like to reserve name space so that we could also have a norms-based implementation so that we could also find documents that have a value for text fields.
+                updated patch... just fixing some more bugs.
+              </div></li><li><div><div><b>body:</b> Hi Robert, no generics complaints, it cannot be done better (means warning-free, that's a backwards-API-bug in Java - as always. Reflection-APIs and other APIs in general should return collections not raw arrays; the horrible thing here is that reflection have to create a new array on every invocation (clone), as it could be modified later. With Lists it could return unmodifiableList... Oracle should fix this and break backwards, as we should with CR.getSequentialSubReaders as there is not overhead at all).
+
+I am a little bit irritated about the catch block:
+
+{noformat}
++            if (e instanceof UnsupportedOperationException) {
++              // ignore
++              System.err.println("WARNING: " + e + " for " + clazz);
++            } else if (e instanceof InvocationTargetException) {
++              if (e.getCause() instanceof IllegalArgumentException ||
++                  e.getCause() instanceof UnsupportedOperationException) {
++                // thats ok
++                if (VERBOSE) {
++                  System.err.println("Ignoring IAE/UOE from ctor:");
++                  e.printStackTrace();
++                }
++              } else {
++                // not ok
++                System.err.println(clazz);
++                throw new RuntimeException(e);
++              }
++            } else {
++              throw new RuntimeException(e);
++            }
+{noformat}
+
+The first check for Unsupported cannot come from the called ctor only from reflection code itsself, but reflection should not throw UOE.
+
+When you call a ctor with reflection, every Throwable the CTOR throws is wrapped by InvocationTargetException. So the code in my opinion should *only* catch InvocationTargetException and then check for the corresponding "valid" causes. All other causes (not the ITE) should be rethrown using o.a.l.util.Rethrow (and not wrapped with Runtime). And any other reflection-based Ex should not be catched at all.
+
+I will play around and remove the big Exception bug.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Patch with the above mentioned cleanups. I also changed some code to be more consistent (isAnnotationPresent also for classes, Class.getName instead toString).
+
+This thing fails almost always, in most cases with "too many tokens".
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> New patch:
+- I now have found out where the UOE comes from, it's the random parameter generator. But this is nasty and should be solved better. I readded the catch block with a comment.
+
+In general, the code should be refactored to not call getConstrcutors all the time. Instead the global list of List&lt;Class&lt;T&gt;&gt; should be replaced by List&lt;Constructor&lt;T&gt;&gt;, then we only have one list where to choose the ctor from (the class is implicit).
+
+Will work on a patch.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                bq. Something like DocValuesFieldExistsQuery? 
+                New patch with the Constructors moved up the chain to be top-level citizens, analysis classes are no longer explicitely used.
 
-+1, I'll work up a patch; I think we should do this for 7.0?
-              </div></li><li><div>
-                Simple patch.
-              </div></li><li><div>
-                +1
-              </div></li><li><div>
-                Maybe add a note to {{lucene/MIGRATE.txt}} before pushing to branch_7_0 and branch_7x?
-              </div></li><li><div>
-                bq. Maybe add a note to lucene/MIGRATE.txt before pushing to branch_7_0 and branch_7x?
+It would be goot to fix the randomParameter generator to never fail but instead the reflection code in beforClass() to check the constructor args against a Set&lt;Class&lt;?&gt;&gt; validArgs of valid parameters and throw away all invalid ctors from the beginning: validArgs.containsAll(Arrays.asList(ctor.getParameterTypes()))
+              </div></li><li><div><div><b>body:</b> we could also fail the test here if the random generator is out of date... is that wrong? 
+its definitely simple :)
 
-+1, will do
-              </div></li><li><div><div><b>body:</b> bq. ElasticSearch indexes its own field to record which field names occur in a document, so it's able to do "exists" for any field (not just doc values fields), but I think doc values fields we can just get "for free".
-
-IMHO, this is still the preferable method of doing this as you only need one field and you can quickly lookup all documents with a simple inverted index query. I generally recommend the same strategy also to Solr users (they just have to do it manually). Index size is in most cases not a problem, as the term index is small and the posting list is highly compressed!
+warnings will likely be missed when the thing is running from hudson...
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div><div><b>body:</b> Here a patch with a more flexible argument generator. Its still a little bit ugly how the three special cases are handled (and the Sets need to be kept in sync!), but at least the standard types are created very simple.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Commit 6abff51edeab08f272774683b9cbec3c517587a7 in lucene-solr's branch refs/heads/master from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=6abff51 ]
+                thats nice!
 
-LUCENE-7899: rename FieldValueQuery to DocValuesFieldExistsQuery
+{quote}
+Its still a little bit ugly how the three special cases are handled (and the Sets need to be kept in sync!), but at least the standard types are created very simple.
+{quote}
 
-              </div></li><li><div>
-                Commit 6e36ad7c5d654030385156cd7c7e4845aeabb174 in lucene-solr's branch refs/heads/master from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=6e36ad7 ]
+Yeah but thats only the exceptional cases, so its no big deal.
 
-LUCENE-7899: add missing file
+I tested the patch, by adding a fake ctor with an unsupported type to BulgarianStemFilter:
+{noformat}
+public BulgarianStemFilter(final TokenStream input, BitSet ignored) {
+   super(input);
+ }
+{noformat}
 
-              </div></li><li><div>
-                Commit 52f11df3ab64b5334492fd37612d64eb23d530bd in lucene-solr's branch refs/heads/branch_7x from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=52f11df ]
+Test failed nicely at startup:
+{noformat}
+[junit] Caused by: java.lang.AssertionError: public org.apache.lucene.analysis.bg.BulgarianStemFilter(org.apache.lucene.analysis.TokenStream,java.util.BitSet) has unsupported parameter types
+{noformat}
 
-LUCENE-7899: rename FieldValueQuery to DocValuesFieldExistsQuery
-
-              </div></li><li><div>
-                Commit f7ab772066faa0018814d7761b44b76a5114e796 in lucene-solr's branch refs/heads/branch_7x from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=f7ab772 ]
-
-LUCENE-7899: add missing file
-
-              </div></li><li><div>
-                Commit 71feef105667793b58dc7449bb5646caf9c23275 in lucene-solr's branch refs/heads/branch_7_0 from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=71feef1 ]
-
-LUCENE-7899: rename FieldValueQuery to DocValuesFieldExistsQuery
+Thanks Uwe!
 
               </div></li><li><div>
-                Commit a0b5bce31acdbed5bfc74df6232733e39b6d67de in lucene-solr's branch refs/heads/branch_7_0 from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=a0b5bce ]
-
-LUCENE-7899: add missing file
-
+                https://svn.apache.org/repos/asf/lucene/dev/branches/lucene3969 is open for heavy committing,
+in case anyone else wants to pull our their hair debugging this thing :)
               </div></li><li><div>
-                Commit 6837e3d93f8eadb325229f2d9aa72a9e597d1993 in lucene-solr's branch refs/heads/branch_7_0 from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=6837e3d ]
+                In the branch this test is failing about 2% of the time now... getting closer to sanity.
 
-LUCENE-7899: add entry in MIGRATE.txt
-
+still some bugs to fix and some things to figure out...
               </div></li><li><div>
-                Commit 084e5290e1eb232ceba62f6361a0e2c6625dceaa in lucene-solr's branch refs/heads/branch_7x from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=084e529 ]
-
-LUCENE-7899: add entry in MIGRATE.txt
-
+                This now fails only very rarely (&lt; 1%), finding real bugs. Mergeing the test and 
+bugfixes to trunk now.
               </div></li><li><div>
-                Commit b52974f3386746b1b529243afc7fa321d9b204bb in lucene-solr's branch refs/heads/branch_7x from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=b52974f ]
-
-LUCENE-7899: add text after header in MIGRATE.txt
-
-              </div></li><li><div>
-                Commit f288b440b76f6b2ab23cc134054e2b1d374d182a in lucene-solr's branch refs/heads/branch_7_0 from Mike McCandless
-[ https://git-wip-us.apache.org/repos/asf?p=lucene-solr.git;h=f288b44 ]
-
-LUCENE-7899: add text after header in MIGRATE.txt
-
+                Bulk close for 3.6.1
               </div></li></ol></div></div></html>

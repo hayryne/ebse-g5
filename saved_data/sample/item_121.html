@@ -1,55 +1,179 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 121
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CAMEL-6476: Introducing StreamCachingStrategy SPI to make it easier to configure and allow 3rd party to plugin custom strategies.
-                </div><div><b>message:</b> CAMEL-6476: Introducing StreamCachingStrategy SPI to make it easier to configure and allow 3rd party to plugin custom strategies.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+     * Unmarshals
+     *
+     * @param unmarshaller  the unmarshaller
+     * @param value  the stream to unarmashal (will close it after use, also if exception is thrown)
+     * @return  the value
+     * @throws JAXBException is thrown if an exception occur while unmarshalling
+     
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CAMEL-980: Should close stream during unmarshal in case of exception then eg a file stream is open and the file can then not be deleted.
+                </div><div><b>message:</b> CAMEL-980: Should close stream during unmarshal in case of exception then eg a file stream is open and the file can then not be deleted.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> StreamCachingStrategy - A better strategy
-                </div><div><b>description:</b> The old stream caching has some flaws such as
-- copying the existing stream into an internal buffer/type
-- spool to disk by default
-- a bit confusing to configure
-- wrap based
-- not exposed in JMX
-- not easy to implement custom strategies
+git-svn-id: https://svn.apache.org/repos/asf/activemq/camel/trunk@705344 13f79535-47bb-0310-9956-ffa450edef68
 
-Working on a new strategy that supports
-- reusing existing stream if it supports marks *done* (added special for byte array input streams)
-- memory based only by default *wontfix* (we leave it backwards compatible as is, ppl can easily turn off overflow to disk now)
-- threshold for spooling to disk based on memory usage, and payload sizes *done*
-- use the internal camel processor to avoid wrapping *done*
-- exposed in JMX with runtime stats *done*
-- only enabled if explicit turned on *done*
-- log at INFO level on startup if enabled and what settings is in use *done*
-- configuring in the DSL with a xxxDefinition to make it stand out in the XML DSLs *done*
-- configuring of spool directory supporting ENV and JVM system properties *done*
-- avoid the leak from CAMEL-6452 *done*
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> File component - can not delete consumed file when processing failed (look into real cause)
+                </div><div><b>description:</b> See nabble:
+http://www.nabble.com/Problem-with-FileEndpoint-td19940096s22882.html
 
-
-
+*Workaround*
+Use .convertBodyTo(String.class) in the route so the file is read into memory, and the java.io.File handler shouldn't be open/locked when camel attempts to delete it after wards.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                For streams with no mark support, we could maybe do a copy on-demand, so when we reset, we can read from the copy, and if we didn't read it all, we just switch over to the original stream at point of break. 
+                I think this is OS dependent. I have tried 1.4.0 and 1.5-SNAPSHOT with and without the convertBodyTo and all moves the file from IN.
               </div></li><li><div>
-                
-I'm -1 to having it only memory based by default.  That introduces an immediate DOS attack.   64K is likely way too small now, but there definitely needs to be some sort of point at which it either flips to disk or completely stops buffering and throws an IOException.   Waiting for the OutOfMemoryException is not a good idea.
+                Thanks Christian.
 
+Sorry I was a bit grumpy. It was late and I wasn't in the mood to fight with maven. 
+              </div></li><li><div>
+                I guess the failure can be simulated by just throwing an exception in the processor instead of all the jaxb failing?
+              </div></li><li><div><div><b>body:</b> I have attached a complete example for file endpoint with jaxb and bean processor. The readme.txt explains how to use the example and how to reproduce this issue. 
 
+Please write back if the example works and also shows you the issue.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                Christian when I run your sample using camel 1.4.0 and drop first the ok and then the error file I get:
+
+C:\cameltest&gt;dir /s /b
+C:\cameltest\in
+C:\cameltest\ok
+C:\cameltest\error
+C:\cameltest\ok\shiporder_ok.xml
+C:\cameltest\ok\shiporder_error.xml
+C:\cameltest\error\shiporder_error.xml
+
+There is no files in the in folder that is locked etc. However you get the error files *twice* and as it's in the ok folder *and* the error folder. We might consider the *moveNamePrefix* option to only work if the processing was a success (no exceptions). 
+              </div></li><li><div>
+                Hi Claus,
+
+I just updated my checkout and compiled myself. The issue does not occur anymore. 
+Thanks for this fast fix.
+
+Greetings
+
+Christian
 
               </div></li><li><div>
-                I guess having a configurable threshold value for when to spool would be the best. And to expose this in the DSL when activating streaming for a context.
-              </div></li><li><div><div><b>body:</b> Configuration of stream caching is now much easier and more exposed and easier for end users to see/understand.
-Update the docs at http://camel.apache.org/stream-caching.html with examples and details.
+                Have to add this to pom.xml
+
+{code:xml}
+    &lt;pluginRepositories&gt;
+        &lt;pluginRepository&gt;
+			&lt;id&gt;java.net&lt;/id&gt; 
+			&lt;name&gt;java.net Maven Repository&lt;/name&gt; 
+			&lt;url&gt;http://download.java.net/maven/1/&lt;/url&gt; 
+			&lt;layout&gt;legacy&lt;/layout&gt; 
+			&lt;releases&gt;
+				&lt;enabled&gt;true&lt;/enabled&gt; 
+			&lt;/releases&gt;
+			&lt;snapshots&gt;
+				&lt;enabled&gt;false&lt;/enabled&gt; 
+			&lt;/snapshots&gt;
+        &lt;/pluginRepository&gt;
+    &lt;/pluginRepositories&gt;
+{code}
+              </div></li><li><div>
+                I have committed a fix. It should take 2+ hours for the new 1.5-SNAPSHOT to be published to the maven repo.
+
+Maybe you can try tomorrow morning.
+              </div></li><li><div>
+                I have attached a new example with a working pom. Sorry .. did not check if it works with an empty repo.
+              </div></li><li><div><div><b>body:</b> However I am wondering if we should support a more flexible rename strategy so you can
+- move to a folder if OK
+- delete if OK
+- move to another folder if ERROR
+- delete if ERROR
+
+Where you can mix and match what you need.
+
+Well something to consider for Camel 2.0
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> There is now a stream caching strategy in place that is backwards compatible.
+                </div></div></li><li><div>
+                Christian can you either supply a pom.xml that works out-of-the-box and can download all the needed .jars.
+Or switch to another jaxb maven plugin that actually works and is installable.
 
-It has more options and configurations documented at the stream caching docs.
-And when starting up Camel we get better INFO logging that its in use (or not) etc.
+Googling looks like you need to install manually and/or rename all versions to jswdp.
 
-And there is JMX stats at runtime, and you can alter the threshold at runtime etc.
-And you can add your own rules to determine if spooling to disk or not.
+https://jaxb.dev.java.net/jaxb-maven2-plugin/
+http://maven-plugins.sourceforge.net/maven-jaxb-plugin/
 
-The spool to disk is using the existing CachedOutputStream class from 2.11.
-Its java.io.File based.
 
-We may in the future look at adding a SPI so ppl can plugin custom stores, if there is faster impls than using the java.io.File and its FileInputStreams.
-                </div><div><b>label:</b> code-design
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: http://repository.jboss.org/maven2/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: http://mirrors.ibiblio.org/pub/mirrors/maven2/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: https://maven-repository.dev.java.net/repository/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: http://repo1.maven.org/maven2/jwsdp/jaxb-api/jwsdp.1.5/jaxb-api-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: http://repository.jboss.org/maven2/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: http://mirrors.ibiblio.org/pub/mirrors/maven2/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: https://maven-repository.dev.java.net/repository/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: http://repo1.maven.org/maven2/jwsdp/jaxb-impl/jwsdp.1.5/jaxb-impl-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: http://repository.jboss.org/maven2/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: http://mirrors.ibiblio.org/pub/mirrors/maven2/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: https://maven-repository.dev.java.net/repository/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: http://repo1.maven.org/maven2/jwsdp/jaxb-xjc/jwsdp.1.5/jaxb-xjc-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: http://repository.jboss.org/maven2/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: http://mirrors.ibiblio.org/pub/mirrors/maven2/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: https://maven-repository.dev.java.net/repository/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: http://repo1.maven.org/maven2/jwsdp/jaxb-libs/jwsdp.1.5/jaxb-libs-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jax-qname/jwsdp.1.5/jax-qname-jwsdp.1.5.pom
+Downloading: http://repository.jboss.org/maven2/jwsdp/jax-qname/jwsdp.1.5/jax-qname-jwsdp.1.5.pom
+Downloading: http://mirrors.ibiblio.org/pub/mirrors/maven2/jwsdp/jax-qname/jwsdp.1.5/jax-qname-jwsdp.1.5.pom
+Downloading: http://download.java.net/maven/2/jwsdp/jax-qname/jwsdp.1.5/jax-qname-jwsdp.1.5.pom
+              </div></li><li><div>
+                Christian. The jaxb stuff 'com.sun.tools.xjc.maven2' can not be found in the maven repo you have in the pom.xml
+              </div></li><li><div>
+                Sorry forgot about the convertBodyTo(String.class)
+              </div></li><li><div>
+                Christian
+
+Well spotted. I am working on a patch to properly close the stream after use. 
+
+Could you then test it using 1.5-SNAPSHOT on your system to see if it works? 
+              </div></li><li><div>
+                Closing 1.5 issues
+              </div></li><li><div>
+                Christian what OS are you using? I am on Windows XP.
+              </div></li><li><div>
+                That is so great. Thanks Christian for taking the time to provide a test app and pin point the issue.
+
+I have looked elsewhere and have fixed a few other data formats as well where resources should be closed as well.
+              </div></li><li><div>
+                Christian can you also try 1.5-SNAPSHOT as the file component had some changes as well, also regarding this WARN can not rename.
+
+See camel download page for maven snapshot repo
+http://activemq.apache.org/camel/download.html
+              </div></li><li><div>
+                Hi Claus,
+
+I am running Windows Vista but I don´t think this is a OS dependent issue. Could you reproduce the error when you leave out the convertBodyTo ?
+
+I have debugged the error. The problem seems to be in:
+org.apache.camel.converter.jaxb.FallbackTypeConverter line 90
+
+InputStream inputStream = parentTypeConverter.convertTo(InputStream.class, value);
+            if (inputStream != null) {
+&gt;&gt;&gt;&gt;                Object unmarshalled = unmarshaller.unmarshal(inputStream);
+                return type.cast(unmarshalled);
+            }
+
+It opens an inputstream and calls unmarshall. I am not sure how unmarshall should work. Does it close the stream when all goes well?
+In any case it leaves the stream open if some exception happens. So I think there should be a try {} finally {}  in FallbackTypeConverter that 
+tries to close the stream. Of with a try catch on close. 
+
+This block is probably also necessary for the other variants following.
+
+What do you think?
+
+              </div></li><li><div><div><b>body:</b> It was indeed quite a fight with maven. There are several different versions out there in several repositories and most do not work. The documentation from the plugin website also does not really help. ;-(
+
+About your comment on using a processor to show the failure. I am not sure if it is possbile to do so. It depends where the file will be opened. I guess when I simply add a processor after the file endpoint the file will not be opened at all. So I would guess the error will not show. 
+                </div><div><b>label:</b> documentation
                 </div></div></li></ol></div></div></html>

@@ -1,63 +1,331 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 124
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HADOOP-6337. Updates FilterInitializer class to be more visible, and the init of the class is made to take a Configuration argument. Contributed by Jakob Homan.
-                </div><div><b>message:</b> HADOOP-6337. Updates FilterInitializer class to be more visible, and the init of the class is made to take a Configuration argument. Contributed by Jakob Homan.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> YARN-10562. Follow up changes for YARN-9833. Contributed by Jim Brennan.
+                </div><div><b>message:</b> YARN-10562. Follow up changes for YARN-9833. Contributed by Jim Brennan.
 
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@833553 13f79535-47bb-0310-9956-ffa450edef68
+(cherry picked from commit 768e2f42ba3f82802e2ebf39d44fe6c30037583c)
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Update FilterInitializer class to be more visible and take a conf for further development
-                </div><div><b>description:</b> Currently the FilterInitializer class, used to filter access to the Hadoop web interfaces, has its main method, initFilter, set to package private.  This means that any classes wishing to implement this type must be in the same package.  This should be public so FilterInitializers can reside in other packages.  
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Follow up changes for YARN-9833
+                </div><div><b>description:</b> In YARN-9833, a race condition in DirectoryCollection. {{getGoodDirs()}} and related methods were returning an unmodifiable view of the lists. These accesses were protected by read/write locks, but because the lists are CopyOnWriteArrayLists, subsequent changes to the list, even when done under the writelock, were exposed when a caller started iterating the list view. CopyOnWriteArrayLists cache the current underlying list in the iterator, so it is safe to iterate them even while they are being changed - at least the view will be consistent.
 
-Also, currently all parameters to the FilterInitializer must be provided at compile time (or via a different configuration method).  It would be better if the FilterInitalizer::initFilter received a Configuration parameter so it can pull conf values out at run-time.  Alternatively, the class could implement Configured, but that seems heavier than is needed at this point.
+The problem was that checkDirs() was clearing the lists and rebuilding them from scratch every time, so if a caller called getGoodDirs() just before checkDirs cleared it, and then started iterating right after the clear, they could get an empty list.
 
+The fix in YARN-9833 was to change {{getGoodDirs()}} and related methods to return a copy of the list, which definitely fixes the race condition. The disadvantage is that now we create a new copy of these lists every time we launch a container. The advantage using CopyOnWriteArrayList was that the lists should rarely ever change, and we can avoid all the copying. Unfortunately, the way checkDirs() was written, it guaranteed that it would modify those lists multiple times every time.
+
+So this Jira proposes an alternate solution for YARN-9833, which mainly just rewrites checkDirs() to minimize the changes to the underlying lists. There are still some small windows where a disk will have been added to one list, but not yet removed from another if you hit it just right, but I think these should be pretty rare and relatively harmless, and in the vast majority of cases I suspect only one disk will be moving from one list to another at any time.&nbsp; &nbsp;The question is whether this type of inconsistency (which was always there before -YARN-9833-&nbsp;is worth reducing all the copying.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                +1 the proposal sounds good.
+                Attaching a patch to show the new approach.
+
               </div></li><li><div>
-                Patch with changes:
-* Update FilterInitializer class
-* Update test cases that test FilterInitializer
-* Update where filters are initialized in http server.
-
-No new tests as very difficult to test these changes.  Manually verified that can now create a FilterInitializer in another package and that the new param is seen.
+                Fixed the name of the patch.
               </div></li><li><div>
-                submitting patch
-              </div></li><li><div><div><b>body:</b> +1 overall.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12423376/HADOOP-6337.patch
-  against trunk revision 829289.
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime ||  Logfile || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  1m 19s{color} | {color:blue}{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} || ||
+| {color:green}+1{color} | {color:green} dupname {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} No case conflicting files found. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red}{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+|| || || || {color:brown} trunk Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 23m 19s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 17s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  6s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 25s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 41s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 17m 56s{color} | {color:green}{color} | {color:green} branch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 32s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 28s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:blue}0{color} | {color:blue} spotbugs {color} | {color:blue}  1m 21s{color} | {color:blue}{color} | {color:blue} Used deprecated FindBugs config; considering switching to SpotBugs. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 19s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 37s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  7s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  7s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  2s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  2s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:orange}-0{color} | {color:orange} checkstyle {color} | {color:orange}  0m 21s{color} | {color:orange}https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/433/artifact/out/diff-checkstyle-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-nodemanager.txt{color} | {color:orange} hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager: The patch generated 20 new + 13 unchanged - 0 fixed = 33 total (was 13) {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 34s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 16m 33s{color} | {color:green}{color} | {color:green} patch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 29s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 26s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 26s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} || ||
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 22m  8s{color} | {color:red}https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/433/artifact/out/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-nodemanager.txt{color} | {color:red} hadoop-yarn-server-nodemanager in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 28s{color} | {color:green}{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 94m 23s{color} | {color:black}{color} | {color:black}{color} |
+\\
+\\
+|| Reason || Tests ||
+| Failed junit tests | hadoop.yarn.server.nodemanager.amrmproxy.TestFederationInterceptor |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | ClientAPI=1.41 ServerAPI=1.41 base: https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/433/artifact/out/Dockerfile |
+| JIRA Issue | YARN-10562 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/13018262/YARN-10562.001.patch |
+| Optional Tests | dupname asflicense compile javac javadoc mvninstall mvnsite unit shadedclient findbugs checkstyle |
+| uname | Linux 146ef35dd47d 4.15.0-126-generic #129-Ubuntu SMP Mon Nov 23 18:53:38 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | personality/hadoop.sh |
+| git revision | trunk / b612c310c26 |
+| Default Java | Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+| Multi-JDK versions | /usr/lib/jvm/java-11-openjdk-amd64:Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 /usr/lib/jvm/java-8-openjdk-amd64:Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+|  Test Results | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/433/testReport/ |
+| Max. process+thread count | 521 (vs. ulimit of 5500) |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager U: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager |
+| Console output | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/433/console |
+| versions | git=2.17.1 maven=3.6.0 findbugs=4.0.6 |
+| Powered by | Apache Yetus 0.13.0-SNAPSHOT https://yetus.apache.org |
 
-    +1 @author.  The patch does not contain any @author tags.
 
-    +1 tests included.  The patch appears to include 6 new or modified tests.
+This message was automatically generated.
 
-    +1 javadoc.  The javadoc tool did not generate any warning messages.
 
-    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+              </div></li><li><div><div><b>body:</b> Submitted patch 002 to fix the checkstyle issues and add unit tests that [~ebadger] wrote when he was trying to verify this race condition.
 
-    +1 findbugs.  The patch does not introduce any new Findbugs warnings.
-
-    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
-
-    +1 core tests.  The patch passed core unit tests.
-
-    +1 contrib tests.  The patch passed contrib unit tests.
-
-Test results: http://hudson.zones.apache.org/hudson/job/Hadoop-Patch-h4.grid.sp2.yahoo.net/107/testReport/
-Findbugs warnings: http://hudson.zones.apache.org/hudson/job/Hadoop-Patch-h4.grid.sp2.yahoo.net/107/artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
-Checkstyle results: http://hudson.zones.apache.org/hudson/job/Hadoop-Patch-h4.grid.sp2.yahoo.net/107/artifact/trunk/build/test/checkstyle-errors.html
-Console output: http://hudson.zones.apache.org/hudson/job/Hadoop-Patch-h4.grid.sp2.yahoo.net/107/console
-
-This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                +1 patch looks good.
-              </div></li><li><div>
-                I just committed this. Thanks, Jakob!
-              </div></li><li><div>
-                Integrated in Hadoop-Common-trunk #151 (See [http://hudson.zones.apache.org/hudson/job/Hadoop-Common-trunk/151/])
-    . Updates FilterInitializer class to be more visible, and the init of the class is made to take a Configuration argument. Contributed by Jakob Homan.
+                | (/) *{color:green}+1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime ||  Logfile || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  1m 26s{color} | {color:blue}{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} || ||
+| {color:green}+1{color} | {color:green} dupname {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} No case conflicting files found. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:green}+1{color} | {color:green} {color} | {color:green}  0m  0s{color} | {color:green}test4tests{color} | {color:green} The patch appears to include 1 new or modified test files. {color} |
+|| || || || {color:brown} trunk Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 24m 12s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 16s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  8s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 27s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 40s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 18m 12s{color} | {color:green}{color} | {color:green} branch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 32s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 28s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:blue}0{color} | {color:blue} spotbugs {color} | {color:blue}  1m 25s{color} | {color:blue}{color} | {color:blue} Used deprecated FindBugs config; considering switching to SpotBugs. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 23s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 40s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 11s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m 11s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  4s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  4s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:orange}-0{color} | {color:orange} checkstyle {color} | {color:orange}  0m 21s{color} | {color:orange}https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/437/artifact/out/diff-checkstyle-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-nodemanager.txt{color} | {color:orange} hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager: The patch generated 4 new + 31 unchanged - 0 fixed = 35 total (was 31) {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 35s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 16m 36s{color} | {color:green}{color} | {color:green} patch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 31s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 26s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 28s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} || ||
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 22m 27s{color} | {color:green}{color} | {color:green} hadoop-yarn-server-nodemanager in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 30s{color} | {color:green}{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 96m 19s{color} | {color:black}{color} | {color:black}{color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | ClientAPI=1.41 ServerAPI=1.41 base: https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/437/artifact/out/Dockerfile |
+| JIRA Issue | YARN-10562 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/13018322/YARN-10562.002.patch |
+| Optional Tests | dupname asflicense compile javac javadoc mvninstall mvnsite unit shadedclient findbugs checkstyle |
+| uname | Linux 0d356a702cac 4.15.0-126-generic #129-Ubuntu SMP Mon Nov 23 18:53:38 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | personality/hadoop.sh |
+| git revision | trunk / b612c310c26 |
+| Default Java | Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+| Multi-JDK versions | /usr/lib/jvm/java-11-openjdk-amd64:Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 /usr/lib/jvm/java-8-openjdk-amd64:Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+|  Test Results | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/437/testReport/ |
+| Max. process+thread count | 568 (vs. ulimit of 5500) |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager U: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager |
+| Console output | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/437/console |
+| versions | git=2.17.1 maven=3.6.0 findbugs=4.0.6 |
+| Powered by | Apache Yetus 0.13.0-SNAPSHOT https://yetus.apache.org |
+
+
+This message was automatically generated.
+
+
+              </div></li><li><div><div><b>body:</b> patch 003 fixes the new checkstyle issues.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                | (/) *{color:green}+1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime ||  Logfile || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 42s{color} | {color:blue}{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} || ||
+| {color:green}+1{color} | {color:green} dupname {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} No case conflicting files found. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:green}+1{color} | {color:green} {color} | {color:green}  0m  0s{color} | {color:green}test4tests{color} | {color:green} The patch appears to include 1 new or modified test files. {color} |
+|| || || || {color:brown} trunk Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 19m 56s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 14s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  9s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 31s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 44s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 16m 29s{color} | {color:green}{color} | {color:green} branch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 36s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 33s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:blue}0{color} | {color:blue} spotbugs {color} | {color:blue}  1m 19s{color} | {color:blue}{color} | {color:blue} Used deprecated FindBugs config; considering switching to SpotBugs. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 17s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 37s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  7s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  7s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  2s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  2s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 24s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 35s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 14m 35s{color} | {color:green}{color} | {color:green} patch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 33s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 22s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} || ||
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 22m 53s{color} | {color:green}{color} | {color:green} hadoop-yarn-server-nodemanager in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 33s{color} | {color:green}{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 88m 22s{color} | {color:black}{color} | {color:black}{color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | ClientAPI=1.41 ServerAPI=1.41 base: https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/448/artifact/out/Dockerfile |
+| JIRA Issue | YARN-10562 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/13018380/YARN-10562.003.patch |
+| Optional Tests | dupname asflicense compile javac javadoc mvninstall mvnsite unit shadedclient findbugs checkstyle |
+| uname | Linux 595b77134214 4.15.0-112-generic #113-Ubuntu SMP Thu Jul 9 23:41:39 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | personality/hadoop.sh |
+| git revision | trunk / 41767599093 |
+| Default Java | Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+| Multi-JDK versions | /usr/lib/jvm/java-11-openjdk-amd64:Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 /usr/lib/jvm/java-8-openjdk-amd64:Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+|  Test Results | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/448/testReport/ |
+| Max. process+thread count | 743 (vs. ulimit of 5500) |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager U: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager |
+| Console output | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/448/console |
+| versions | git=2.17.1 maven=3.6.0 findbugs=4.0.6 |
+| Powered by | Apache Yetus 0.13.0-SNAPSHOT https://yetus.apache.org |
+
+
+This message was automatically generated.
+
 
               </div></li><li><div>
-                Attaching patch for Y! 20 distribution.
+                Thanks for the patch [~Jim_Brennan]. cc [~leftnoteasy] [~snemeth] this might be interesting / important for us, you guys might want to look at it. I'll try to find some free cycles to go through the changes.
+              </div></li><li><div><div><b>body:</b> Discussed this a little bit with [~Jim_Brennan] offline and here's the summary of my thoughts. There are a few problems with the current code.
+1) There is an inherent race in the code
+2) There is unnecessary and overlapping locking between the read/write lock and the CopyOnWriteArrayList
+
+The only way we can reliably address 1) is to return a copy of all lists at once. Otherwise DirectoryCollection.checkDirs() can come along and change the overall status of the 3 dirs lists. If we put checkDirs in a critical section (like it is now with the write lock), then we can return all dirs at once while in the read lock and assure that all dirs are consistent with each other. If we get the dirs in separate calls that grab the lock, we could be inconsistent because checkDirs could be called in between the getDirs calls. I suppose the other way to fix the locking is to do fine-grained locking within the caller code itself, but I think that is pretty bad practice by exposing internal locking to the caller.
+
+For 2) we should either change CopyOnWriteArrayList to a regular ArrayList (as they had original planned to do in [YARN-5214|https://issues.apache.org/jira/browse/YARN-5214?focusedCommentId=15342587&amp;page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-15342587] or remove the read/write lock. These locks serve more or less the same purpose and having both of them is unncecessary.
+
+Since I think that locking is usually difficult, complex, and misunderstood by those who change it later, I think we should get rid of the CopyOnWriteArrayList and change it to a regular ArrayList and then make the changes that [~Jim_Brennan] has made here so that we aren't reconstructing each list from scratch each time we run checkDirs. The downside of this change is that every container launch will create a new copy each list and that is a performance regression. But I don't think it will be much of an issue. Would be happy to hear other opinions on this
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Thanks for the discussion and comment [~ebadger]!  I agree that probably the best approach is to remove the use of CopyOnWriteArrayList and stick with simple ArrayLists.  We can preserve the changes made in [YARN-9833] to return copies of the lists and fix that issue with GetErrorDirs.
+
+I don't think the cost of the copies, even for every launch, is really much of a concern in the grand scope of things.    My inclination is to make the minimum changes for this - that is, not rewrite checkDirs() as I've done here - it is not nearly as inefficient with ArrayLists as it was with CopyOnWriteArrayLists.
+
+I will put up another patch with these changes.  We'll probably want to change the Summary as well to indicate this is just a follow-on to [YARN-9833], not an alternate solution.  If you'd prefer I file a new Jira instead, let me know.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> I was looking at the patch. I *think* I probably understand [~ebadger]'s reasoning about the code being racy.
+
+So, we have a view, but even if we update the lists inside a lock, the client which checks the view might miss using a lock, plus elements are added one-by-one. A possible solution could be collecting the new elements in a new local list then call {{CopyOnWriteArrayList.addAll()}} but that also involves a full copy by using {{System.arrayCopy()}} and seems like we go back to square one (not only that, COWAL also uses locks interally).
+
+Is my understanding correct? Anyway, usually if it's hard to reason about the correctness of a code in a multi-threaded environment (which, unfortunately, happens more often than not), then let's play safe, copy stuff in a critical section and forget about mutability. I doubt that it affects the performance noticeably, especially since a container launch means starting a new process, which is a far more heavyweight operation from the perspective of the OS.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Yea the original problem (before YARN-9833) was that we were getting a view of the list instead of a copy. And those views could iterate the list at any time. The issue there was that checkDirs was going out and clearing those lists in a separate thread. So when the client iterated through the lists, it would periodically see an empty list if it iterated at just the right time. 
+
+After YARN-9833 there is still a race, but it is a smaller and less nefarious one. The issue there is that we have 3 lists (localDirs, fullDirs, errorDirs). Those can really be thought of as a single list with different attributes for each dir. Because the sum of all of those lists should give you all disks on the node. YARN-9833 added code to return a copy of the list instead of a view. So we'll never have a list that is incomplete. But the race becomes the fact that you could potentially call getGoodDirs(), then have checkDirs run, then call getErrorDirs. If a dir transitioned from good -&gt; error just after getGoodDirs was called, it would show up in both lists. 
+
+But like you said, [~pbacsko], I think it makes sense to remove complexity of the code if it requires this type of discussion to understand exactly why the code works (or doesn't work). It makes the code harder to maintain and even harder to modify.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Patch 004 replaces the {{CopyOnWriteArrayLists}} with {{ArrayLists}}.  It also fixes {{getErroredDirs()}} to use {{ImmutableList.copyOf()}} instead of {{Collections.unmodifiableList()}}.
+
+One additional change I made was to change {{getFailedDirs()}} to use {{Collections.unmodifiableList()}} instead of {{ImmutableList.copyOf()}}.  There is no need to make another copy in this case, because {{DirectoryCollection.concat()}} was already constructing a new list.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                +1 on the patch. As mentioned above, there is still the race in the code based on the fact that the caller doesn't have to get all Dirs at the same time. But the only issue that this will cause is the dirs being out of date for that iteration. The next time they get a copy, it will be updated. And the list will always be well-constructed. It just has the possibility of being out of sync when compared with the other lists. 
+
+Will wait for the precommit to come back and commit if there are no errors and no objections
               </div></li><li><div>
-                Updated patch for Y! version, previous was missing a public declaration.
+                LGTM +1 from me.
+              </div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime ||  Logfile || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  1m 12s{color} | {color:blue}{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} || ||
+| {color:green}+1{color} | {color:green} dupname {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} No case conflicting files found. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red}{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+|| || || || {color:brown} trunk Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 24m  7s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 25s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 19s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 29s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 46s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 18m 37s{color} | {color:green}{color} | {color:green} branch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 33s{color} | {color:green}{color} | {color:green} trunk passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 31s{color} | {color:green}{color} | {color:green} trunk passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:blue}0{color} | {color:blue} spotbugs {color} | {color:blue}  1m 36s{color} | {color:blue}{color} | {color:blue} Used deprecated FindBugs config; considering switching to SpotBugs. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 34s{color} | {color:green}{color} | {color:green} trunk passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} || ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 38s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 11s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m 11s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m  5s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m  5s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 21s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 36s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green}{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedclient {color} | {color:green} 16m 47s{color} | {color:green}{color} | {color:green} patch has no errors when building and testing our client artifacts. {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 31s{color} | {color:green}{color} | {color:green} the patch passed with JDK Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 31s{color} | {color:green}{color} | {color:green} the patch passed with JDK Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 38s{color} | {color:green}{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} || ||
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 22m 19s{color} | {color:green}{color} | {color:green} hadoop-yarn-server-nodemanager in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 28s{color} | {color:green}{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 97m 21s{color} | {color:black}{color} | {color:black}{color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | ClientAPI=1.41 ServerAPI=1.41 base: https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/473/artifact/out/Dockerfile |
+| JIRA Issue | YARN-10562 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/13018651/YARN-10562.004.patch |
+| Optional Tests | dupname asflicense compile javac javadoc mvninstall mvnsite unit shadedclient findbugs checkstyle |
+| uname | Linux 1fc6b05f97c7 4.15.0-126-generic #129-Ubuntu SMP Mon Nov 23 18:53:38 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | personality/hadoop.sh |
+| git revision | trunk / 724edb03544 |
+| Default Java | Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+| Multi-JDK versions | /usr/lib/jvm/java-11-openjdk-amd64:Ubuntu-11.0.9.1+1-Ubuntu-0ubuntu1.18.04 /usr/lib/jvm/java-8-openjdk-amd64:Private Build-1.8.0_275-8u275-b01-0ubuntu1~18.04-b01 |
+|  Test Results | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/473/testReport/ |
+| Max. process+thread count | 619 (vs. ulimit of 5500) |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager U: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-nodemanager |
+| Console output | https://ci-hadoop.apache.org/job/PreCommit-YARN-Build/473/console |
+| versions | git=2.17.1 maven=3.6.0 findbugs=4.0.6 |
+| Powered by | Apache Yetus 0.13.0-SNAPSHOT https://yetus.apache.org |
+
+
+This message was automatically generated.
+
+
+              </div></li><li><div>
+                I committed this to trunk (3.4), branch-3.3, branch-3.2, and branch-3.1. To put this back into branch-2.10, we'll need to also backport YARN-9833. [~Jim_Brennan], let me know if you'd like me to do this
+              </div></li><li><div>
+                Given that the original bug exists in branch-2 as well, I think back-porting to branch-2 is a good idea in this case.
+
+&nbsp;
+              </div></li><li><div>
+                I committed this to branch-2.10 after backporting YARN-9833. this JIRA has now been committed to trunk (3.4), branch-3.3, branch-3.2, branch-3.1, and branch-2.10
+              </div></li><li><div>
+                Thanks [~ebadger]!
               </div></li></ol></div></div></html>

@@ -1,128 +1,185 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 127
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 Except ClientService, other services are already stopped, it is safe to
- let clients know the final states. ClientService should wait for some
- time so clients have enough time to know the final states.
+                 Create configuration to use SimulatedFsDatasetVerifier#Factory.
               </div></li><li><div>
-                 if state is not the final state, set lastNonFinalState
+                 This constructor does the actual verification by ensuring that
+ the DatanodeUuid is initialized.
               </div></li><li><div>
-                 If safeToReportTerminationToUser is set to true, we can verify whether
- the job can reaches the final state when MRAppMaster shuts down.
-              </div></li><li><div><div><b>comment:</b>  bogus - Not Required
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                 AM is not unregistered
+                *
+ * Test to verify that the DataNode Uuid is correctly initialized before
+ * FsDataSet initialization.
+ 
               </div></li><li><div>
-                 imitate that AM is unregistered
-              </div></li><li><div><div><b>comment:</b>  bogus - Not Required
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                 return the external state as ERROR since this is last retry.
-              </div></li><li><div><div><b>comment:</b>  bogus - Not Required
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas)
-                </div><div><b>message:</b> MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas)
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 Start a cluster so that SimulatedFsDatasetVerifier constructor is
+ invoked.
+              </div></li><li><div>
+                 If this is a newly formatted DataNode then assign a new DatanodeUuid.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-5454. Merge r1551296 from trunk to branch-2.
+                </div><div><b>message:</b> HDFS-5454. Merge r1551296 from trunk to branch-2.
 
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1526071 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/branch-2@1556083 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Clients should be notified job finished only after job successfully unregistered 
-                </div><div><b>description:</b> This is to make sure user is notified job finished after job is really done. This does increase client latency but can reduce some races during unregister like YARN-540
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> DataNode UUID should be assigned prior to FsDataset initialization
+                </div><div><b>description:</b> The DataNode's UUID ({{DataStorage.getDatanodeUuid()}} field) is NULL at the point where the {{FsDataset}} object is created ({{DataNode.initStorage()}}.  
+
+As the {{DataStorage}} object is an input to the {{FsDataset}} factory method, it is desirable for it to be fully populated with a UUID at this point.  In particular, our {{FsDatasetSpi}} implementation relies upon the DataNode UUID as a key to access our underlying block storage device.
+
+This also appears to be a regression compared to Hadoop 1.x - our 1.x {{FSDatasetInterface}} plugin has a non-NULL UUID on startup.  I haven't fully traced through the code, but I suspect this came from the {{BPOfferService}}/{{BPServiceActor}} refactoring to support federated namenodes.
+
+With HDFS-5448, the DataNode is now responsible for generating its own UUID.  This greatly simplifies the fix.  Move the UUID check/generation in from {{DataNode.createBPRegistration()}} to {{DataNode.initStorage()}}.  This more naturally co-locates UUID generation immediately subsequent to the read of the UUID from the {{DataStorage}} properties file.
+
+{code}
+  private void initStorage(final NamespaceInfo nsInfo) throws IOException {
+    // ...
+
+      final String bpid = nsInfo.getBlockPoolID();
+      //read storage info, lock data dirs and transition fs state if necessary
+      storage.recoverTransitionRead(this, bpid, nsInfo, dataDirs, startOpt);
+      
+      // SUGGESTED NEW PLACE TO CHECK DATANODE UUID
+      checkDatanodeUuid();
+
+    // ...
+  }
+{code}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Take it over. Thanks!
-              </div></li><li><div>
-                IMHO, when getReport() from a job, we can check whether the AM has been unregistered or not (probably by checking whether FinalApplicationStatus is undefined or not). If the AM is unregistered, we return the final state. Otherwise, we return RUNNING instead. Thoughts?
-              </div></li><li><div><div><b>body:</b> Ideally we should have the state transition itself to go to SUCCEEDED after unregister. Let's see if that is very difficult to do. Clearly we'll need more signalling.
+                The javadoc for {{DataNode#initStorage}} does not appear to match the code.
 
-OTOH, I think we should hard-code everywhere to say AM that runs only one job. Part of the problem is that AM at the top level thinks it can run multiple jobs, though in practice we only run on job. This could simplify some of the things in the MR AM.
-                </div><div><b>label:</b> code-design
+{code}
+/**
+   * Initializes the {@link #data}. The initialization is done only once, when
+   * handshake with the the first namenode is completed.
+   */
+  private void initStorage(final NamespaceInfo nsInfo) throws IOException {
+{code}
+
+However initStorage is invoked before the handshake completes, in {{BPServiceActor#connectToNNAndHandshake}}
+
+{code}
+    // Verify that this matches the other NN in this HA pair.
+    // This also initializes our block pool in the DN if we are
+    // the first NN connection for this BP.
+    bpos.verifyAndSetNamespaceInfo(nsInfo);    &lt;&lt;&lt;--- Calls initStorage.
+    
+    // Second phase of the handshake with the NN.
+    register();
+{code}
+
+I am not sure if we need to reorder the calls. Would need to look at this further.
+              </div></li><li><div>
+                The same issue exists in 2.2 except that the Datanode identifier is not a UUID. I changed the affected version back to 2.2 which Eric used when filing.
+              </div></li><li><div>
+                Patch attached. I made this a sub-task of HDFS-2832 since the fix depends on those changes, and to make it easier to track for any subsequent merge work.
+              </div></li><li><div>
+                +1 for the patch.  I've made a similar change internally and can confirm that it fixes the issue we are seeing in our {{FsDatasetSpi}} plugin.
+              </div></li><li><div>
+                Thanks for reviewing Eric.
+
+I apologize for not asking whether you were already working on it. :-(
+              </div></li><li><div>
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12618477/HDFS-5454.01.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:red}-1 core tests{color}.  The patch failed these unit tests in hadoop-hdfs-project/hadoop-hdfs:
+
+                  org.apache.hadoop.hdfs.TestInjectionForSimulatedStorage
+                  org.apache.hadoop.hdfs.TestPread
+                  org.apache.hadoop.hdfs.TestReplication
+                  org.apache.hadoop.hdfs.TestSmallBlock
+                  org.apache.hadoop.hdfs.server.balancer.TestBalancerWithNodeGroup
+                  org.apache.hadoop.hdfs.server.datanode.TestDataNodeMetrics
+                  org.apache.hadoop.hdfs.server.balancer.TestBalancerWithEncryptedTransfer
+                  org.apache.hadoop.hdfs.TestFileCreation
+                  org.apache.hadoop.hdfs.TestSetrepIncreasing
+                  org.apache.hadoop.hdfs.server.balancer.TestBalancerWithHANameNodes
+                  org.apache.hadoop.hdfs.server.balancer.TestBalancerWithMultipleNameNodes
+                  org.apache.hadoop.hdfs.server.blockmanagement.TestBlockTokenWithDFS
+                  org.apache.hadoop.hdfs.server.namenode.TestFileLimit
+                  org.apache.hadoop.hdfs.server.balancer.TestBalancer
+
+    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5708//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5708//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Updated patch.
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12618671/HDFS-5454.02.patch
+  against trunk revision .
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
+
+    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5713//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5713//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                Can we make either
-1) JobImpl go to succeeded/terminal state only after app master serviceStop() has completed?
-2) Change the MRClientProtocol to return job.state as the previous job state when job.state == succeeded. Then when MRClientProtocol.stop() is called it starts returning job.state == succeeded for 5 secs. Then it stops and the app master stops.
+                Update patch to add test case.
               </div></li><li><div>
-                bq. Ideally we should have the state transition itself to go to SUCCEEDED after unregister.
-
-unregister needs to happens when a job is after COMMITTING. If we want unregister to be before SUCCEEDED, we have to insert another state in middle, where unregister can happen. Then, we still need to to map the state in middle to a external state. If we map it to SUCCEEDED, the problem is still there; if we map it to RUNNING, it is equivalent to returning RUNNING when AM is unregistered (in the prior comment).
-
-In addition, the problem is not limited to SUCCEEDED only, is it? FAILED, KILLED and ERROR shouldn't be returned before unregister. In particular, FAILED and KILLED map to two internal states respectively. In this case, I'm afraid it's even more difficult to find state in between to execute unregister.
-
-bq. 1) JobImpl go to succeeded/terminal state only after app master serviceStop() has completed?
-
-In addition to the reason above, if serviceStop() is completed, the client is already unable to get the latest state from AM.
-
-bq. 2) Change the MRClientProtocol to return job.state as the previous job state when job.state == succeeded. Then when MRClientProtocol.stop() is called it starts returning job.state == succeeded for 5 secs. Then it stops and the app master stops.
-
-+1 for this method. It sounds work with limited touch. Again, we should consider FAILED, KILLED and ERROR as well, right?
-              </div></li><li><div>
-                Thats right. MRClientProtocolService should be the last service to stop and should return the state previous to the final termination state of the job. It will return the final termination state when it begins to stop. Do it for 5 secs and then stop itself. The termination state could be failed/killed/error/succeeded. ie. the user continues to see the previous state until its safe to see the final termination state.
-              </div></li><li><div>
-                Created the patch. A bit different from what Bikas was proposed:
-
-1. Not wait until MRClientProtocolSerivice stops, but wait until unregister is called, which is in RMCommunicator#serviceStop. The delay is enough already.
-
-2. Returning the prior state when the job is not unregistered in JobImpl#getState(), such that both client and webUI can get consistent state.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603873/MAPREDUCE-5505.1.patch
-  against trunk revision .
-
-    {color:red}-1 patch{color}.  Trunk compilation may be broken.
-
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4008//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                The compilation failure seems to be unrelated. Reupload the patch to kick out Hadoop QA again.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603894/MAPREDUCE-5505.1.patch
-  against trunk revision .
-
-    {color:red}-1 patch{color}.  Trunk compilation may be broken.
-
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4009//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603905/MAPREDUCE-5505.1.patch
-  against trunk revision .
-
-    {color:red}-1 patch{color}.  Trunk compilation may be broken.
-
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4010//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                One more issue is that we may need better exception handling in RMCommunicator.unregister. Now, it's simply ignoring any exceptions coming out of finishApplicationMaster. It can be the case that finishApplicationMaster throws exception before unregister event is sent out. Since MR is ignoring exceptions, JobClient will see SUCCEEDED, but on RM side, since unregister event is not received,RMApp stays on running and eventually failed.
-              </div></li><li><div><div><b>body:</b> I dont think making jobimpl aware of all this is a good idea. MRClientService is already the last thing to stop. So its a good place to contain this race condition handling logic. We will probably need to move the getReport() method from JobImpl -&gt; MRClientService so that the translation happens over there.
-However, if this needs to be urgently fixed and other folks think this is a good idea then I am ok with this approach.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                bq. JobClient will see SUCCEEDED, but on RM side, since unregister event is not received,RMApp stays on running and eventually failed
-
-JobClient won't see SUCCEEDED with the patch. Given exception is thrown by finishApplicationMaster, markUnregistered will not be called, and JobClient will still see RUNNING.
-
-Anyway, +1 for better handling the exception from finishApplicationMaster. Differentiate the handling of, for example, authorization and non-existence.
-              </div></li><li><div>
-                bq. I dont think making jobimpl aware of all this is a good idea.
-The reason to make JobImpl to be aware of unregister is that JobImpl#getState() needs the info to decide whether it returns the final state (SUCCEEDED, FAILED, KILLED, ERROR) or the prior state (RUNNING). JobImpl#getState() is called by not only getReport() but also JobInfo. As I mentioned above, I did this in getState() to ensure client protocol and web UI can see the consistent state.
-
-Therefore, in this case, we can move the getReport() JobImpl -&gt; MRClientService, but it is not necessary.
-
-
-bq. MRClientService is already the last thing to stop. So its a good place to contain this race condition handling logic.
-
-+1. Agree it's a good place. When MRAppMaster#serviceStop is called, RMCommunicator#serviceStop is called before MRClientService#serviceStop, where unregister has already been executed. Therefore after this execution, it's already safe to notify the client/webUI of the final state of the job, because one AM has exact one job. 
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603905/MAPREDUCE-5505.1.patch
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12618793/HDFS-5454.03.patch
   against trunk revision .
 
     {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-    {color:green}+1 tests included{color}.  The patch appears to include 2 new or modified test files.
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
 
     {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
@@ -134,374 +191,46 @@ bq. MRClientService is already the last thing to stop. So its a good place to co
 
     {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
 
-    {color:red}-1 core tests{color}.  The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
 
     {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
 
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4013//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4013//console
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5723//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5723//console
 
 This message is automatically generated.
               </div></li><li><div>
-                The test failure should be unrelated. See MAPREDUCE-5514.
+                +1. Patch looks good to me. Thanks for this refactoring. Aript!
               </div></li><li><div>
-                bq. markUnregistered will not be called, and JobClient will still see RUNNING.
-Correct, JobClient will see RUNNING until AM exits, in which case JobClient will keep waiting until next AM comes up(MAPREDUCE-5488 made this change).
-Here we make a decision that if unregister call fails, the MR job is deemed as fail and will be restarted by RM.
-
-isUnregistered use atomic boolean ?
-
-test case: also assert job state is running before markUnregistered is called.
+                Thanks Junping (and congrats on your committer +1). I committed it to trunk.
               </div></li><li><div>
-                {code}
-case REBOOT:
-        if (isUnregistered &amp;&amp; appContext.isLastAMRetry()) {
-          return JobState.ERROR;
-{code}
-We probably don't need "appContext.isLastAMRetry()" this check here, since if this is the last retry, the app will fail on RM side. After this AM exits, JobClient is able to query RM for final status, in which case JobClient will be told FAILED. This is good for all transitions to follow the same logic.
-
-If that's the case we can create a common function to handle the logic that for every final state, if registered return final state, otherwise return the previous state
-              </div></li><li><div>
-                Are we sure that previous state is always RUNNING before FAILED?
-{code}
-+      case FAILED:
-+        if (isUnregistered) {
-+          return JobState.FAILED;
-+        } else {
-+          return JobState.RUNNING;
-{code}
-
-Instead of isUnregistered, let us create an AtomicBoolean called safeToReportTerminationToUser. Instead of JobImpl, this boolean can be made visible via the AppContext object so that everyone has access to it. When to set the boolean to true? We could do it in RMCommunicator after unregister succeeds (like in this patch). Or we can do it in MRClientService.serviceStop(). Since MRClientService is the last service to stop() we can be sure that everything finished nicely. MRClientService.serviceStop() can set the boolean. Then we can move the sleep(5sec) from MRAppMaster to MRClientService.serviceStop() after setting the boolean. 
-We should leave a comment explaining this in MRAppMaster.shutdown() before the call to clientService.stop() so that its easy for someone else to track this logic.
-
-Please do run single node tests to verify the behavior for real along with RM restart.
-              </div></li><li><div>
-                bq. We probably don't need "appContext.isLastAMRetry()" this check here,
-In fact, in case of REBOOT,we can always return RUNNING. Either the AM is restarted and the jobClient continues to run, or the AM failed because of unregister fail or this is lastRetry, in which case RM can tell JobClient that the app FAILED.
-              </div></li><li><div>
-                We could do that but lets leave it out of the scope of the current jira. For this one, lets keep doing what we used to do.
-              </div></li><li><div><div><b>body:</b> Thanks Jian and Bikas for the comments. I've uploaded a new patch, which uses atomic boolean instead. It is placed at MRAppMaster, and exposed through AppContext, as other variables are. As the flag is put in MRAppMaster, instead of setting it in ClientService#serviceStop(), MRAppMaster#shutDownJob(), where other services have been stopped already, and ClientService is to be stopped. Therefore, it should be equivalent to what Bikas proposed, but simplify the code.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604165/MAPREDUCE-5505.3.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 4 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4018//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4018//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                The test failure is unrelated. MAPREUDE-5514 is handling it separately.
-              </div></li><li><div><div><b>body:</b> Typo - already ...
-{code}
-// Except ClientService, other services are already, it is safe to let
-{code}
-
-Lets use a true value to be back-compatible in case it gets used.
-{code}
-+  public boolean safeToReportTerminationToUser() {
-+    // bogus - Not Required
-+    return false;
-{code}
-
-Typo - mock
-{code}
-+    AppContext mocContext = mock(AppContext.class);
-{code}
-
-Please put a comment for this non-obvious code. We need it because noone is calling shutdown job right. Alternatively, can MRApp.createJob() be changed to call MRAppMaster.shutdown() or set the boolean value to true. This would be closer to ideal that the current approach.
-{code}
-+    boolean safe = this.safeToReportTerminationToUser.get();
-+    if (!safe) {
-+      this.safeToReportTerminationToUser.set(true);
-+    }
-{code}
-
-Can we have a test that verifies the main straightline case. Job succeeds and returns running until the boolean is set.?
-
-How can we be sure that the previous state == RUNNING
-{code}
-+      case KILL_ABORT:
-+      case KILLED:
-+        if (appContext.safeToReportTerminationToUser()) {
-+          return JobState.KILLED;
-+        } else {
-+          return JobState.RUNNING;
-{code}
-
-Has this been tested on a single node cluster with a real job?
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                Thanks [~bikassaha] for reviewing the patch. I've updated it accordingly.
-
-bq. Typo - already ...
-
-Fixed
-
-bq. Lets use a true value to be back-compatible in case it gets used.
-
-Fixed
-
-bq. Typo - mock
-
-Fixed
-
-bq. Please put a comment for this non-obvious code. We need it because noone is calling shutdown job right. Alternatively, can MRApp.createJob() be changed to call MRAppMaster.shutdown() or set the boolean value to true. This would be closer to ideal that the current approach.
-
-Agree the code is non-obvious. Instead of moving setting safeToReportTerminationToUser to MRApp.createJob(), I moved it to the constructor of MRApp, because safeToReportTerminationToUser is the per MRAppMaster variable.
-
-bq. Can we have a test that verifies the main straightline case. Job succeeds and returns running until the boolean is set.?
-
-Added TestMRApp#testJobSuccess
-
-bq. How can we be sure that the previous state == RUNNING
-
-Its a general issue. To solve it in all the transitions of JobImpl, I added the code to remember the last non-final state. Then, whenever safeToReportTerminationToUser is false, JobImpl returns the stored previous state instead of the final state, i.e., SUCCEEDED, FAILED, KILLED and ERROR.
-
-bq. Has this been tested on a single node cluster with a real job?
-
-Tested locally. The job client saw RUNNING until AM got unregistered.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604732/MAPREDUCE-5505.4.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 5 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The patch failed these unit tests in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-                  org.apache.hadoop.mapreduce.v2.app.job.impl.TestJobImpl
-
-                                      The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4033//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4033//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Updated the new patch to fix test failure.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604741/MAPREDUCE-5505.5.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 5 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4034//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4034//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Test failure on TestRMContainerAllocator is not related
-              </div></li><li><div>
-                Instead of calling rememberLastState in every transition (which is also not future proof) can we call it in JobImpl.handle(). This is where the transition method gets called.
-
-Similarly, createRunningStubbedJob() can implicitly create a mockContext that returns true. Only in the relevant tests, we can pass in/override the mockContext to return false. This will reduce the code change.
-
-Rest looks good to me.
-              </div></li><li><div>
-                The new patch addressed the last Bikas' comments. [~bikassaha], would you please have a look again?
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604909/MAPREDUCE-5505.6.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 5 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4037//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4037//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                The new patch gives the default value to lastNonFinalState, and recovers some tests that are missed in the last patch
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604920/MAPREDUCE-5505.7.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 5 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:red}-1 core tests{color}.  The following test timeouts occurred in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs:
-
-org.apache.hadoop.mapreduce.v2.app.TestRMContainerAllocator
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4038//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/4038//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Again, the test failure is unrelated.
-              </div></li><li><div>
-                +1. Committed to trunk, branch-2 and branch-2.1-beta
-              </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-trunk-Commit #4464 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/4464/])
-MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas) (bikas: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1526071)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/AppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MockAppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestMRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestRuntimeEstimators.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/job/impl/TestJobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs/src/main/java/org/apache/hadoop/mapreduce/v2/hs/JobHistory.java
+                SUCCESS: Integrated in Hadoop-trunk-Commit #4889 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/4889/])
+HDFS-5454. DataNode UUID should be assigned prior to FsDataset initialization. (Arpit Agarwal) (arp: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1551296)
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/DataNode.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestDataNodeInitStorage.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-Yarn-trunk #343 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/343/])
-MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas) (bikas: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1526071)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/AppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MockAppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestMRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestRuntimeEstimators.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/job/impl/TestJobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs/src/main/java/org/apache/hadoop/mapreduce/v2/hs/JobHistory.java
+                FAILURE: Integrated in Hadoop-Yarn-trunk #424 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/424/])
+HDFS-5454. DataNode UUID should be assigned prior to FsDataset initialization. (Arpit Agarwal) (arp: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1551296)
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/DataNode.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestDataNodeInitStorage.java
 
               </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1559 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1559/])
-MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas) (bikas: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1526071)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/AppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MockAppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestMRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestRuntimeEstimators.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/job/impl/TestJobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs/src/main/java/org/apache/hadoop/mapreduce/v2/hs/JobHistory.java
+                SUCCESS: Integrated in Hadoop-Hdfs-trunk #1615 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1615/])
+HDFS-5454. DataNode UUID should be assigned prior to FsDataset initialization. (Arpit Agarwal) (arp: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1551296)
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/DataNode.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestDataNodeInitStorage.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-Hdfs-trunk #1533 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1533/])
-MAPREDUCE-5505. Clients should be notified job finished only after job successfully unregistered (Zhijie Shen via bikas) (bikas: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1526071)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/AppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/MockAppContext.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestMRApp.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestRuntimeEstimators.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/job/impl/TestJobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-hs/src/main/java/org/apache/hadoop/mapreduce/v2/hs/JobHistory.java
+                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1641 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1641/])
+HDFS-5454. DataNode UUID should be assigned prior to FsDataset initialization. (Arpit Agarwal) (arp: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1551296)
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/DataNode.java
+* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestDataNodeInitStorage.java
 
               </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Yarn-trunk #347 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/347/])
-MAPREDUCE-5538. Fixed MR AppMaster to send job-notification URL only after the job is really done - a bug caused by MAPREDUCE-5505. Contributed by Zhijie Shen. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1527219)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestJobEndNotifier.java
-
-              </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-Hdfs-trunk #1537 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1537/])
-MAPREDUCE-5538. Fixed MR AppMaster to send job-notification URL only after the job is really done - a bug caused by MAPREDUCE-5505. Contributed by Zhijie Shen. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1527219)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestJobEndNotifier.java
-
-              </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1563 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1563/])
-MAPREDUCE-5538. Fixed MR AppMaster to send job-notification URL only after the job is really done - a bug caused by MAPREDUCE-5505. Contributed by Zhijie Shen. (vinodkv: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1527219)
-* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/job/impl/JobImpl.java
-* /hadoop/common/trunk/hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/test/java/org/apache/hadoop/mapreduce/v2/app/TestJobEndNotifier.java
-
-              </div></li><li><div>
-                Closing old tickets that are already shipped in a release.
+                Merged to branch-2. Target version set to 2.4.0.
               </div></li></ol></div></div></html>

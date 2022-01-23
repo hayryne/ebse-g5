@@ -1,181 +1,326 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 323
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 client in worker will use this config to authenticate with broker
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Issue 4469: add function worker client auth config in standalone (#4473)
-                </div><div><b>message:</b> Issue 4469: add function worker client auth config in standalone (#4473)
-
-* add worker client auth config in standalone
-
-* add more other conf passingly
-
-* add configs
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> standalone failed to start for token auth in function worker client
-                </div><div><b>body:</b> **Describe the bug**
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-it happens like this:
-standalone will start function `WorkerService`, then `WorkerService` will create a pulsar client to create topics. But this pulsar client is not properly configured, and caused failure when it connects to server
-
-![image](https://user-images.githubusercontent.com/6348208/58889006-d2614400-871a-11e9-8b32-3c2ce5d2a53d.png)
-
-                </div></div></li><li><div><div><b>title:</b> standalone failed to start for token auth in function worker client
-                </div><div><b>body:</b> **Describe the bug**
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-it happens like this:
-standalone will start function `WorkerService`, then `WorkerService` will create a pulsar client to create topics. But this pulsar client is not properly configured, and caused failure when it connects to server
-
-![image](https://user-images.githubusercontent.com/6348208/58889006-d2614400-871a-11e9-8b32-3c2ce5d2a53d.png)
-
-                </div></div></li><li><div><div><b>title:</b> standalone failed to start for token auth in function worker client
-                </div><div><b>body:</b> **Describe the bug**
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-it happens like this:
-standalone will start function `WorkerService`, then `WorkerService` will create a pulsar client to create topics. But this pulsar client is not properly configured, and caused failure when it connects to server
-
-![image](https://user-images.githubusercontent.com/6348208/58889006-d2614400-871a-11e9-8b32-3c2ce5d2a53d.png)
-
-                </div></div></li><li><div><div><b>title:</b> standalone failed to start for token auth in function worker client
-                </div><div><b>body:</b> **Describe the bug**
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-it happens like this:
-standalone will start function `WorkerService`, then `WorkerService` will create a pulsar client to create topics. But this pulsar client is not properly configured, and caused failure when it connects to server
-
-![image](https://user-images.githubusercontent.com/6348208/58889006-d2614400-871a-11e9-8b32-3c2ce5d2a53d.png)
-
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                @jerrypeng  Would you please help take a look of this? 
+                 update highest sequence persisted
               </div></li><li><div>
-                will work on a fix
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
+                 Kill and restart broker
+              </div></li><li><div>
+                 Set infinite timeout
+              </div></li><li><div>
+                 No other messages should be received
+              </div></li><li><div>
+                 Repeat the messages and verify they're not received by consumer
+              </div></li><li><div>
+                 should trigger complete the batch message, new message will add to a new batch and new batch
+ sequence id use the new message, so that broker can handle the message duplication
+              </div></li><li><div>
+                 optional uint64 highest_sequence_id = 24 [default = 0];
+              </div></li><li><div>
+                 optional uint64 highest_sequence_id = 6 [default = 0];
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [Issue 5476]Fix message deduplicate issue while using external sequence id with batch produce (#5491)
+                </div><div><b>message:</b> [Issue 5476]Fix message deduplicate issue while using external sequence id with batch produce (#5491)
+
+Fixes #5476 
 
 ### Motivation
 
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
+Fix #5476
 
 ### Modifications
 
-add authn related configs, so user could config the Client in worker, and make it work.
+1. Add `last_sequence_id` in MessageMetadata and CommandSend, use sequence id and last_sequence_id  to indicate the batch `lowest_sequence_id` and `highest_sequence_id`.
+2. Handle batch message deduplicate check in MessageDeduplication
+3. Response the `last_sequence_id` to client and add message deduplicate check in client
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Message deduplication is not well handled when batching is enabled with external provided sequenceId
+                </div><div><b>body:</b> **Describe the bug**
 
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
+Current implementation of Pulsar producer doesn't check the sequenceId when adding messages to a batch container. That results in violations to idempotent producing with external sequenceId.
+
+**To Reproduce**
+
+- provide 10 message with sequenceId from 0-9
+- provide 10 message with sequenceId from 0-9 again
+- flush the producer
+- these 20 messages will be received by the consumer
+
+**Expected behavior**
+
+The second 10 messages will not be added to container, because they are duplicated. We can throw exceptions to client to indicate that it adds out-of-order sequence ids.
+
+**Additional context**
+
+There are a couple places requires attentions regarding handling batched messages with external sequenceId.
+
+1) The logic to maintain `lastPublishedSequenceId` is incorrect when using external sequenceId : `lastSequenceIdPublished = op.sequenceId + op.numMessagesInBatch - 1;`. Because the last sequence id is an external sequence id, which can't be computed by adding the number of messages in the batch.
+
+2) We only maintain `lastPublishedSequenceId` (which is the acked seequence id). We also need to maintain a `lastPushSequenceId` to indicate the last sequence id that a producer sends to the broker.
+
+3) the broker need to handle the first sequence id and last sequence id in a message batch.
+
+
+                </div></div></li><li><div><div><b>title:</b> Message deduplication is not well handled when batching is enabled with external provided sequenceId
+                </div><div><b>body:</b> **Describe the bug**
+
+Current implementation of Pulsar producer doesn't check the sequenceId when adding messages to a batch container. That results in violations to idempotent producing with external sequenceId.
+
+**To Reproduce**
+
+- provide 10 message with sequenceId from 0-9
+- provide 10 message with sequenceId from 0-9 again
+- flush the producer
+- these 20 messages will be received by the consumer
+
+**Expected behavior**
+
+The second 10 messages will not be added to container, because they are duplicated. We can throw exceptions to client to indicate that it adds out-of-order sequence ids.
+
+**Additional context**
+
+There are a couple places requires attentions regarding handling batched messages with external sequenceId.
+
+1) The logic to maintain `lastPublishedSequenceId` is incorrect when using external sequenceId : `lastSequenceIdPublished = op.sequenceId + op.numMessagesInBatch - 1;`. Because the last sequence id is an external sequence id, which can't be computed by adding the number of messages in the batch.
+
+2) We only maintain `lastPublishedSequenceId` (which is the acked seequence id). We also need to maintain a `lastPushSequenceId` to indicate the last sequence id that a producer sends to the broker.
+
+3) the broker need to handle the first sequence id and last sequence id in a message batch.
+
+
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [Issue 5476]Fix message deduplicate issue while using external sequence id with batch produce
+                </div><div><b>body:</b> Fixes #5476 
 
 ### Motivation
 
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
+Fix #5476
 
 ### Modifications
 
-add authn related configs, so user could config the Client in worker, and make it work.
+1. Add `last_sequence_id` in MessageMetadata and CommandSend, use sequence id and last_sequence_id  to indicate the batch `lowest_sequence_id` and `highest_sequence_id`.
+2. Handle batch message deduplicate check in MessageDeduplication
+3. Response the `last_sequence_id` to client and add message deduplicate check in client
 
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
+### Verifying this change
 
-### Motivation
+Added new unit tests to verify this change
 
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
+### Does this pull request potentially affect one of the following parts:
 
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
+*If `yes` was chosen, please highlight the changes*
 
-### Modifications
+  - Dependencies (does it add or upgrade a dependency): (no)
+  - The public API: (no)
+  - The schema: (no)
+  - The default values of configurations: (no)
+  - The wire protocol: (yes)
+  - The rest endpoints: (no)
+  - The admin cli options: (no)
+  - Anything that affects deployment: (no)
 
-add authn related configs, so user could config the Client in worker, and make it work.
+### Documentation
 
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
-
-### Motivation
-
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
-
-### Modifications
-
-add authn related configs, so user could config the Client in worker, and make it work.
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
-
-### Motivation
-
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
-
-### Modifications
-
-add authn related configs, so user could config the Client in worker, and make it work.
-
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
-
-### Motivation
-
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
-
-### Modifications
-
-add authn related configs, so user could config the Client in worker, and make it work.
-
-                </div></div></li><li><div><div><b>title:</b> Issue 4469: add function worker client auth config in standalone
-                </div><div><b>body:</b> Fixes #4469 
-
-### Motivation
-
-when it is setting to use token authn, standalone pulsar will failed to start because of function worker authentication fail.
-
-It happens like this:
-standalone will start function WorkerService, then WorkerService will create a pulsar client to create topics. But this pulsar client in worker could not get properly configuration, and caused failure when it connects to server, which has authn enabled.
-
-### Modifications
-
-add authn related configs, so user could config the Client in worker, and make it work.
+  - Does this pull request introduce a new feature? (no)
 
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                run integration tests
+                @sijie 
+
+It's hard to handle sequence id in key based batcher, if user set an external sequence id, we can't rewrite it and the sequence ids will distributed into inner batchers of key based batcher.
+
+Current implementation will throw exception if client can ensure the message is duplicated, since we do not throws exceptions before, is it ok to throws exception?
               </div></li><li><div>
-                @jiazhai perhaps we should also let the function worker inherit the following Auth configs as well from the broker:
+                run java8 tests
+              </div></li><li><div>
+                hello @codelipenghui  
 
- workerConfig.setUseTls();
- workerConfig.setTlsAllowInsecureConnection();
- workerConfig.setTlsTrustCertsFilePath();
- workerConfig.setTlsHostnameVerificationEnable()
+can you fix the test case:
+
+```
+org.apache.pulsar.broker.service.ReplicatorTest.testResumptionAfterBacklogRelaxed
+```
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                @merlimat Thanks for the review, i have addressed your comments, please take a look again.
+              </div></li><li><div>
+                &gt; org.apache.pulsar.broker.service.PeerReplicatorTest.testPeerClusterInReplicationClusterListChang
+
+run java8 tests
+run integration tests
+
 
               </div></li><li><div>
-                @jerrypeng  ,  
- added passingly other 2 configs:
-```
-workerConfig.setTlsAllowInsecureConnection();
-workerConfig.setTlsTrustCertsFilePath();
-```
+                run java8 tests
+run integration tests
+              </div></li><li><div>
+                @merlimat Please help take a look, i have addressed your comments
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+run cpp tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                ping @sijie @merlimat PTAL again.
 
-`setUseTls(`) is deprecated, not add it.
-`TlsHostnameVerificationEnable` is a client config, and here we are using passed in serverconfig, so not add it.
+run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                @merlimat can you review this so that we can unblock 2.4.2 release?
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run cpp tests
+              </div></li><li><div>
+                run java8 tests
 
-              </div></li><li><div><div><b>body:</b> @jiazhai we should set TlsHostnameVerificationEnable to false since that is the behavior when brokers talk with each other.  I think we should also setUseTls accordingly even if its deprecated because:
+              </div></li><li><div>
+                ping @merlimat PTAL again.
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                run java8 tests
+              </div></li><li><div>
+                ping @merlimat PTAL again.
+              </div></li><li><div>
+                @merlimat PTAL again, thanks
+              </div></li><li><div>
+                @codelipenghui The change is not compatible with 2.4.2, i will move the `Milestone` to `2.5.0`.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div><div><b>body:</b> I don't think this is a valid assumption. The logic of dedup is to transparently perform the deduplication, without giving error to the application in case of duplicates.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> We shouldn't trigger an error to the application when there are dups, rather the contract is that it gets an OK. In any case we need to think through the implication of triggering an error just for one message out of band. 
+This is a very different behavior from the other failure modes where all the messages are failed after 1 failure.
 
-1. to be consistent otherwise its confusing why set other auth configs but not this one
-2. In case a user uses this config in the standalone.conf and then gets auth errors from the function worker
+I believe that handling this in broker side is much preferable.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                @jerrypeng  updated. 
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                If we don't know whether is dup or not, then why are we triggering error here?
+              </div></li><li><div>
+                Why do we need 2 new fields here? Don't we just need to a new `last_sequence_id`? isn't `lowest_sequence_id` the same as `sequence_id` ? 
+              </div></li><li><div>
+                I don't see how these sequence ids relate to a `Topic`.
+
+ * What's the lowest sequenceId ? I think this only apply to 1 single batch.
+ * Sequence id are *per producer* anyway
+              </div></li><li><div>
+                What does it mean the lowest sequence id of a producer?
+              </div></li><li><div>
+                It is in the inner class named MessagePublishContext of Producer
+              </div></li><li><div>
+                If users use the external sequence id and enable batch on producer, sequence id 1,2,3,1 will happens if we do not the check, we can just throw an exception when using the external sequence id?
+              </div></li><li><div>
+                Yes, we can only add a new last_sequence_id, will fix.
+              </div></li><li><div>
+                It is in the inner class named PublishContext of Topic
+              </div></li><li><div>
+                Ok, though as in other comment, there's already a `sequenceId` field. Is that now ignored? If yes, then it should be removed. 
+
+Also, as you can see, there's an `originalSequenceId` field. This is used in the context of geo-replication and it would have to be accounted for as well. 
+              </div></li><li><div>
+                &gt; It is in the inner class named PublishContext of Topic
+
+Which already contains a sequence id field
+              </div></li><li><div>
+                This is not correct on 2 levels: 
+ 1. If `sequenceId &lt;= lastSequenceIdPushed` we don't know yet whether the message is already dup, because the previous attempt might still fail. This has to be disambiguated by the broker which has visibility at the storage level.
+ 2. As mentioned before, we cannot throw error when there's a duplicate, rather we need to return "ok" to the application.
+              </div></li><li><div><div><b>body:</b> can this be simplified with the following statement?
+
+```
+long callbackSequenceId = Math.max(lastSequenceId, sequenceId);
+```
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                same comment as above
+              </div></li><li><div><div><b>body:</b> nit:
+
+```suggestion
+        if (lowestSequenceId == -1L) {
+```
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                ```suggestion
+    private long lowestSequenceId = -1L;
+```
+              </div></li><li><div>
+                ```suggestion
+    private long highestSequenceId = -1L;
+```
+              </div></li><li><div>
+                ```suggestion
+        lowestSequenceId = -1L;
+```
+              </div></li><li><div>
+                ```suggestion
+        highestSequenceId = -1L;
+```
+              </div></li><li><div>
+                Message with sequence id {} might be a duplicate but cannot be determined at this time.
+              </div></li><li><div><div><b>body:</b> I would suggest using 'INFO' logging here.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I like the approach here.
+              </div></li><li><div>
+                can you make a common function for this statement here?
+              </div></li><li><div>
+                should this be highest sequence id?
+              </div></li><li><div>
+                1. I think we need to keep track highestSequenceId, no?
+2. We should only assign the highest sequence id, no?
+
+```
+lastSequenceIdPushed = Math.max(lastSequenceIdPushed, op.lastSequenceIdPushed);
+```
+              </div></li><li><div>
+                It seems to me that we use `highest` sequence id at the client side, but use `last` at the wire protocol and broker side. Can we make it consistent by just using `highest` across the places?
+              </div></li><li><div><div><b>body:</b> `sequenceId` =&gt; `lowestSequenceId`
+`lastSequenceId` =&gt; `highestSequenceId`
+
+It is very confusing using `sequenceId` and `lastSequenceId`.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I will add a common function to get the callback sequenceId
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                will fix
+              </div></li><li><div>
+                Ok
+              </div></li><li><div>
+                this should :
+
+```
+lastSequenceIdPublished = Math.max(lastSequenceIdPublished, getHighestSequenceId(op));
+```
+
+because the duplicated publishes will still succeed, right. It can override a larger sequence Id with a smaller one.
+              </div></li><li><div>
+                ```
+expectedSequenceId = getHighestSequenceId(op);
+```
+              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

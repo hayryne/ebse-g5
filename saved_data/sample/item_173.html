@@ -1,134 +1,143 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 173
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                * 
-        Answer a statement iterator that will iterate over all the statements
-        (S, P, O) in this model where S matches &lt;code&gt;subject&lt;/code&gt;, P
-        matches &lt;code&gt;predicate&lt;/code&gt;, and O matches the typed literal
-        corresponding to &lt;code&gt;object&lt;/code&gt;.
-    
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> JENA-1082: Merge commit 'refs/pull/116/head' of github.com:apache/jena
-                </div><div><b>message:</b> JENA-1082: Merge commit 'refs/pull/116/head' of github.com:apache/jena
-
-This closes #116.
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fixes JENA-1082.
-                </div><div><b>body:</b> Proposal to fix JENA-1082 issue that further overloads ModelCon#listLiteralStatements() method. The only required implementation of such method follows the same idea behind of other listLiteralStatements() methods.
-
-                </div></div></li><li><div><div><b>title:</b> Fixes JENA-1082.
-                </div><div><b>body:</b> Proposal to fix JENA-1082 issue that further overloads ModelCon#listLiteralStatements() method. The only required implementation of such method follows the same idea behind of other listLiteralStatements() methods.
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add to org.apache.jena.rdf.model.ModelCon interface a listLiteralStatements method that accepts ints.
-                </div><div><b>description:</b> Add to org.apache.jena.rdf.model.ModelCon interface a {{StmtIterator listLiteralStatements(Resource subject, Property predicate, int object );}} method.
-
-Implement such method in classes that implement such interface. This method should be able to list literal integer statements, like the other listLiteralStatement methods do to other types.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                There is already {{listLiteralStatements(Resource subject, Property predicate, long object)}}.  Does that work for your use case?
-              </div></li><li><div><div><b>body:</b> It doesn't, but I managed to do a similar query with {{listResourcesWithProperty}} combined with {{ResourceFactory.createTypedLiteral}}.
-
-As you have already noted, this is just a request for improvement since, clearly, the {{listLiteralStatements}} methods are a convenience for the API users, but it lacks a type that is used a lot and is consistently present in other methods.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div><div><b>comment:</b> In a case of making text search query for concrete subject
+adding uri predicate will make query much more efficient
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Please do submit a patch or pull request.
+                 Cache-key does not matter if lang or graphURI are null
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> JENA-1645: Use uri predicate in concrete subject query.
+                </div><div><b>message:</b> JENA-1645: Use uri predicate in concrete subject query.
 
-I'm interested in why the {{long}} version does not work for you - it might affect others if we add an additional one for int as int to long promotion will not then occur.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Poor performance with full text search (Lucene)
+                </div><div><b>description:</b> Situation: half of a million of an indexed by Lucene documents(emails actually), searching for emails by sender/receiver and some text.
 
-Which storage layer are you using?
-              </div></li><li><div>
-                Are you using an Integer (a boxed int), not an int itself?
-              </div></li><li><div>
-                Ping?
-              </div></li><li><div>
-                Hi,
+If to put text filter in the start of SPARQL query it executes once but in a case of very common words here are a lot of results(100 000+) that leads to poor performance, limiting results count may and up with missed results.
 
-sorry for the delay to answer.
+If to put text search as the last condition it executes once per each already found subject. That's completely OK but&nbsp;text search completely ignores subject URI.
 
-At the moment, I'm storing things on a XML file. I'm simply adhering to an specification I was given about a RDF model I must query and update. While testing my code about this issue I noticed that, should I have the following data on the file...
+I found two methods in TextQueryPF class: variableSubject(...) for the first case, and concreteSubject(...) for the second one.
+
+The question is: why can't subject URI be used as a constraint in the text search?
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> I have written some code that uses subject URI as an additional constraint and it works much faster in my case, but not sure if there can be any problems in more general cases.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                It would be helpful to see example&nbsp;queries and how you have used the subject URI.&nbsp;
+
+I agree that the {{concreteSubject}} *should* create Lucene queries that include a term of the form:
 
 {code}
-&lt;v:number rdf:about="http://meh#0001"&gt;
-    &lt;v:num rdf:datatype="http://www.w3.org/2001/XMLSchema#int"&gt;2&lt;/v:num&gt;
-    &lt;v:num rdf:datatype="http://www.w3.org/2001/XMLSchema#long"&gt;200&lt;/v:num&gt;
-&lt;/v:number&gt;
+... AND uri:http://example.org/data/resource/R0123
 {code}
 
-... and I query it with {{StmtIterator listLiteralStatements(Resource subject, Property predicate, long object );}}, I may get an the int typed value or the long typed value. It seems to depend only on the position of the lines in the XML file. That's the reason why I want to specify the precise type of the property I'm looking for.
+Currently the code for {{concreteSubject}} collects results for all possible subjects and then after the results are returned selects just the ones corresponding to the provided {{subject}} and discards the rest of the results. Quite inefficient!
+
+This behavior is transparent to the user other than the performance; however, if there is some reason to keep this behavior then the _new_ behavior can be handled by adding a {{boolean}} {{TextIndex}} option in the configuration: {{text:useConcreteSubject}}.
+
+The implementation involves threading the subject into the {{TextIndex.query(...)}}, adding a new query method to {{TextIndex}}, {{TextIndexLucene}} and {{TextIndexES}}. It should be rather straightforward.
               </div></li><li><div>
-                Are you storing the RDF in-memory?
+                GitHub user DrBAXA opened a pull request:
 
-If so, there is a different thing going on.  The {{listLiteralStatements}} is finding {{v:num}} based on value, not on the term (lexical forma + datatype).  if you ask for 200(int) it will list 200\^^xsd:long, or 200\^^xsd:integer, or 200\^^xsd:nonNegativeInteger or several others.  If you care about the presentation, you need to check the datatype as well.  Relying on the java basic type mapping to RDF datatype is unreliable as it is not perfect and two-way.
+    https://github.com/apache/jena/pull/503
 
-              </div></li><li><div>
-                GitHub user ramiromagalhaes opened a pull request:
+    JENA-1645: Use uri predicate in concrete subject query.
 
-    https://github.com/apache/jena/pull/116
-
-    Fixes JENA-1082.
-
-    Proposal to fix JENA-1082 issue that further overloads ModelCon#listLiteralStatements() method. The only required implementation of such method follows the same idea behind of other listLiteralStatements() methods.
+    Added URI predicate to the Lucene search in case of concrete subject search. 
+    Method added in TextIndex interface made default with a fallback to the previous implementation.
 
 You can merge this pull request into a Git repository by running:
 
-    $ git pull https://github.com/ramiromagalhaes/jena JENA-1082
+    $ git pull https://github.com/DrBAXA/jena master
 
 Alternatively you can review and apply these changes as the patch at:
 
-    https://github.com/apache/jena/pull/116.patch
+    https://github.com/apache/jena/pull/503.patch
 
 To close this pull request, make a commit to your master/trunk branch
 with (at least) the following in the commit message:
 
-    This closes #116
+    This closes #503
     
 ----
-commit 2d1e7a0235f91990f31c00c9242a532783f74866
-Author: Ramiro Pereira de Magalhães &lt;ramiro.p.magalhaes@gmail.com&gt;
-Date:   2015-12-29T18:00:07Z
+commit 52d959c7a654b03e525fad214b027b6ac6aba2b2
+Author: vdanyliuk &lt;vasyl.danyliuk@...&gt;
+Date:   2018-12-05T09:10:49Z
 
-    Fixes JENA-1082.
+    JENA-1645: Use uri predicate in concrete subject query.
 
 ----
 
               </div></li><li><div>
-                Commit 2d1e7a0235f91990f31c00c9242a532783f74866 in jena's branch refs/heads/master from [~ramiromagalhaes]
-[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=2d1e7a0 ]
+                The query is pretty straightforward:
+{code:java}
+PREFIX person: &lt;http://person/&gt;
+PREFIX email: &lt;http://email/&gt;
+PREFIX text: &lt;http://jena.apache.org/text#&gt;
 
-Fixes JENA-1082.
+SELECT DISTINCT ?emailId ?content
+  WHERE {
+    ?person1Id person:name "Person One" .
+    ?person2Id person:name "Second Person" .
+    {?person1Id email:sent ?emailId . ?person2Id email:received ?emailId .} UNION
+    {?person2Id email:sent ?emailId . ?person1Id email:received ?emailId .}
+    (?emailId ?score ?content) text:query (email:indexedContent "ext to search" 1 "highlight:s:&lt;em class='hiLite'&gt; | e:&lt;/em&gt;") .
+  }
+{code}
+Such cases already covered by tests in jena-text module.
+
+Created pull request with code added to the Lucene index.
+              </div></li><li><div>
+                Github user rvesse commented on the issue:
+
+    https://github.com/apache/jena/pull/503
+  
+    cc @osma @xristy for review as main devs in this area
 
               </div></li><li><div>
-                Commit f2b5681c6e0f7aa80dfa8299b429e8b0b22b422a in jena's branch refs/heads/master from [~andy.seaborne]
-[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=f2b5681 ]
+                Github user xristy commented on the issue:
 
-JENA-1082: Merge commit 'refs/pull/116/head' of github.com:apache/jena
+    https://github.com/apache/jena/pull/503
+  
+    I'm looking at the PR and so far it looks good. I'm wanting to complete the PR for JENA-1646.
 
-This closes #116.
+              </div></li><li><div>
+                Github user osma commented on the issue:
+
+    https://github.com/apache/jena/pull/503
+  
+    Looks good to me, based on a quick look at the diff. It took a while to figure out the way you use UnaryOperator but in the end it made sense.
+    
+    I'm currently travelling and haven't found time to actually run the code, but if it passes the existing unit tests and you're sure that they trigger the `concreteSubject` case, I'm fine with that.
+
+              </div></li><li><div>
+                Commit 52d959c7a654b03e525fad214b027b6ac6aba2b2 in jena's branch refs/heads/master from vdanyliuk
+[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=52d959c ]
+
+JENA-1645: Use uri predicate in concrete subject query.
+
+              </div></li><li><div>
+                Github user xristy commented on the issue:
+
+    https://github.com/apache/jena/pull/503
+  
+    I merged PR 503 into local master and pushed to https://git-wip-us.apache.org/repos/asf/jena.git with message:
+    
+        JEAN-1645 Merge commit 'refs/pull/503/head' of https://github.com/apache/jena. This closes #503 
+    
+    owing to the misspelling of JENA as JEAN programmatic resolving of the issue and closing of the PR has not happened. The code changes are in the ASF jena repo as expected.
+    
+
+
+              </div></li><li><div>
+                [PR #503|https://github.com/apache/jena/pull/503] is tested and merged via&nbsp;[501d9f68d|https://git-wip-us.apache.org/repos/asf?p=jena.git;a=commit;h=501d9f68d46e30ce5289b04dfba13f07bbf7d2d9]&nbsp;.
+              </div></li><li><div>
+                Commit 82121f9c52f4aac03d2121931326754d108938b2 in jena's branch refs/heads/master from [~code-ferret]
+[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=82121f9 ]
+
+JENA-1645: This closes #503.
 
               </div></li><li><div>
                 Github user asfgit closed the pull request at:
 
-    https://github.com/apache/jena/pull/116
-
-              </div></li><li><div>
-                Thank you.
-
-PR applied.
-
-              </div></li><li><div>
-                Commit 6fbecf1e35024b51f1f3031c9b5c8e960e2237d4 in jena's branch refs/heads/master from [~andy.seaborne]
-[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=6fbecf1 ]
-
-Align with jena-core change (JENA-1082)
-
-              </div></li><li><div>
-                Commit bd9fdd2e40997b67e1f3f8ff755deb05400b1ca7 in jena's branch refs/heads/master from [~ramiromagalhaes]
-[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=bd9fdd2 ]
-
-Fixes JENA-1082.
-
-              </div></li><li><div>
-                Commit 068113ec9c16bea6bb4409e348c8b3de40148e93 in jena's branch refs/heads/master from [~andy.seaborne]
-[ https://git-wip-us.apache.org/repos/asf?p=jena.git;h=068113e ]
-
-Align with jena-core change (JENA-1082)
+    https://github.com/apache/jena/pull/503
 
               </div></li></ol></div></div></html>

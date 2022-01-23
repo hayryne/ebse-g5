@@ -1,257 +1,230 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 162
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> MAPREDUCE-1981. Improve getSplits performance by using listLocatedStatus. Contributed by Hairong Kuang and Jason Lowe
-                </div><div><b>message:</b> MAPREDUCE-1981. Improve getSplits performance by using listLocatedStatus. Contributed by Hairong Kuang and Jason Lowe
+                 MAPREDUCE-6565: need to set configuration for SecurityUtil.
+              </div></li><li><div>
+                 MAPREDUCE-6565: need to set configuration for SecurityUtil.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> MAPREDUCE-6565. Configuration to use host name in delegation token service is not read from job.xml during MapReduce job execution. Contributed by Li Lu.
+                </div><div><b>message:</b> MAPREDUCE-6565. Configuration to use host name in delegation token service is not read from job.xml during MapReduce job execution. Contributed by Li Lu.
+(cherry picked from commit 8f6e14399a3e77e1bdcc5034f7601e9f62163dea)
+(cherry picked from commit 376a2439db9cd55ed1f2965cd876b811109990ba)
+(cherry picked from commit 05a570a1981597ab8d2615ed4752e63f0a21b32b)
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Configuration to use host name in delegation token service is not read from job.xml during MapReduce job execution.
+                </div><div><b>description:</b> By default, the service field of a delegation token is populated based on server IP address.  Setting {{hadoop.security.token.service.use_ip}} to {{false}} changes this behavior to use host name instead of IP address.  However, this configuration property is not read from job.xml.  Instead, it's read from a separate {{Configuration}} instance created during static initialization of {{SecurityUtil}}.  This does not work correctly with MapReduce jobs if the framework is distributed by setting {{mapreduce.application.framework.path}} and the {{mapreduce.application.classpath}} is isolated to avoid reading core-site.xml from the cluster nodes.  MapReduce tasks will fail to authenticate to HDFS, because they'll try to find a delegation token based on the NameNode IP address, even though at job submission time the tokens were generated using the host name.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Looks like no patch is available here. I propose to handle it in the DFSUtil.createKeyProvider method. 
+    // get useIp flag for KMS 
+    
+    boolean useIp = conf.getBoolean(
+            CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP,
+            CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP_DEFAULT);
+    LOG.debug("set "+CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP +" value from config." +useIp);
+    SecurityUtil.setTokenServiceUseIp(useIp);
+              </div></li><li><div>
+                need more thought around this.. just realized that setting this flag caused hdfs delegation tokens cannot be looked up by ipc client.. 
+
+the basic issue is that delegation tokens are populated by each individual client and they do not have a conform protocol to follow to use ip or host name. 
+
+i will post more findings and suggestions later. 
+
+              </div></li><li><div>
+                a quick place to fix the map reduce issue is to add the following line into the YarnClient.java
+        LOG.info("YARN CHILD CHECK SECURITY SETTING USE_IP:"+job.get(CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP));
+    // get useIp flag for KMS 
+
+    boolean useIp = job.getBoolean(
+            CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP,
+            CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP_DEFAULT);
+    LOG.debug("set securityutil token service use ip  value from config." +useIp);
+    SecurityUtil.setTokenServiceUseIp(useIp);
+
+              </div></li><li><div>
+                further thoughts on this fix.. the multi-home network setup for hadoop is getting some attention in industry.  The security token design using toke + service name does not have updates to accommodate the complex network setup. HA This quick fix just get by with executing mapreduce jobs. However, I would suggest to create a new request to address the multi-home network and token handling in a more organized effort. Security package has very succinct log and it took me quite while to track down the issue. Properties under hadoop.security should be handled in a single code base to interact with various components. Credential token services such as retrieve/clone are handled by different packages in multiple components. Current code is really difficult to understand and manage. 
+              </div></li><li><div>
+                I think MR over distributed cache shouldn't load configurations that included in MR tar ball. 
+CC [~jlowe].
+              </div></li><li><div>
+                bq. I think MR over distributed cache shouldn't load configurations that included in MR tar ball. 
+
+We explicitly have MapReduce load configurations that are in the tarball.  We used to run without that and had the jobs pick up the configurations from the node, but we often ran into cases where rolling upgrades broke jobs on the cluster (e.g.: config changes to reference a plugin class that only exists in the new release, or old config setting breaks job running new release, etc.).  Things got a lot simpler for us when we put the configs in the MR tarball and made sure those configs reflect the entire cluster.  Added bonus: we don't need to push new confs to every node when the conf changes are just client-side (i.e.: not for the datanode/nodemanager).  We just update our tarball in HDFS and every new job picks up the change.
+
+Back to the original reported issue: one reason not all security settings in job.xml aren't honored is because, unlike the *-site.xml files, job.xml is not added as a default Configuration resource.  That means anything that simply instantiates a Configuration instance (e.g.: SecurityUtil, etc.) will not "see" job.xml settings.  I'm not sure why job.xml wasn't added as a default resource.  That may have been an intentional omission to avoid some problem, but part of me wonders if it should have been setup so that all Configuration objects start using job.xml settings if job.xml applies (i.e: we're using JobConf).
+
+              </div></li><li><div>
+                [~jlowe], thanks for your comments! For client settings, I agree that it would be convenient for loading configuration from tarball as we can honor different settings for different jobs (in kind of "batch" mode), especially from rolling upgrade prospectives. In addition, from usability prospective, I think client setting in job.xml has the highest priority to overwrite whatever conf in tar ball or not - given a bit overhead to change config setting in tarball. Isn't it?
+However, my next question is: do we think CommonConfigurationKeys.HADOOP_SECURITY_TOKEN_SERVICE_USE_IP is a client side setting? I assume we should keep this consistent in cluster level as mismatch between client and server setting will cause job get failed. If so, this actually belongs to a server-side setting, even it take effective in our current client side code.
+
+              </div></li><li><div>
+                bq. In addition, from usability prospective, I think client setting in job.xml has the highest priority to overwrite whatever conf in tar ball or not - given a bit overhead to change config setting in tarball. Isn't it?
+
+job.xml does override the tarball configs in almost every way _except_ this security setting because of the way that setting is loaded (i.e.: via Configuration instead of JobConf and job.xml is not a default resource).
+
+bq. If so, this actually belongs to a server-side setting, even it take effective in our current client side code.
+
+In practice that's essentially how it works in our setup.  Since this property is currently not read from job.xml, it ends up using whatever is in the core-site.xml that's in the MR tarball.  The MR tarball is created by the cluster admins and so the confs are consistent with the server settings for that cluster.  A user could try overriding this property in their job.xml, but it wouldn't be used because job.xml is ignored for this specific config.  (Yes, a user could provide their own, custom tarball with custom site files to override this setting, but they need to know what they're doing if they choose not to use the default MR tarball provided by the cluster admins.)
+
+Given this is a client-side setting that must be in sync with the server-side setting it'd be nice if this wasn't possible to get out-of-sync.  For example, the server that granted the token could also communicate which setting must be used by the client later when the token is used, but that's a significant change with backward compatibility concerns.  Of course there's also backwards compatibility concerns with adding job.xml as a default resource so that this property could be fetched from there instead of core-site.xml or core-default.xml.
 
 
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/branch-0.23@1507388 13f79535-47bb-0310-9956-ffa450edef68
+              </div></li><li><div>
+                bq. job.xml does override the tarball configs in almost every way except this security setting because of the way that setting is loaded
+To me this pretty much reveals the nature of a bug. Normally users would expect to have per-job configs override everything else, but this does not hold with the use ip setting. So one possible to fix this might be passing in the map reduce job configuration in security util, instead of using its own? 
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Improve getSplits performance by using listLocatedStatus
-                </div><div><b>description:</b> This jira will make FileInputFormat and CombinedFileInputForm to use the new API, thus reducing the number of RPCs to HDFS NameNode.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> This patch makes FileInputFormat &amp; CombineFileInputFormat to use the new listFiles() API introduced by HADOOP-6870.
-
-Ideally FileInputFormat#listStatus should have the following syntax:
+In SecurityUtil, this limits the default behavior of use ip to be a newly created Configuration object, which may not be consistent with MR's job specific setting:
 {code}
-Iterator&lt;LocatedFileStatus&gt; listStatus(JobConf job) throws IOException;
+  static {
+    setConfigurationInternal(new Configuration());
+  }
 {code}
 
-But since this is a public interface, I keep it as it is now to keep it backward compatible.
+And there is one API for this class to set the configuration used in SecurityUtil:
+{code}
+  @InterfaceAudience.Public
+  @InterfaceStability.Evolving
+  public static void setConfiguration(Configuration conf) {
+    LOG.info("Updating Configuration");
+    setConfigurationInternal(conf);
+  }
+{code}
 
-This patch also changes the semantics of listStatus a little bit. When recursive is false, listStatus used to return every child (including subdirectories) of the input directories. But with the new API, it returns only the file children. So it is not able to support this case: throwing an exception when an input directory has a subdirectory but recursive is false. I removed this test case from TestFileInputFormat. If we really want to support this scenario, I could make FileContext#listFiles to throw an exception when recursive is false but there is sbudirectory.
+So what we can do is to use the MR app's config to set this configuration? 
+              </div></li><li><div>
+                bq. To me this pretty much reveals the nature of a bug.
+
+IMHO if we really want job.xml settings to override configs consistently then an easier, safer way to do that is making job.xml a default resource.  Otherwise we're going to find more individual cases of this in the future where someone forgot to use the right Configuration type or pass the correct configs around.  Good luck with code that's not MapReduce-aware, simply uses Configuration, and has no way of passing in a conf object.
+
+Either way we tackle this, we need to realize that the change will break scenarios that are working today where client-side configs do not have the proper value for hadoop.security.token.service.use_ip.
+              </div></li><li><div>
+                I probably won't agree it could be safe to let job.xml settings to override all configurations, especially serve-side configuration. Forget about MR tarball case, do we think this setting in job.xml should override what we have in local configuration? I think it is probably not - as I mentioned above, it won't have any benefit to give client flexibility to be different with what server settings. Isn't it?
+Base on that, back to MR tar ball case, if we think everything inside of MR tarball should be per job only, then only client configuration should work, but serve configuration (like case here) shouldn't get chance to override cluster setting. I am not fully agree that it should be cluster admin' job to create tarball and keep consistent for all configurations with cluster settings. In supportability prospective, making some server-side configurations to be transparent from client setting (job.xml or mr tar ball config) should be our job.
+Given that, I think the real problem now is: we should bypass server-side configurations in mr tar ball. Thoughts?
+              </div></li><li><div>
+                bq.  it won't have any benefit to give client flexibility to be different with what server settings. Isn't it?
+
+Agreed, I think the best approach here long-term is to not have this be a config setting at all but rather derived from the communication session that retrieved the token in the first place.  I also agree that it is going to be more dangerous than not for job.xml to override this particular setting (whether or not we're using an MR tarball).
+
+bq. if we think everything inside of MR tarball should be per job only
+
+This is definitely not the case, at least for our clusters.  As I mentioned above, the MR tarballs are created by the cluster admins and therefore have the appropriate configs for that cluster.  We do _not_ want the jobs to pick up configs from the nodes per the issues I described earlier.
+
+bq. I am not fully agree that it should be cluster admin' job to create tarball and keep consistent for all configurations with cluster settings.
+
+The tarball consist of the Hadoop jars and the *-site.xml files.  Both of these are things admins of the cluster are expected to maintain and provide.  Therefore I think it's completely appropriate that typically these tarballs are created and provided by admins.  We're not running a bunch of different versions of the tarball for different types of jobs.  We just have the main tarball for the cluster and users override various settings for their specific job via job.xml, just like a regular non-tarball job does.
+
+To be clear, I'm not saying everyone has to run it the way we do.  However if you don't then there needs to be solutions for the types of rolling upgrade problems I pointed out above.  Also I don't think the way we're using the tarball is an invalid setup, so therefore any proposed change needs to ensure this type of setup keeps working.
+              </div></li><li><div>
+                The more I think about this, the more I believe the original problem is describing an invalid setup.  I can accomplish the same thing without a tarball by shipping my own custom core-site.xml that appears _before_ any core-site.xml provided by the admins of the cluster.  I think we can agree that any such setup that fails due to a bad setting in the eclipsing core-site.xml is a fault of the user's setup and not a fault of the Hadoop framework itself.
+
+So I would argue the fault lies with construction of the job in question that failed.  Either it used a faulty tarball that had a bad core-site.xml in it, or the core-site.xml was missing completely from the classpath (which may have been the case here).
+              </div></li><li><div>
+                bq. We just have the main tarball for the cluster and users override various settings for their specific job via job.xml, just like a regular non-tarball job does
+Our case is similar but slightly different. For every release, we generally only provide one tarball for all users' clusters. So every user can specify their cluster's own various settings without touch tarball that we handle over. Otherwise, taking care of multiple versions of tarball for the same release will be supportability disaster that we cannot afford. 
+Can we make a consensus that everything in tarball's config is not final (unless we explicitly mark it as final)? If so, then may be we can simply go ahead to make job.xml as the highest priority without differentiating client/server settings. Any risk I am missing here?
+
+              </div></li><li><div><div><b>body:</b> bq. Can we make a consensus that everything in tarball's config is not final (unless we explicitly mark it as final)?
+
+I think the tarball is muddying the waters here.  *-site.xml files should be treated the same whether they are in a tarball or not.  It'd be tricky and messy to do otherwise.  Essentially what we're asking is whether clients should be able to override _any_ non-final setting in the *-site.xml files with their job.xml setting, even if that setting is a "server side" property.
+
+bq. may be we can simply go ahead to make job.xml as the highest priority without differentiating client/server settings. Any risk I am missing here?
+
+Making job.xml a default resource accomplishes that proposal if we want to go that route.  Note: Usually job.xml contains the contents of the client-side *-site.xml files, so as long as those match the cluster we should be good there.
+
+The risk of this change is when the client's *-site.xml files do _not_ match what should be there.  For the "server side" settings this has been working because we've been ignoring job.xml for those.  Once we start using job.xml for even those properties, jobs that were working in the past because we ignored bad values will break.  I don't know offhand how many other properties besides this one could suddenly change because we start using the client's version of the property in job.xml when we didn't before.
+
+I agree with [~gtCarrera9] that it's more consistent and less surprising to users if job.xml settings override any other settings in the job.  However there are going to be some cases that break when we "fix" it.  That's why I'm a bit hesitant, especially if this is going into 2.x.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> bq. I think the tarball is muddying the waters here. *-site.xml files should be treated the same whether they are in a tarball or not. It'd be tricky and messy to do otherwise. Essentially what we're asking is whether clients should be able to override any non-final setting in the *-site.xml files with their job.xml setting, even if that setting is a "server side" property
+Agree. Whether clients are allowed to override any non-final setting is something I originally asking for. But later, I realized that if we disallow client to override "server-setting" - like case here, tar-ball configuration will become the final setting for "server-side" configuration. It also means MR tarball will become various according to cluster settings but not according to releases. Standing at support-ability prospective, we don't want our users to touch tarball settings because it is hard to control/monitor these settings by Ambari or other tools. Otherwise, we have to dig into tarball settings when weird things happens. In this sense, I think it could be simpler if we don't differentiate client-side and server-side setting in configuration loading. 
+
+bq. The risk of this change is when the client's *-site.xml files do not match what should be there. For the "server side" settings this has been working because we've been ignoring job.xml for those. Once we start using job.xml for even those properties, jobs that were working in the past because we ignored bad values will break. I don't know offhand how many other properties besides this one could suddenly change because we start using the client's version of the property in job.xml when we didn't before.
+I think even before, our configuration loading doesn't guarantee we only loading client-side configuration rather than server-side configuration. Even for mapred-site.xml, there are history server related settings that belongs to server-side but you can override a different value in client side which just doesn't work though. So we still need to rely on code logic to bypass what settings belongs to server-setting in client side. Also, better documentation could be helpful for user to differentiate what's client-side and what's server-side. Our current tricky loading mechanism won't help on both side.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                mapredListFiles1.patch uses the new listFiles API in FileContext. Comparing to the first patch, this one maintains not only the syntax but also the semantics of FileInputFormat#listStatus
-              </div></li><li><div><div><b>body:</b> Now HDFS-202 is in, mapredListFiles2.patch is the last piece of code that completes the improvement of getSplits performance.
+                I'm +1 for making all client-side settings override anything in any site file that isn't marked final for 3.x.  I'm a bit hesitant for 2.x given the long-standing semantics for some of these properties, and in any case there needs to be a clear release note explaining to users what to expect with the change.
 
-Could a warm heart give it a review? Thanks.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I'm pleased to see this feature propagate to MR. The approach looks correct, just a few comments:
+Hmm, there might be a problem with adding job.xml as a default resource, and that has to do with relative ordering of when job.xml is added and other default resources like the *-site.xml files are added.  The various site.xml files are only added as defaults when the related classes are loaded (e.g.: HdfsConfiguration, YarnConfiguration, JobConf, etc.)  If we add job.xml as a default resource _before_ some of these classes are touched then some site files will override the job.xml files because they'll be loaded later.  We can probably get the ordering right for all the site files provided by core Hadoop, but I'm worried about downstream projects that may have their own site files (e.g.: hive-site.xml).  Client-side settings could be smashed by site settings if the ordering is not correct.  job.xml would need to be the last default resource added, and we may not be able to guarantee that with arbitrary downstream code.
 
-* It looks like this change:
-{noformat}
--    return result.toArray(new FileStatus[result.size()]);
-+    return result.toArray(new LocatedFileStatus[result.size()]);
-{noformat}
-Causes {{TestMapRed}} to fail. {{SequenceFileInputFormat}} (and, presumably, other supertypes of {{FileInputFormat}}) may rely on the type of the array returned from {{FileInputFormat}} to be {{FileStatus[]}}
-* I think the HDFS fault injection is breaking the publishing of that artifact, so the mapred tests currently do not recognize the change to the HDFS ClientProtocol and {{TestSubmitJob}} fails to compile. However, the patch is current with HDFS trunk and disabling the fault injection before running mvn-install, etc. works. Is this fault being tracked in HDFS?
-* The patch causes {{TestNoDefaultsJobConf}} to fail:
-{noformat}
-Testcase: testNoDefaults took 4.489 sec
-  Caused an ERROR
-No AbstractFileSystem for scheme: hdfs
-org.apache.hadoop.fs.UnsupportedFileSystemException: No AbstractFileSystem for scheme: hdfs
-  at org.apache.hadoop.fs.AbstractFileSystem.createFileSystem(AbstractFileSystem.java:143)
-  at org.apache.hadoop.fs.AbstractFileSystem.get(AbstractFileSystem.java:198)   
-  at org.apache.hadoop.fs.FileContext.getFileContext(FileContext.java:394)      
-  at org.apache.hadoop.fs.FileContext.getFileContext(FileContext.java:409)      
-  at org.apache.hadoop.mapred.FileInputFormat.listStatus(FileInputFormat.java:188)         
-  at org.apache.hadoop.mapred.FileInputFormat.getSplits(FileInputFormat.java:234)            
-  at org.apache.hadoop.mapreduce.JobSubmitter.writeOldSplits(JobSubmitter.java:461)        
-  at org.apache.hadoop.mapreduce.JobSubmitter.writeSplits(JobSubmitter.java:453)
-  at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:354)     
-  at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1037)                       
-  at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1034)                       
-  at java.security.AccessController.doPrivileged(Native Method)                 
-  at javax.security.auth.Subject.doAs(Subject.java:396)                         
-  at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1030)    
-  at org.apache.hadoop.mapreduce.Job.submit(Job.java:1034)
-  at org.apache.hadoop.mapred.JobClient.submitJob(JobClient.java:536)           
-  at org.apache.hadoop.mapred.JobClient.runJob(JobClient.java:781)              
-  at org.apache.hadoop.conf.TestNoDefaultsJobConf.testNoDefaults(TestNoDefaultsJobConf.java:83)       
-{noformat}
-* Unfortunately, {{FileInputFormat::addInputPathRecursively}} could be overridden by a user. This should either be marked as an incompatible change or the function should be deprecated, but its functionality preserved. It may also be worth confirming that no test relies on it.
-              </div></li><li><div>
-                Chris, thanks a lot for your review.
-
-This patch fixed comments 1 &amp; 3.
-
-For comment 4, I decided to keep addInputPathRecursively. So listStatus continues to use addInputPathRecursively instead of FileContext#listFiles. This is for maintaining the old semantics to allow recursive listing to have an option to be overridden. 
-              </div></li><li><div>
-                This patch fixed two failed unit tests: TestCombineFileInputFormat and TestHarFileSystem.
-
-For the first test, I found out that my patch made a subtle change to CombinFileInputFormat. The path filter in CombineFileInputFormat assumes that the path to the filter does not include the schema and hostname etc. This is different from other input formats where they do not have any assumption on Path format. My patch removes this restriction so I have to modify DummyFileInputFormat in TestCombineFileInputFormat not to have this assumption.
-
-For the second test, it turns out HarFileSystem does not have a correct implementation of listLocatedStatus. So this patch adds one.
-              </div></li><li><div>
-                Chirs, thanks for submitting this patch. But HDFS-1157 is still not resolved yet. My patch won't be able to compile. Let me cancel it and wait until HDFS-1157 is resolved.
-              </div></li><li><div>
-                Since MAPREDUCE-2022 is committed, this patch is up to the trunk.
-              </div></li><li><div>
-                Since Hudson does not work, I ran tests locally.
-
-Ant test-patch passed.
-
-Ant test showed failed tests:
-    [junit] Test org.apache.hadoop.mapred.TestMiniMRChildTask FAILED
-    [junit] Test org.apache.hadoop.mapred.TestMultiFileInputFormat FAILED (timeout)
-    [junit] Test org.apache.hadoop.mapred.TestTaskLauncher FAILED
-    [junit] Test org.apache.hadoop.mapred.TestTaskTrackerLocalization FAILED
-    [junit] Test org.apache.hadoop.mapreduce.filecache.TestTrackerDistributedCacheManager FAILED
-    [junit] Test org.apache.hadoop.mapreduce.lib.output.TestJobOutputCommitter FAILED
-
-I saw the last four failed on trunk. Anybody has an idea if TestMiniMRChildTask and TestMultiFileInputFormat also sometimes fail in trunk?
-              </div></li><li><div><div><b>body:</b> Applied patches from this issuse and HDFS-202 on Hadoop v0.19.1, an exception throwed when running nnbench
-
-Exception in thread "IPC Client (47) connection to nn151/192.168.201.151:9020 from zhoumin" java.lang.RuntimeException: java.lang.NoSuchMethodException: org.apache.hadoop.fs.LocatedFileStatus.&lt;init&gt;()
-        at org.apache.hadoop.util.ReflectionUtils.newInstance(ReflectionUtils.java:81)
-        at org.apache.hadoop.io.WritableFactories.newInstance(WritableFactories.java:53)
-        at org.apache.hadoop.io.ObjectWritable.readObject(ObjectWritable.java:236)
-        at org.apache.hadoop.io.ObjectWritable.readObject(ObjectWritable.java:171)
-        at org.apache.hadoop.io.ObjectWritable.readObject(ObjectWritable.java:219)
-        at org.apache.hadoop.io.ObjectWritable.readFields(ObjectWritable.java:66)
-        at org.apache.hadoop.ipc.Client$Connection.receiveResponse(Client.java:509)
-        at org.apache.hadoop.ipc.Client$Connection.run(Client.java:439)
-Caused by: java.lang.NoSuchMethodException: org.apache.hadoop.fs.LocatedFileStatus.&lt;init&gt;()
-        at java.lang.Class.getConstructor0(Class.java:2706)
-        at java.lang.Class.getDeclaredConstructor(Class.java:1985)
-        at org.apache.hadoop.util.ReflectionUtils.newInstance(ReflectionUtils.java:75)
-        ... 7 more
-
-LocatedFileStatus is a Writable, it should implement a constructor with no params.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Lines listed below will caused a NullPointerException because EMPTY_BLOCK_LOCS  will return null when calling blocks.getLocatedBlocks()
-{noformat}
-   /** a default LocatedBlocks object, its content should not be changed */
-   private final static LocatedBlocks EMPTY_BLOCK_LOCS = new LocatedBlocks();
-{noformat}
-here is an example of this exception
-{noformat}
-java.io.IOException: java.lang.NullPointerException
-        at org.apache.hadoop.hdfs.DFSUtil.locatedBlocks2Locations(DFSUtil.java:84)
-        at org.apache.hadoop.hdfs.server.namenode.FSDirectory.getListing(FSDirectory.java:731)
-        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem.getListing(FSNamesystem.java:2015)
-        at org.apache.hadoop.hdfs.server.namenode.NameNode.getLocatedListing(NameNode.java:494)
-        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)
-        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)
-        at java.lang.reflect.Method.invoke(Method.java:597)
-        at org.apache.hadoop.ipc.RPC$Server.call(RPC.java:481)
-        at org.apache.hadoop.ipc.Server$Handler.run(Server.java:894)
-{noformat}
-              </div></li><li><div>
-                Min, thanks for trying this patch.
-
-For the first bug, my patch does not transfer LocatedFileStatus over the wire. Did you modify my patch to use LocatedFileStatus instead?
-
-The second is truely a bug. I will get it fixed.
-
-BTW, I have a slightly different implementation of getListing for our internal branch, which can avoid type casting, and therefore provides better performance. I will share this with the community hopefully soon.
-              </div></li><li><div>
-                Created HDFS-1550 to fix the NPE bug.
-              </div></li><li><div>
-                @Hairong
-
-Thanks for your share, it greatly helps.  We currently use 0.19.1,  and our namenode will use LocatedFileStatus array over wire after applied your patch  rather than DirectoryListing object. So the first bug happened. 
-
-I have another idea for shorting client's getListing time by caching split files into DistributedCache.  We always scan the same Hive table(or HDFS directory) many times, it needn't call Namenode's getListing again and again if the directory doesn't  have any changes. My idea is getListing once, then cache the result splits,  the subsequent job submissions reuse this cache without any getListing calls. 
-
-              </div></li><li><div>
-                -1 overall.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12452643/mapredListFiles5.patch
-  against trunk revision 1074251.
-
-    +1 @author.  The patch does not contain any @author tags.
-
-    +1 tests included.  The patch appears to include 6 new or modified tests.
-
-    -1 patch.  The patch command could not apply the patch.
-
-Console output: https://hudson.apache.org/hudson/job/PreCommit-MAPREDUCE-Build/72//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                This looks like it would still be useful, but the patch has fallen out of date. Also, how's this related to MAPREDUCE-2349 (if at all)?
-              </div></li><li><div>
-                we hope this patch will check into trunk.
-              </div></li><li><div>
-                bq. This looks like it would still be useful, but the patch has fallen out of date.
-
-Agree this would be very useful.  [~hairong] are you planning to update this anytime soon, or would you mind if I push it across the finish line?
-
-bq. Also, how's this related to MAPREDUCE-2349 (if at all)?
-
-MAPREDUCE-2349 involves using threads to pipeline the RPC overhead between independent calls.  Neither requires the other, so I think it's best to keep them separate.  Implementing this JIRA may make MAPREDUCE-2349 unimportant for the common case of a small number of input directories leading to a large number of overall files that need to be located.  However that JIRA could still be useful for the case where the input is a large list.  Without some bulk API in the filesystem there's no getting around doing all the RPC calls, and the thread idea in that JIRA can improve the latency of processing all those calls.
-              </div></li><li><div><div><b>body:</b> Refreshed patch and added some unit tests.
+Unfortunately without using the default resource feature of Configuration, I don't know of a straightforward way to get classes using plain ol' Configuration instances to see values set in job.xml.  Any ideas here?  We can fix individual instances like hadoop.security.token.service.use_ip in case-specific ways (i.e.: calling the SecurityUtil.setTokenServiceUseIp method for this property), but not all cases will have a straightforward fix.  And we'd have to track them all down individually.
+              </div></li><li><div><div><b>body:</b> A quick patch to solely resolve the use_ip issue. We followed the pattern of UGI.setConfiguration to set configuration for SecurityUtil as well. This is my best-effort so far but I'm not very familiar with MR code base. So please do feel free to point out if there are more call sites needed. Also, to me adding an unit test in this case is non-trivial. Do we have any existing test infrastructure that can be helpful for this issue? Thanks! 
                 </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                Would like to get this into 0.23 as well, but it will need a separate patch.  Once we're happy with the trunk patch, I'll build the equivalent for branch-0.23.
+                Thanks for all the attention you guys have paid to this issue. My initial hack works well with MR job, however when I did a test on Spark job submitted remotely to yarn cluster, the hack did not work. i did not open another jira for spark job because i did not quite dig into the spark job settings to see who it was handled. Maybe you guys have more insight into the code and can figure out how to solve this problem for all YARN managed applications. 
+
               </div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12592473/MAPREDUCE-1981.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 2 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-core.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/3854//testReport/
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/3854//console
-
-This message is automatically generated.
+                bq. Maybe you guys have more insight into the code and can figure out how to solve this problem for all YARN managed applications.
+I believe so far we've only seen this problems occurred on MR apps with specific ways of distributions (tarballs through distributed cache). No? 
               </div></li><li><div>
-                +1 The patch looks good. I also ran some tests and they worked successfully. Thanks for fixing both mapred and mapreduce. 
-              </div></li><li><div>
-                Thanks for the review, Kihwal.  Here's the equivalent patch for branch-0.23.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12593773/MAPREDUCE-1981.branch-0.23.patch
-  against trunk revision .
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 13s {color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 7m 15s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 25s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 17s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 0m 32s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 16s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 0m 38s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 16s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 22s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 22s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 22s {color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} checkstyle {color} | {color:red} 0m 15s {color} | {color:red} hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app: The patch generated 1 new + 90 unchanged - 1 fixed = 91 total (was 91) {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 0m 27s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 13s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 0m 43s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 14s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 8m 56s {color} | {color:green} hadoop-mapreduce-client-app in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 17s {color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 22m 20s {color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker |  Image:yetus/hadoop:a9ad5d6 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12840334/MAPREDUCE-6565-trunk.001.patch |
+| JIRA Issue | MAPREDUCE-6565 |
+| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
+| uname | Linux 4ebd81471565 3.13.0-95-generic #142-Ubuntu SMP Fri Aug 12 17:00:09 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
+| git revision | trunk / 0de0c32 |
+| Default Java | 1.8.0_111 |
+| findbugs | v3.0.0 |
+| checkstyle | https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/6820/artifact/patchprocess/diff-checkstyle-hadoop-mapreduce-project_hadoop-mapreduce-client_hadoop-mapreduce-client-app.txt |
+|  Test Results | https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/6820/testReport/ |
+| modules | C: hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app U: hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app |
+| Console output | https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/6820/console |
+| Powered by | Apache Yetus 0.3.0   http://yetus.apache.org |
 
-    {color:red}-1 patch{color}.  The patch command could not apply the patch.
 
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/3885//console
+This message was automatically generated.
 
-This message is automatically generated.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12593773/MAPREDUCE-1981.branch-0.23.patch
-  against trunk revision .
 
-    {color:red}-1 patch{color}.  The patch command could not apply the patch.
+              </div></li><li><div>
+                this.happens across board ....as long as job is submitted remotely
 
-Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/3893//console
+              </div></li><li><div>
+                That's not exactly the same issue as we observed here. Can you try latest trunk to verify this issue? I would not be surprised if problems occur on all YARN apps after a fix in YarnClient, but I believe the issue discussed here is solely about MR. 
+              </div></li><li><div>
+                Patch looks good to me, +1.  It will address the specific issue for MapReduce.  Other frameworks, such as Spark, will need to make similar modifications.
+              </div></li><li><div>
+                Patch LGTM too.
+              </div></li><li><div>
+                SUCCESS: Integrated in Jenkins build Hadoop-trunk-Commit #10910 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/10910/])
+MAPREDUCE-6565. Configuration to use host name in delegation token (junping_du: rev 8f6e14399a3e77e1bdcc5034f7601e9f62163dea)
+* (edit) hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapreduce/v2/app/MRAppMaster.java
+* (edit) hadoop-mapreduce-project/hadoop-mapreduce-client/hadoop-mapreduce-client-app/src/main/java/org/apache/hadoop/mapred/YarnChild.java
 
-This message is automatically generated.
               </div></li><li><div>
-                +1 The patch for branch-0.23 looks good too.
+                I have commit the patch to trunk, branch-2 and branch-2.8. Thanks [~gtCarrera9] for contributing the patch and [~jlowe] for review! Also, thanks [~cnauroth] for reporting the issue and others for comments.
               </div></li><li><div>
-                Thanks for the reviews, Kihwal.  Committing this.
+                [~junping_du], this seems to have broken the 2.8 build. Can you revert it from 2.8 until we can fix the patch?
               </div></li><li><div>
-                Thanks Hairong, and thanks to everyone that contributed to reviews of various versions of the patch.  I committed this to trunk, branch-2, and branch-0.23.
+                Yes we need HADOOP-12954 prior to the fix here. Shall we back port that issue as well? 
               </div></li><li><div>
-                I merged this into branch-2.1-beta as well.
+                My bad... I forgot branch-2 and branch-2.8 has big gap already and I only compile on branch-2... Let me revert it from 2.8 first and I will check HADOOP-12954 if it need backport to branch-2.8.
               </div></li></ol></div></div></html>

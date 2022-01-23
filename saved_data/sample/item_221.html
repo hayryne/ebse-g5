@@ -2,689 +2,151 @@
         Item 221
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
                 *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>message:</b> ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind issue.
+     * Getter of preAllocSize has been added for testing
+     
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-3027: Accidently removed public API of FileTxnLog.setPreallocSize()
+                </div><div><b>message:</b> ZOOKEEPER-3027: Accidently removed public API of FileTxnLog.setPreallocSize()
 
-Fixes the Java 11 build issue.
+In my latest commit regarding TxnLogToolkit there's a refactor to outsource file padding logic from FileTxnLog to a separate class:
 
-**Issue**
+https://github.com/apache/zookeeper/commit/126fb0f22d701cad58bf3123bf7d8f2219e60387#diff-89717124564925d61d29dd817bcdd915L147
 
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+Unfortunately public static method setPreallocSize(int) has also been moved to the new class, but it's being actively used by hadoop-common project too:
 
-**Reason**
+https://github.com/apache/hadoop/blob/trunk/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/ha/ClientBaseWithFixes.java#L384
 
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+I'd like to submit a patch to revert the deleted method which is going to call the new one, but will keep backward compatibility with Hadoop.
 
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+Author: Andor Molnar &lt;andor@cloudera.com&gt;
 
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+Reviewers: phunt@apache.org
 
-**Resolution**
+Closes #509 from anmolnar/ZOOKEEPER-3027
 
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+Change-Id: I7333b5e24c2a78d10a5c5a74c181633050bd225d
+(cherry picked from commit 5c96887643b2465caabbfd4763c7ebb3cd1aa024)
+Signed-off-by: Patrick Hunt &lt;phunt@apache.org&gt;
 
-Author: Andor Molnar &lt;andor@apache.org&gt;
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ZOOKEEPER-3027 Accidently removed public API of FileTxnLog.setPreallocSize()
+                </div><div><b>body:</b> In my latest commit regarding TxnLogToolkit there's a refactor to outsource file padding logic from FileTxnLog to a separate class:
 
-Reviewers: hanm@apache.org
+https://github.com/apache/zookeeper/commit/126fb0f22d701cad58bf3123bf7d8f2219e60387#diff-89717124564925d61d29dd817bcdd915L147
 
-Closes #700 from anmolnar/ZOOKEEPER-1441
+Unfortunately public static method setPreallocSize(int) has also been moved to the new class, but it's being actively used by hadoop-common project too:
 
-(cherry picked from commit c3babb94275ad667dc71c10dcb08a383a3c154c2)
-Signed-off-by: Andor Molnar &lt;andor@apache.org&gt;
+https://github.com/apache/hadoop/blob/trunk/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/ha/ClientBaseWithFixes.java#L384
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+I'd like to submit a patch to revert the deleted method which is going to call the new one, but will keep backward compatibility with Hadoop.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
-                </div><div><b>body:</b> Fixes the Java 11 build issue.
-
-**Issue**
-
-`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
-
-**Reason**
-
-`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
-
-This wasn't the issue before Java 11 and probably caused by:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-
-Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
-
-**Resolution**
-
-I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                @hanm @lvfangmin @phunt 
-Please review this, looks like a quite easy win to get Java11 builds green. Thanks!
+                +1, good catch. I committed this to all three active branches - please take a look at 3.4 branch commit as I did need to resolve a conflict. (seemed minor and tests are passing)
               </div></li><li><div>
-                @eolivelli @hanm Now, an entirely different approach. Solving 2 issues at the same time:
-1) Close selector in shutdown() when Accept and Select threads haven't been started yet. This will keep the original behaviour of eagerly registering the selector in the constructor and addresses your concerns.
-2) Turned out that we have a similar issue with Reconfig: `ReconfigTest.testPortChangeToBlockedPort` failed, becuase it expects the original port to be released even if the new port cannot be bound. Sounds like a reasonable expectation and the exception handler in the `reconfigure()` method confirms this. Hence I fixed the code, not the test.
-              </div></li><li><div>
-                &gt;&gt; This will keep the original behaviour of eagerly registering the selector in the constructor and addresses your concerns.
+                @phunt all commits lgtm +1
+thanks.
 
-LGTM, thanks for doing this!
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Accidently removed public API of FileTxnLog.setPreallocSize()
+                </div><div><b>description:</b> In my latest commit regarding TxnLogToolkit there's a refactor to outsource file padding logic from FileTxnLog to a separate class:
 
-&gt;&gt; ReconfigTest.testPortChangeToBlockedPort failed, becuase it expects the original port to be released even if the new port cannot be bound. 
+[https://github.com/apache/zookeeper/commit/126fb0f22d701cad58bf3123bf7d8f2219e60387#diff-89717124564925d61d29dd817bcdd915]
 
-The proposed change looks reasonable. Though I am wondering why the current logic would fail this test: if new port fails to bind, the old port will be closed as part of `tryClose(oldSS);` in the `catch` block. Mind to elaborate a little bit regarding which cases the current code fails to close the old socket?
+Unfortunately public static method setPreallocSize(int) has also been moved to the new class, but it's being actively used by hadoop-common project too:
 
+[https://github.com/apache/hadoop/blob/trunk/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/ha/ClientBaseWithFixes.java#L384]
 
-
-              </div></li><li><div>
-                @hanm The issue with Java 11 builds is the refactoring that was made in NIO from Java 11: 
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
-The key part is:
-&gt; Closing a connected SocketChannel that is registered with a Selector will now consistently delay closing the underlying connection until the closed channel is flushed from all selectors that it is registered with. 
-
-In other words, we have to close all registered Selectors to properly close the socket. Therefore `tryClose(oldSS)` on its own is not enough.
-              </div></li><li><div>
-                @anmolnar So if I understand this correctly, this test `ReconfigTest.testPortChangeToBlockedPort` will consistently failing under Java 11, because `this.ss = ServerSocketChannel.open();` will prevent the socket close in first `tryClose(oldSS)`, which is why you moved the code block of `this.ss = ServerSocketChannel.open();` after `tryClose(oldSS)`, right? 
-
-              </div></li><li><div>
-                retest this please
-              </div></li><li><div>
-                @hanm Not exactly.
-The test case is about reconfig the server to a port which is unavailable (blocked). Steps:
-1) Bind the server to "oldClientPort"
-2) Bind "newClientPort" with custom socket
-3) Reconfig the server to bind "newClientPort" - fails
-4) Check if "oldClientPort" has become available
-...
-
-Step 4) fails, because of the aforementioned reason: reconfig fails to bind the port, throws exception, but exception handler doesn't close the selector, only the socket.
-I do things in swapped order: close the thread and socket first, then try to bind the new port.
-              </div></li><li><div>
-                retest this please
-              </div></li><li><div>
-                @anmolnar  gotcha. +1, will commit this when i have a chance.
-              </div></li><li><div>
-                Being the bad guy again: committed my own patch to master and 3.5 branches. Thanks @hanm and @eolivelli !
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Should we abort the server?
-              </div></li><li><div><div><b>body:</b> Now this variable is nullable.
-Shouldn't we add some null check at every access?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Makes sense. Any suggestion how to make it properly?
-              </div></li><li><div>
-                You're right. However the only access in this class is called from the `select()` method which is called only when the registration was successful, so I think we're fine.
-              </div></li><li><div><div><b>body:</b> @anmolnar sorry for late reply.
-I think it will be tricky. I will spend some time and try to find a suggestion
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Sorry for delay. I did not have time to find a good solution, I don't want to block this change
-              </div></li><li><div>
-                If we are binding a port that's already in use here then I think we'll have a problem because the expectation here is the acceptor thread will always be available unless explicitly being shut down by caller (for this reason we caught but ignored all checked and unchecked exception.). The problem is the control flow does not reach higher level from within this acceptor thread - thus if we have an instantiated but stopped `NIOServerCnxnFactory` due to acceptor thread exceptions, the entire zk process could end up in a weird state. Previous code does not have this issue because it tries to bind port early and complain if it can't such that caller would catch the issue earlier before the acceptor threads started. This should be easily testable if we spin up a ZK server with an unavailable port with this fix and see what happens.
-              </div></li><li><div>
-                I am also curious why 3.4 does not have this test issue. Technically 3.4 works similar with master and 3.5 w.r.t. the selector registration - both register selector before the server factory is 'started' (though in 3.5 and trunk, we made `NIOServerCnxn` multi-threaded`).
-              </div></li><li><div>
-                3.4 doesn't have this issue, because the selector is explicitly closed in the shutdown method. In 3.5 and master only the owning thread (accept) is able to close it, but it won't, if it doesn't even started.
-
-I'll do the test that you suggested, however I'm not sure how port binding is related to selector registration. 
-              </div></li><li><div>
-                ```
-2018-11-20 15:12:15,758 [myid:] - INFO  [main:NIOServerCnxnFactory@685] - binding to port 0.0.0.0/0.0.0.0:2181
-2018-11-20 15:12:15,760 [myid:] - ERROR [main:ZooKeeperServerMain@87] - Unexpected exception, exiting abnormally
-java.net.BindException: Address already in use
-	at sun.nio.ch.Net.bind0(Native Method)
-	at sun.nio.ch.Net.bind(Net.java:433)
-	at sun.nio.ch.Net.bind(Net.java:425)
-	at sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:223)
-	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:74)
-	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:67)
-	at org.apache.zookeeper.server.NIOServerCnxnFactory.configure(NIOServerCnxnFactory.java:686)
-	at org.apache.zookeeper.server.ZooKeeperServerMain.runFromConfig(ZooKeeperServerMain.java:157)
-	at org.apache.zookeeper.server.ZooKeeperServerMain.initializeAndRun(ZooKeeperServerMain.java:110)
-	at org.apache.zookeeper.server.ZooKeeperServerMain.main(ZooKeeperServerMain.java:68)
-	at org.apache.zookeeper.server.quorum.QuorumPeerMain.initializeAndRun(QuorumPeerMain.java:133)
-	at org.apache.zookeeper.server.quorum.QuorumPeerMain.main(QuorumPeerMain.java:87)
-```
-              </div></li><li><div>
-                Yeah, please ignore the port binding part of my statement previously. I was actually referring to port selection. Before this fix, we have selector registration in constructor of `AcceptorThread`:
-`this.acceptKey =
-                acceptSocket.register(selector, SelectionKey.OP_ACCEPT);`
-If we get an exception here, we will bail out and zk server will not start.
-
-If we selector registration inside AcceptorThread and got an exception, then the acceptor thread will shutdown, but the caller will not be aware of this so the zk server could be in a weird state. That's my only concern of this patch. Does this sound a reasonable concern?
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Some test cases are failing because Port bind issue.
-                </div><div><b>description:</b> very frequently testcases are failing because of :
-
-java.net.BindException: Address already in use
-	at sun.nio.ch.Net.bind(Native Method)
-	at sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:126)
-	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:59)
-	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:52)
-	at org.apache.zookeeper.server.NIOServerCnxnFactory.configure(NIOServerCnxnFactory.java:111)
-	at org.apache.zookeeper.server.ServerCnxnFactory.createFactory(ServerCnxnFactory.java:112)
-	at org.apache.zookeeper.server.quorum.QuorumPeer.&lt;init&gt;(QuorumPeer.java:514)
-	at org.apache.zookeeper.test.QuorumBase.startServers(QuorumBase.java:156)
-	at org.apache.zookeeper.test.QuorumBase.setUp(QuorumBase.java:103)
-	at org.apache.zookeeper.test.QuorumBase.setUp(QuorumBase.java:67)
-
-may be because of Port Assignment so please give me some suggestions if someone is also facing same problem.
+I'd like to submit a patch to revert the deleted method which is going to call the new one, but will keep backward compatibility with Hadoop.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                We don't see this very often, typically if one of the tests fails it may not cleanup, then the subsequent tests (using the same jvm) will see this. I've also seen this in Jenkins environment where multiple slots are being used on a host (and either ZK itself or some other component which uses zk is being tested simultaneously)
-              </div></li><li><div>
-                Looks like this is showing up again repeatedly with Java11 when multiple test threads are used:
+                GitHub user anmolnar opened a pull request:
 
-https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/
+    https://github.com/apache/zookeeper/pull/509
 
-Jenkins job has:
-&gt; test.junit.threads=4
+    ZOOKEEPER-3027 Accidently removed public API of FileTxnLog.setPreallocSize()
 
-              </div></li><li><div><div><b>body:</b> PortAssignment itself could also be more flaky under Java 11 because it can't guarantee atomicity between the time of allocation of a port and the time of actually binding the port inside a ZK server. I remember [~lvfangmin] mentioned that in FB they improved PortAssignment by using random ports rather than sequential port, which might help here. Alternatively we could also let ZK server to atomically allocate and bind a port inside it and then return the binded port number to caller, for testing purpose, rather than having to pass a port in, which will fix the root cause of the issue.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div>
-                "it can't guarantee atomicity between the time of allocation of a port and the time of actually binding the port inside a ZK server"
+    In my latest commit regarding TxnLogToolkit there's a refactor to outsource file padding logic from FileTxnLog to a separate class:
+    
+    https://github.com/apache/zookeeper/commit/126fb0f22d701cad58bf3123bf7d8f2219e60387#diff-89717124564925d61d29dd817bcdd915
+    
+    Unfortunately public static method setPreallocSize(int) has also been moved to the new class, but it's being actively used by hadoop-common project too:
+    
+    https://github.com/apache/hadoop/blob/trunk/hadoop-common-project/hadoop-common/src/test/java/org/apache/hadoop/ha/ClientBaseWithFixes.java#L384
+    
+    I'd like to submit a patch to revert the deleted method which is going to call the new one, but will keep backward compatibility with Hadoop.
 
-How is that possible? If all tests are using PortAssigment (which I believe is the case), they should get different numbers, because PortAssigment maintains that. I never actually got why PortAssigment tries to bind the port before returns, because technically other test should not get the same number. Though there could be other processes running on the same server which binds that port, so it does make sense actually.
-              </div></li><li><div><div><b>body:</b> PortAssignment itself is fine and if everyone is using it, they should not get conflicts because PortAssignment is the single source of truth of port allocation. However, the problem here is not every processes running on test machine using PortAssignment, despite most, if not all of ZK unit tests do use it. So if there are heavy workloads running on the test machine while ZK unit tests were running, potential port conflicts would occur.
+You can merge this pull request into a Git repository by running:
 
-&gt;&gt; I never actually got why PortAssigment tries to bind the port before returns
+    $ git pull https://github.com/anmolnar/zookeeper ZOOKEEPER-3027
 
-What PortAssignment implemented is a "reserve and release" pattern for port allocation, and this is better than "choose a port but not reserver" approach, because it is very unlikely the OS, regardless of how it allocates actual ports to the processes, will yield two consecutive port for two socket bind calls. Thus, by creating the socket via bind, and the immediately close it, we buy us sometime during which OS will not reuse this same socket for a successive socket call. This time however varies, thus there could be race conditions that by the time we actually going to bind this port again, it's already grabbed by another process. For ZK server, it requires an unbinded port number pass to it (otherwise it can't bind the port), but due to the same race condition it's possible when the server tries to bind, the port was taken already. The only way to guarantee atomicity in this case is to have ZK server asking a port from OS and bind immediately.
+Alternatively you can review and apply these changes as the patch at:
 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I see in the most recent failures:
-https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/155/testReport/junit/org.apache.zookeeper.test/FollowerResyncConcurrencyTest/testResyncByDiffAfterFollowerCrashes/
+    https://github.com/apache/zookeeper/pull/509.patch
 
-The following sequence (extracted from the larger log):
-{noformat}
-2018-11-09 23:33:57,175 [myid:] - INFO  [main:PortAssignment@85] - Assigned port 27380 from range 27379 - 32764.
-2018-11-09 23:33:57,221 [myid:] - INFO  [main:QuorumUtil@116] - Creating QuorumPeer 1; public port 27380
-2018-11-09 23:33:57,287 [myid:] - INFO  [main:NIOServerCnxnFactory@683] - binding to port /127.0.0.1:27380
-... some successful work....
-2018-11-09 23:33:57,339 [myid:] - INFO  [main:QuorumUtil@250] - Shutting down quorum peer QuorumPeer
-2018-11-09 23:33:57,343 [myid:] - INFO  [main:QuorumUtil@259] - Waiting for QuorumPeer to exit thread
-...
-2018-11-09 23:34:12,366 [myid:] - INFO  [main:QuorumUtil@203] - Creating QuorumPeer 1; public port 27380
-2018-11-09 23:34:12,366 [myid:] - INFO  [main:ServerCnxnFactory@161] - Using org.apache.zookeeper.server.NIOServerCnxnFactory as server connection factory
-2018-11-09 23:34:12,367 [myid:] - INFO  [main:NIOServerCnxnFactory@670] - Configuring NIO connection handler with 10s sessionless connection timeout, 2 selector thread(s), 32 worker threads, and 64 kB direct buffers.
-2018-11-09 23:34:12,368 [myid:] - INFO  [main:NIOServerCnxnFactory@683] - binding to port /127.0.0.1:27380
-2018-11-09 23:34:12,369 [myid:] - INFO  [main:JUnit4ZKTestRunner$LoggedInvokeMethod@98] - TEST METHOD FAILED testResyncByTxnlogThenDiffAfterFollowerCrashes
-java.net.BindException: Address already in use
-{noformat}
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
 
-I updated that job to not use parallel test threads and the issue still happens:
-https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/156/testReport/junit/org.apache.zookeeper.server/ZxidRolloverTest/testRolloverThenLeaderRestart/
-so it's not related to "test.junit.threads=1"
+    This closes #509
+    
+----
+commit 871480dff9b4b106a2a7bdfc6ab720436a6a5042
+Author: Andor Molnar &lt;andor@...&gt;
+Date:   2018-04-27T14:51:40Z
 
-It seems like it may be a real issue with some change in java11 semantics around sockets? 
+    ZOOKEEPER-3027. Added back FileTxnLog.setPreallocSize() + unit test
 
-Has anything else been updated that could be related? java10 with the same code seems fine.
+----
 
               </div></li><li><div>
-                It looks like that tests which use QuorumUtil to create quorum are failing, so my guess is that it's not related to PortAssigment.
-QuorumUtil works as follows:
-1) Creates QuorumPeer objects and starts them (bind port)
-2) Calls startAll() -&gt; call shutdownAll() -&gt; calls shutdown() on each QP -&gt; creates new QPs -&gt; starts each QP (bind port)
+                +1 overall.  GitHub Pull Request  Build
+      
 
-Bind fails at NIOServerCnxnFactory:684 - ss.socket().bind(...)
-NIOServerCnxnFactory shutdown() method might not close the socket properly by calling ss.close() at line 875.
+    +1 @author.  The patch does not contain any @author tags.
 
-That worked with previous Java versions.
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 3.0.1) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1645//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1645//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1645//console
+
+This message is automatically generated.
               </div></li><li><div>
-                Sounds to be related:
-https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/zookeeper/pull/509
 
               </div></li><li><div>
-                I might have found the issue:
-
-QuorumUtil creates QuorumPeers in its constructor, but doesn't actually start them resulting it creates NIOServerCnxnFactory, but doesn't start its threads. It could be a bug in the factory that in the constructor of Accept/Select threads it opens and registers selectors on the socket, but if the thread is not running, closeSelector() method will not be called.
-
-This is exactly what QuorumUtil is doing in tests: creates QuorumPeers without starting them and in startAll() (which is always the call after the constructor) shuts down them all and create new ones and starting them. In Java 11 we have to properly close (unregister) selectors in order to properly close the socket.
-
-I'm working on a patch to fix this.
+                Issue resolved by pull request 509
+[https://github.com/apache/zookeeper/pull/509]
               </div></li><li><div>
-                Issue resolved by pull request 700
-[https://github.com/apache/zookeeper/pull/700]
-              </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build Zookeeper-trunk-single-thread #119 (See [https://builds.apache.org/job/Zookeeper-trunk-single-thread/119/])
-ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind (andor: rev c3babb94275ad667dc71c10dcb08a383a3c154c2)
-* (add) zookeeper-server/src/test/java/org/apache/zookeeper/server/NIOServerCnxnFactoryTest.java
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/NIOServerCnxnFactory.java
+                Github user phunt commented on the issue:
+
+    https://github.com/apache/zookeeper/pull/509
+  
+    +1, good catch. I committed this to all three active branches - please take a look at 3.4 branch commit as I did need to resolve a conflict. (seemed minor and tests are passing)
 
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build ZooKeeper-trunk #280 (See [https://builds.apache.org/job/ZooKeeper-trunk/280/])
-ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind (andor: rev c3babb94275ad667dc71c10dcb08a383a3c154c2)
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/NIOServerCnxnFactory.java
-* (add) zookeeper-server/src/test/java/org/apache/zookeeper/server/NIOServerCnxnFactoryTest.java
+                FAILURE: Integrated in Jenkins build ZooKeeper-trunk #2 (See [https://builds.apache.org/job/ZooKeeper-trunk/2/])
+ZOOKEEPER-3027: Accidently removed public API of (phunt: rev 5c96887643b2465caabbfd4763c7ebb3cd1aa024)
+* (edit) src/java/main/org/apache/zookeeper/server/persistence/FileTxnLog.java
+* (edit) src/java/test/org/apache/zookeeper/server/persistence/FileTxnLogTest.java
+* (edit) src/java/main/org/apache/zookeeper/server/persistence/FilePadding.java
+
+              </div></li><li><div>
+                Github user anmolnar commented on the issue:
+
+    https://github.com/apache/zookeeper/pull/509
+  
+    @phunt all commits lgtm +1
+    thanks.
+
 
               </div></li></ol></div></div></html>
