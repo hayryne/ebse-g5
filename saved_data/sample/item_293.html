@@ -1,145 +1,1676 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 293
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                !
- * \brief Seed the global random number generator of the given device.
- * \param seed the random number seed.
- * \return 0 when success, -1 when failure happens.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> AVRO-1821 ADDENDUM: Fix checkstyle violations.
+                </div><div><b>message:</b> AVRO-1821 ADDENDUM: Fix checkstyle violations.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
  
-              </div></li><li><div>
-                !
- * \brief Seed the random number generator of the device.
- * \param seed the seed to set to global random number generators.
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
  
-              </div></li><li><div>
-                !
-   * \brief Seed the random number generators of the given context.
-   * \param seed the seed to the random number generators.
-   
-              </div></li><li><div>
-                 set seed to a sampler using global_seed and device id
-              </div></li><li><div>
-                 reset pointer to ensure the same result with the same seed.
-              </div></li><li><div>
-                 set seed to a sampler
-              </div></li><li><div>
-                 set seed to a PRNG using global_seed and device id
-              </div></li><li><div>
-                 Tests that seed setting of parallel rng for specific context is synchronous w.r.t. rng use before and after.
-              </div></li><li><div>
-                 Avoid excessive test cpu runtimes.
-              </div></li><li><div>
-                 Create enough samples such that we get a meaningful distribution.
-              </div></li><li><div>
-                 The samples should be identical across different gpu devices.
-              </div></li><li><div>
-                 To flush out a possible race condition, run multiple times.
-              </div></li><li><div>
-                 Currently python API does not provide a method to get the number of gpu devices.
- Waiting for PR #10354, which provides the method, to be merged.
- As a temporal workaround, try first and catch the exception caused by the absence of the device with `dev_id`.
-              </div></li><li><div>
-                 Check imperative. `multinomial` uses non-parallel rng.
-              </div></li><li><div>
-                 Check symbolic. `uniform` uses parallel rng.
-              </div></li><li><div>
-                 Collect random number samples from the generators of all devices, each seeded with the same number.
-              </div></li><li><div>
-                 Tests that seed setting of std (non-parallel) rng for specific context is synchronous w.r.t. rng use before and after.
-              </div></li><li><div>
-                 Check symbolic. `multinomial` uses non-parallel rng.
-              </div></li><li><div>
-                 Set seed for the context variously based on `start_seed` and `num_init_seeds`, then set seed finally to `final_seed`
-              </div></li><li><div>
-                 Check imperative. `uniform` uses parallel rng.
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context (#10367)
-                </div><div><b>message:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context (#10367)
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
 
-* Implement mx.random.seed_context
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
 
-`mx.random.seed_context` is to seed the random number generator of a specific device context.
-The random number sequence on the deivce is completly determined by the given seed and is independent of the device id.
-This is in contrast to `mx.random.seed` which seeds all generators using the device id implicitly.
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
 
-* Fix lint
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
 
-* Adding ctx argument to random.seed instead of new function random.seed_context
+import org.apache.avro.Schema;
+import org.junit.Test;
 
-* Doc fix
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [MXNET-262] Implement mx.random.seed_context to seed random number generators of a specific device context
-                </div><div><b>body:</b> This PR is modified to add an optional argument `ctx` to `mx.random.seed` instead of introducing a new function `seed_context`. Seeding with `ctx` option produces random number sequence independent of device id. The below is the original description before the modification.
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
 
----
+public class TestReflectData {
 
-## Description ##
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
 
-This PR introduces a function `mx.random.seed_context` to seed random number generators of a specific device context. `mx.random.seed_context(seed, ctx)` seeds the parallel and non-parallel generators of `ctx` where `ctx` is optional and the default is the current context. The random number sequence generated on the device is completely determined by `seed`, differently from existing `mx.random.seed` which implicitly uses the device id of each context together with the given seed. Using device id is reasonable to seed all generators at once with a given seed, but to reproduce the same random number sequence we need to set the running context besides seeding with the same number. Sometimes setting a context would be inconvenient or the running context could be not deterministic. `mx.random.seed_context` would be helpful in such cases. 
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
 
-The implementation is simple. It just hands over the given seed to the underlying generators. The unit tests are an adaptation of the existing tests for `mx.random.seed`.
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
 
-Here is an example.
-```python
-# Seeding with `mx.random.seed`. Different results on gpu(0) and gpu(1).
-&gt;&gt;&gt; with mx.Context(mx.gpu(0)):
-...     mx.random.seed(99)
-...     print(mx.nd.random.uniform(0, 1, 3))
-[0.29560053 0.07938761 0.29997164]
-&lt;NDArray 3 @gpu(0)&gt;
-&gt;&gt;&gt; with mx.Context(mx.gpu(1)):
-...     mx.random.seed(99)
-...     print(mx.nd.random.uniform(0, 1, 3))
-[0.8797334 0.8857584 0.3797555]
-&lt;NDArray 3 @gpu(1)&gt;
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
 
-# Seeding with `mx.random.seed_context`. Identical results on gpu(0) and gpu(1).
-# This seeds the generator of the current context. Other generators are not touched.
-# To seed a specific device context, set the optional argument `ctx`.
-&gt;&gt;&gt; with mx.Context(mx.gpu(0)):
-...     mx.random.seed_context(99)
-...     print(mx.nd.random.uniform(0, 1, 3))
-[0.29560053 0.07938761 0.29997164]
-&lt;NDArray 3 @gpu(0)&gt;
-&gt;&gt;&gt; with mx.Context(mx.gpu(1)):
-...     mx.random.seed_context(99)
-...     print(mx.nd.random.uniform(0, 1, 3))
-[0.29560053 0.07938761 0.29997164]
-&lt;NDArray 3 @gpu(1)&gt;
-```
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
 
-## Checklist ##
-### Essentials ###
-Please feel free to remove inapplicable items for your PR.
-- [x] The PR title starts with [MXNET-$JIRA_ID], where $JIRA_ID refers to the relevant [JIRA issue](https://issues.apache.org/jira/projects/MXNET/issues) created (except PRs with tiny changes)
-- [x] Changes are complete (i.e. I finished coding on this PR)
-- [x] All changes have test coverage:
-- Unit tests are added for small changes to verify correctness (e.g. adding a new operator)
-- Nightly tests are added for complicated/long-running ones (e.g. changing distributed kvstore)
-- Build tests will be added for build configuration changes (e.g. adding a new build option with NCCL)
-- [x] Code is well-documented: 
-- For user-facing API changes, API doc string has been updated. 
-- For new C++ functions in header files, their functionalities and arguments are documented. 
-- For new examples, README.md is added to explain the what the example does, the source of the dataset, expected performance on test set and reference to the original paper if applicable
-- Check the API doc at http://mxnet-ci-doc.s3-accelerate.dualstack.amazonaws.com/PR-$PR_ID/$BUILD_ID/index.html
-- [x] To the my best knowledge, examples are either not affected by this change, or have been fixed to be compatible with this change
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
 
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                I would add a `ctx=None` argument to seed instead
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Avro (Java) Memory Leak in ReflectData Caching
+                </div><div><b>description:</b> I think I have encountered one of the memory leaks described by AVRO-1283 in the way Java Avro implements field accessor caching in {{ReflectData}}. When a reflected object is serialized, the key of {{ClassAccessorData.bySchema}} (as retained by {{ReflectData.ACCESSOR_CACHE}}) retains a strong reference to the schema that was used to serialize the object, but there exists no code path for clearing these references after a schema will no longer be used.
+
+While in most cases, a class will probably only have one schema associated with it (created and cached by {{ReflectData.getSchema(Type)}}), I experienced {{OutOfMemoryError}} when serializing generic classes with dynamically-generated schemas. The following is a minimal example which will exhaust a 50MiB heap ({{-Xmx50m}}) after about 190K iterations:
+
+{code:title=AvroMemoryLeakMinimal.java|borderStyle=solid}
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.Collections;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.reflect.ReflectDatumWriter;
+
+public class AvroMemoryLeakMinimal {
+
+    public static void main(String[] args) throws IOException {
+        long count = 0;
+        EncoderFactory encFactory = EncoderFactory.get();
+        try {
+            while (true) {
+                // Create schema
+                Schema schema = Schema.createRecord("schema", null, null, false);
+                schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+                // serialize
+                ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
+                BinaryEncoder encoder = encFactory.binaryEncoder(baos, null);
+                (new ReflectDatumWriter&lt;Object&gt;(schema)).write(new Object(), encoder);
+                byte[] result = baos.toByteArray();
+
+                count++;
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("Memory exhausted after ");
+            System.out.print(count);
+            System.out.println(" schemas");
+            throw e;
+        }
+    }
+}
+{code}
+
+I was able to fix the bug in the latest 1.9.0-SNAPSHOT from git with the following patch to {{ClassAccessorData.bySchema}} to use weak keys so that it properly released the {{Schema}} objects if no other threads are still referencing them:
+
+{code:title=ReflectData.java.patch|borderStyle=solid}
+--- a/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
++++ b/lang/java/avro/src/main/java/org/apache/avro/reflect/ReflectData.java
+@@ -57,6 +57,7 @@ import org.apache.avro.io.DatumWriter;
+ import org.apache.avro.specific.FixedSize;
+ import org.apache.avro.specific.SpecificData;
+ import org.apache.avro.SchemaNormalization;
++import org.apache.avro.util.WeakIdentityHashMap;
+ import org.codehaus.jackson.JsonNode;
+ import org.codehaus.jackson.node.NullNode;
+ 
+@@ -234,8 +235,8 @@ public class ReflectData extends SpecificData {
+     private final Class&lt;?&gt; clazz;
+     private final Map&lt;String, FieldAccessor&gt; byName =
+         new HashMap&lt;String, FieldAccessor&gt;();
+-    private final IdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
+-        new IdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
++    private final WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt; bySchema =
++        new WeakIdentityHashMap&lt;Schema, FieldAccessor[]&gt;();
+         
+     private ClassAccessorData(Class&lt;?&gt; c) {
+       clazz = c;
+{code}
+
+Additionally, I'm not sure why an {{IdentityHashMap}} was used instead of a standard {{HashMap}}, since two equivalent schemas have the same set of {{FieldAccessor}}. Everything appears to work and all tests pass if I use a {{WeakHashMap}} instead of an {{WeakIdentityHashMap}}, but I don't know if there was some other reason object identity was important for this map. If a non-identity map can be used, this will help reduce memory/CPU usage further by not regenerating all the field accessors for equivalent schemas.
+
+The following unit test appears to reliably catch this bug, but is non-deterministic due to the nature of garbage collection (and I'm not sure there's a way around that):
+
+{code:title=TestReflectData.java|borderStyle=solid}
+package org.apache.avro.reflect;
+
+import org.apache.avro.Schema;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.Assert.assertThat;
+
+public class TestReflectData {
+
+    /**
+     * Test if ReflectData is leaking {@link Schema} references 
+     */
+    @SuppressWarnings("unchecked")
+    @Test public void testWeakSchemaCaching() throws IOException, NoSuchFieldException, IllegalAccessException {
+
+        for (int i = 0; i &lt; 1000; i++) {
+            // Create schema
+            Schema schema = Schema.createRecord("schema", null, null, false);
+            schema.setFields(Collections.&lt;Schema.Field&gt;emptyList());
+
+            ReflectData.get().getRecordState(new Object(), schema);
+        }
+
+        // Reflect the number of schemas currently in the cache
+        Field cacheField = ReflectData.class.getDeclaredField("ACCESSOR_CACHE");
+        cacheField.setAccessible(true);
+        Map&lt;Class&lt;?&gt;, ?&gt; ACCESSOR_CACHE = (Map) cacheField.get(null);
+        Object classData = ACCESSOR_CACHE.get(Object.class);
+
+        Field bySchemaField = classData.getClass().getDeclaredField("bySchema");
+        bySchemaField.setAccessible(true);
+        Map&lt;Schema, FieldAccessor[]&gt; accessors = (Map) bySchemaField.get(classData);
+
+        System.gc(); // Not guaranteed reliable, but seems to be reliable enough for our purposes
+
+        // See if the number of schemas in the cache is less than the number we generated - if so, then they are being released.
+        assertThat("ReflectData cache should release references", accessors.size(), lessThan(1000));
+    }
+}
+{code}
+
+(Added {{org.hamcrest:hamcrest-all}} dependency to test scope for the built-in {{lessThan()}} matcher)
+----
+
+The current workaround that I'm using to mitigate the leak is to cache schemas and re-use older instances when I'm about to serialize an equivalent schema. Since most of the generated schemas are equivalent, this limits the number of leaked schemas to a handful. A more permanent workaround would be to switch to using a {{GenericRecord}} instead of a generic java class for the object that is being serialized, since this cuts out the use of {{ReflectData}} entirely.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Thanks for tracking this down, [~baharclerode]. I think you're right about the memory leak. It looks like you've done a great job putting together a test case and the fix. Could you put together a patch or pull request with those and we'll get it committed?
+
+For your question about the IdentityHashMap vs regular HashMap, I think the main idea is that because these lookups are in very tight loops, we want to avoid unnecessary operations. It's cheap to keep a copy per schema because there aren't typically a huge number of schemas in an app. But, we do like to use weak maps to avoid problems like this. Thanks for working on this!
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Attaching changes and unit tests as a patch from {{git format-patch}}
               </div></li><li><div>
-                @piiswrong Omitting `ctx` argument usually means that it is the current context. So I think that adding `ctx=None` to `seed` could be potentially confusing.
-              </div></li><li><div>
-                I still think its better than adding an API. `seed_context` looks ugly
-              </div></li><li><div>
-                maybe you can make it defaults to 'all'
-              </div></li><li><div>
-                I removed `seed_context` and added `ctx="all"` argument to `seed`.
-              </div></li><li><div>
-                @piiswrong can this be merged. will add this to api changes in release notes.
-              </div></li><li><div>
-                Thanks a lot for this change, this really something we've been looking for!
+                Commit 58daaf08a2637e0976cc124571200ce198b3143d in avro's branch refs/heads/master from [~rdblue]
+[ https://git-wip-us.apache.org/repos/asf?p=avro.git;h=58daaf0 ]
 
-@asmushetzel @KellenSunderland 
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Implement mx.random.seed_context to seed random number generators of a specific device context
-                </div><div><b>description:</b> This PR introduces a function `mx.random.seed_context` to seed random number generators of a specific device context. `mx.random.seed_context(seed, ctx)` seeds the parallel and non-parallel generators of `ctx` where `ctx` is optional and the default is the current context. The random number sequence generated on the device is completely determined by the seed, differently from existing `mx.random.seed` which implicitly uses the device id of each context together with the given seed. Using device id is reasonable to seed all generators at once with a given seed, but to reproduce the same random number sequence we need to set the running context besides seeding with the same number. Sometimes setting a context would be inconvenient or the running context could be not deterministic. `mx.random.seed_context` would be helpful in such cases.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+AVRO-1821: Fix possible memory leak of Schemas in ReflectData. Contributed by Byran Harclerode.
+
+              </div></li><li><div><div><b>body:</b> I committed the fix. Thanks for your contribution, [~baharclerode]!
+
+I updated it slightly to avoid the need for reflection in the test (used package-private instead) and I used a Guava weak identity map instead of the one we're trying to move away from.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Commit 54eefb8d780237a7108c2a0c91b12282686426ad in avro's branch refs/heads/master from [~rdblue]
+[ https://git-wip-us.apache.org/repos/asf?p=avro.git;h=54eefb8 ]
+
+AVRO-1821 ADDENDUM: Fix checkstyle violations.
+
+              </div></li><li><div>
+                [~rdblue] 
+I was just verifying AVRO-1826 (the build rat problem) and it failed ...
+The file lang/java/avro/src/test/java/org/apache/avro/reflect/TestReflectData.java is missing the appropriate copyright message.
+              </div></li><li><div>
+                Commit b30b9e7a3365f50aa6f4481705937c462914764d in avro's branch refs/heads/master from [~rdblue]
+[ https://git-wip-us.apache.org/repos/asf?p=avro.git;h=b30b9e7 ]
+
+AVRO-1821: Add license header to TestReflectData.
+
+              </div></li><li><div>
+                Fixed. Thanks for catching that, [~nielsbasjes]!
+              </div></li><li><div>
+                Any ETA when this patch will be released?
+              </div></li><li><div>
+                [~alunarbeach] it looks like [this|https://github.com/apache/avro/commit/ec8a091819a25bccf03adc868449f57f9c076d19] is already committed and released in 1.8.1.
+              </div></li><li><div>
+                Thanks [~nkollar]
+              </div></li></ol></div></div></html>

@@ -1,150 +1,2127 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 129
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-13446][SQL] Support reading data from Hive 2.0.1 metastore
-                </div><div><b>message:</b> [SPARK-13446][SQL] Support reading data from Hive 2.0.1 metastore
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> YARN-4398. Remove unnecessary synchronization in RMStateStore. Contributed by Ning Ding
+                </div><div><b>message:</b> YARN-4398. Remove unnecessary synchronization in RMStateStore. Contributed by Ning Ding
+(cherry picked from commit 6b9a5beb2b2f9589ef86670f2d763e8488ee5e90)
 
-### What changes were proposed in this pull request?
-This PR is to make Spark work with Hive 2.0's metastores. Compared with Hive 1.2, Hive 2.0's metastore has an API update due to removal of `HOLD_DDLTIME` in https://issues.apache.org/jira/browse/HIVE-12224. Based on the following Hive JIRA description, `HOLD_DDLTIME` should be removed from our internal API too. (https://github.com/apache/spark/pull/17063 was submitted for it):
-&gt; This arcane feature was introduced long ago via HIVE-1394 It was broken as soon as it landed, HIVE-1442 and is thus useless. Fact that no one has fixed it since informs that its not really used by anyone. Better is to remove it so no one hits the bug of HIVE-1442
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
 
-In the next PR, we will support 2.1.0 metastore, whose APIs were changed due to https://issues.apache.org/jira/browse/HIVE-12730. However, before that, we need a code cleanup for stats collection and setting.
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
 
-### How was this patch tested?
-Added test cases to VersionsSuite.scala
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
 
-Author: Xiao Li &lt;gatorsmile@gmail.com&gt;
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
 
-Closes #17061 from gatorsmile/Hive2.
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-13446] [SQL] Support reading data from Hive 2.0.1 metastore
-                </div><div><b>body:</b> ### What changes were proposed in this pull request?
-This PR is to make Spark work with Hive 2.0's metastores. Compared with Hive 1.2, Hive 2.0's metastore has an API update due to removal of `HOLD_DDLTIME` in https://issues.apache.org/jira/browse/HIVE-12224. Based on the following Hive JIRA description, `HOLD_DDLTIME` should be removed from our internal API too. (https://github.com/apache/spark/pull/17063 was submitted for it): 
-&gt; This arcane feature was introduced long ago via HIVE-1394 It was broken as soon as it landed, HIVE-1442 and is thus useless. Fact that no one has fixed it since informs that its not really used by anyone. Better is to remove it so no one hits the bug of HIVE-1442
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
 
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
 
-In the next PR, we will support 2.1.0 metastore, whose APIs were changed due to https://issues.apache.org/jira/browse/HIVE-12730. However, before that, we need a code cleanup for stats collection and setting. 
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
 
-### How was this patch tested?
-Added test cases to VersionsSuite.scala
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                **[Test build #73458 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73458/testReport)** for PR 17061 at commit [`60af17f`](https://github.com/apache/spark/commit/60af17f0178ba8ab7d7881c118915334e2c824eb).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #73469 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73469/testReport)** for PR 17061 at commit [`febb392`](https://github.com/apache/spark/commit/febb392116d4540d22309b09e8a70bd62616b0b0).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #73470 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73470/testReport)** for PR 17061 at commit [`9ea5850`](https://github.com/apache/spark/commit/9ea58508224d1de15f2976282f5e8127ea7f8eac).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                cc @cloud-fan @yhuai @sameeragarwal 
-              </div></li><li><div>
-                LGTM.
-              </div></li><li><div>
-                Thank you! @vanzin 
-              </div></li><li><div>
-                retest this please
-              </div></li><li><div>
-                we should also update `InsertIntoHiveTable`, it will be great if we can improve it to fail compilation when adding new hive versions.
-              </div></li><li><div>
-                **[Test build #73860 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73860/testReport)** for PR 17061 at commit [`9ea5850`](https://github.com/apache/spark/commit/9ea58508224d1de15f2976282f5e8127ea7f8eac).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                LGTM, pending tests
-              </div></li><li><div>
-                **[Test build #73872 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73872/testReport)** for PR 17061 at commit [`b713a81`](https://github.com/apache/spark/commit/b713a81c54efc69e0f9b6e5a2405210e1cb639a7).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                thanks, merging to master!
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Previously, we did not add the configuration generated by `HiveUtils.hiveClientConfigurations`. Here, we added it to see whether it could cause any test failure. 
-              </div></li><li><div>
-                is the `exclusions` still useful?
-              </div></li><li><div>
-                This was originally added because `VersionsSuite` would fail without it, since it uses maven/ivy to download the different Hive libraries (because they used to depend on snapshot releases of libraries, or libraries that don't exist anymore on maven central). Perhaps Hive has updated its dependencies enough that some of this can be cleaned up...
-              </div></li><li><div>
-                why this?
-              </div></li><li><div>
-                Hive changed the default from `true` to `false` since 2.0
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
 
-```
-datanucleus.autoCreateSchema
-Default Value: true
-Added In: Hive 0.7.0
-Removed In: Hive 2.0.0 with HIVE-6113, replaced by datanucleus.schema.autoCreateAll
-Creates necessary schema on a startup if one does not exist. Set this to false, after creating it once.
-In Hive 0.12.0 and later releases, datanucleus.autoCreateSchema is disabled if hive.metastore.schema.verification is true.
-```
-```
-datanucleus.schema.autoCreateAll
-Default Value: false
-Added In: Hive 2.0.0 with HIVE-6113, replaces datanucleus.autoCreateSchema (with different default value)
-Creates necessary schema on a startup if one does not exist. Reset this to false, after creating it once.
-datanucleus.schema.autoCreateAll is disabled if hive.metastore.schema.verification is true.
-```
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
 
-Without changing the flag, we will get the following error
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
 
-```
-14:59:39.253 WARN DataNucleus.Query: Query for candidates of org.apache.hadoop.hive.metastore.model.MDatabase and subclasses resulted in no possible candidates
-Required table missing : "DBS" in Catalog "" Schema "". DataNucleus requires this table to perform its persistence operations. Either your MetaData is incorrect, or you need to enable "datanucleus.schema.autoCreateTables"
-org.datanucleus.store.rdbms.exceptions.MissingTableException: Required table missing : "DBS" in Catalog "" Schema "". DataNucleus requires this table to perform its persistence operations. Either your MetaData is incorrect, or you need to enable "datanucleus.schema.autoCreateTables"
-	at org.datanucleus.store.rdbms.table.AbstractTable.exists(AbstractTable.java:606)
-	at org.datanucleus.store.rdbms.RDBMSStoreManager$ClassAdder.performTablesValidation(RDBMSStoreManager.java:3365)
-	at org.datanucleus.store.rdbms.RDBMSStoreManager$ClassAdder.run(RDBMSStoreManager.java:2877)
-```
-              </div></li><li><div>
-                See the JIRA: https://issues.apache.org/jira/browse/HIVE-6113
-              </div></li><li><div>
-                let's add a comment so that future readers can know this
-              </div></li><li><div>
-                Sure. Will do. 
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Remove HOLD_DDLTIME
-                </div><div><b>description:</b> This arcane feature was introduced long ago via HIVE-1394 It was broken as soon as it landed, HIVE-1442 and is thus useless. Fact that no one has fixed it since informs that its not really used by anyone. Better is to remove it so no one hits the bug of HIVE-1442
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div><div><b>label:</b> requirement
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Yarn recover functionality causes the cluster running slowly and the cluster usage rate is far below 100
+                </div><div><b>description:</b> In my hadoop cluster, the resourceManager recover functionality is enabled with FileSystemRMStateStore.
+I found this cause the yarn cluster running slowly and cluster usage rate is just 50 even there are many pending Apps. 
+
+The scenario is below.
+In thread A, the RMAppImpl$RMAppNewlySavingTransition is calling storeNewApplication method defined in RMStateStore. This storeNewApplication method is synchronized.
+{code:title=RMAppImpl.java|borderStyle=solid}
+  private static final class RMAppNewlySavingTransition extends RMAppTransition {
+    @Override
+    public void transition(RMAppImpl app, RMAppEvent event) {
+
+      // If recovery is enabled then store the application information in a
+      // non-blocking call so make sure that RM has stored the information
+      // needed to restart the AM after RM restart without further client
+      // communication
+      LOG.info("Storing application with id " + app.applicationId);
+      app.rmContext.getStateStore().storeNewApplication(app);
+    }
+  }
+{code}
+{code:title=RMStateStore.java|borderStyle=solid}
+public synchronized void storeNewApplication(RMApp app) {
+    ApplicationSubmissionContext context = app
+                                            .getApplicationSubmissionContext();
+    assert context instanceof ApplicationSubmissionContextPBImpl;
+    ApplicationStateData appState =
+        ApplicationStateData.newInstance(
+            app.getSubmitTime(), app.getStartTime(), context, app.getUser());
+    dispatcher.getEventHandler().handle(new RMStateStoreAppEvent(appState));
+  }
+{code}
+In thread B, the FileSystemRMStateStore is calling storeApplicationStateInternal method. It's also synchronized.
+This storeApplicationStateInternal method saves an ApplicationStateData into HDFS and it normally costs 90~300 milliseconds in my hadoop cluster.
+{code:title=FileSystemRMStateStore.java|borderStyle=solid}
+public synchronized void storeApplicationStateInternal(ApplicationId appId,
+      ApplicationStateData appStateDataPB) throws Exception {
+    Path appDirPath = getAppDir(rmAppRoot, appId);
+    mkdirsWithRetries(appDirPath);
+    Path nodeCreatePath = getNodePath(appDirPath, appId.toString());
+
+    LOG.info("Storing info for app: " + appId + " at: " + nodeCreatePath);
+    byte[] appStateData = appStateDataPB.getProto().toByteArray();
+    try {
+      // currently throw all exceptions. May need to respond differently for HA
+      // based on whether we have lost the right to write to FS
+      writeFileWithRetries(nodeCreatePath, appStateData, true);
+    } catch (Exception e) {
+      LOG.info("Error storing info for app: " + appId, e);
+      throw e;
+    }
+  }
+{code}
+Think thread B firstly comes into FileSystemRMStateStore.storeApplicationStateInternal method, then thread A will be blocked for a while because of synchronization. In ResourceManager there is only one RMStateStore instance. In my cluster it's FileSystemRMStateStore type.
+Debug the RMAppNewlySavingTransition.transition method, the thread stack shows it's called form AsyncDispatcher.dispatch method. This method code is as below. 
+{code:title=AsyncDispatcher.java|borderStyle=solid}
+  protected void dispatch(Event event) {
+    //all events go thru this loop
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dispatching the event " + event.getClass().getName() + "."
+          + event.toString());
+    }
+
+    Class&lt;? extends Enum&gt; type = event.getType().getDeclaringClass();
+
+    try{
+      EventHandler handler = eventDispatchers.get(type);
+      if(handler != null) {
+        handler.handle(event);
+      } else {
+        throw new Exception("No handler for registered for " + type);
+      }
+    } catch (Throwable t) {
+      //TODO Maybe log the state of the queue
+      LOG.fatal("Error in dispatcher thread", t);
+      // If serviceStop is called, we should exit this thread gracefully.
+      if (exitOnDispatchException
+          &amp;&amp; (ShutdownHookManager.get().isShutdownInProgress()) == false
+          &amp;&amp; stopped == false) {
+        Thread shutDownThread = new Thread(createShutDownThread());
+        shutDownThread.setName("AsyncDispatcher ShutDown handler");
+        shutDownThread.start();
+      }
+    }
+  }
+{code}
+Above code shows AsyncDispatcher.dispatch method can process different type events.
+In fact this AsyncDispatcher instance is just ResourceManager.rmDispatcher created in ResourceManager.serviceInit method.
+You can find many eventTypes and handlers are registered in ResourceManager.rmDispatcher.
+In above scenario thread B blocks thread A, then many following events processing are blocked.
+
+In my testing cluster, there is only one queue and the client submits 1000 applications concurrently, the yarn cluster usage rate is 50. Many apps are pending. If I disable resourceManager recover functionality, the cluster usage can be 100.
+
+To solve this issue, I removed synchronized modifier on some methods defined in RMStateStore.
+Instead, in these methods I defined a dedicated lock object before calling dispatcher.getEventHandler().handle. 
+In this way, the yarn cluster usage rate can be 100 and the whole cluster is good running.
+Please see my attached patch.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                
+                [~jianhe] would you kindly help to take a look on this issue?
+              </div></li><li><div><div><b>body:</b> The {{AsyncDispatcher.GenericEventHandler.handle()}} method is MT safe.  The {{AsyncDispatcher.getEventHandler()}} is the unsafe call, and it's only unsafe because of the lazy initialization.  Prior to YARN-1121, it was returning a new object every time, which was thread safe.  I see two obvious options: revert the YARN-1121 optimization in the {{AsyncDispatcher.getEventHandler()}} method or do eager initialization into a final member variable.  Either way, the calls become MT-safe, letting you just drop the synchronization.
+                </div><div><b>label:</b> requirement
+                </div></div></li><li><div>
+                [~iceberg565],  thanks for looking into this. analysis makes sense to me. I think we can just remove the synchronized keyword ?
 
-Here are the results of testing the latest attachment:
-https://issues.apache.org/jira/secure/attachment/12767879/HIVE-12224.patch
-
-{color:green}SUCCESS:{color} +1 due to 2 test(s) being added or modified.
-
-{color:red}ERROR:{color} -1 due to 2 failed/errored test(s), 9696 tests executed
-*Failed tests:*
-{noformat}
-org.apache.hive.hcatalog.api.TestHCatClient.testTableSchemaPropagation
-org.apache.hive.jdbc.TestSSL.testSSLVersion
-{noformat}
-
-Test results: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/5732/testReport
-Console output: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/5732/console
-Test logs: http://ec2-174-129-184-35.compute-1.amazonaws.com/logs/PreCommit-HIVE-TRUNK-Build-5732/
-
-Messages:
-{noformat}
-Executing org.apache.hive.ptest.execution.TestCheckPhase
-Executing org.apache.hive.ptest.execution.PrepPhase
-Executing org.apache.hive.ptest.execution.ExecutionPhase
-Executing org.apache.hive.ptest.execution.ReportingPhase
-Tests exited with: TestsFailedException: 2 tests failed
-{noformat}
-
-This message is automatically generated.
-
-ATTACHMENT ID: 12767879 - PreCommit-HIVE-TRUNK-Build
+bq. the AsyncDispatcher.getEventHandler() is the unsafe call
+Suppose the call is unsafe, in the worst case when contention happens, separate new objects will return to each caller instead of one, which is equivalent to new object every time as before ? 
+              </div></li><li><div><div><b>body:</b> [~jianhe], you are correct, but that approach just smells bad to me.  It's behavior that someone will be confused by later.  It would be better to do something intentional than something that accidentally works for a non-obvious reason.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Thanks for all your comments.
+I prefer to do eager initialization handlerInstance in AsyncDispatcher, then remove synchronized modifier in  RMStateStore.
+Pelese see my new patch.
               </div></li><li><div>
-                https://reviews.apache.org/r/39555/
+                patch looks good to me.  thanks [~iceberg565], and [~templedf] for the review. 
               </div></li><li><div>
-                LGTM +1. The only issue is to remove redundant "./itests/src/test/resources/testconfiguration.properties:472:  ddltime.q" Thanks!
+                Yep.  +1 (non-binding)
               </div></li><li><div>
-                Pushed to master.
+                Actually, before I +1 that, [~iceberg565], did you run the full set of RM unit tests against the patch?
+              </div></li><li><div>
+                [~iceberg565], after you upload the patch, you can click the "Submit Patch" button, which will trigger jenkins to run the unit tests.
+              </div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 0s {color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 9m 49s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 3m 5s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 2m 49s {color} | {color:green} trunk passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 35s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 1m 28s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 35s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 3m 13s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 13s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 17s {color} | {color:green} trunk passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 1m 23s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 3m 4s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 3m 4s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 2m 50s {color} | {color:green} the patch passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 2m 50s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 35s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 1m 27s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 35s {color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} whitespace {color} | {color:red} 0m 0s {color} | {color:red} The patch has 1 line(s) that end in whitespace. Use git apply --whitespace=fix. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 3m 33s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 14s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 16s {color} | {color:green} the patch passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 2m 35s {color} | {color:green} hadoop-yarn-common in the patch passed with JDK v1.8.0_66. {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 65m 28s {color} | {color:red} hadoop-yarn-server-resourcemanager in the patch failed with JDK v1.8.0_66. {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 2m 36s {color} | {color:green} hadoop-yarn-common in the patch passed with JDK v1.7.0_85. {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 65m 3s {color} | {color:red} hadoop-yarn-server-resourcemanager in the patch failed with JDK v1.7.0_85. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 28s {color} | {color:green} Patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 178m 3s {color} | {color:black} {color} |
+\\
+\\
+|| Reason || Tests ||
+| JDK v1.8.0_66 Failed junit tests | hadoop.yarn.server.resourcemanager.TestClientRMTokens |
+|   | hadoop.yarn.server.resourcemanager.rmapp.TestRMAppTransitions |
+|   | hadoop.yarn.server.resourcemanager.TestAMAuthorization |
+| JDK v1.7.0_85 Failed junit tests | hadoop.yarn.server.resourcemanager.TestClientRMTokens |
+|   | hadoop.yarn.server.resourcemanager.rmapp.TestRMAppTransitions |
+|   | hadoop.yarn.server.resourcemanager.TestAMAuthorization |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker |  Image:yetus/hadoop:0ca8df7 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12774937/YARN-4398.3.patch |
+| JIRA Issue | YARN-4398 |
+| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
+| uname | Linux c0bfc366ed04 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
+| git revision | trunk / 830eb25 |
+| findbugs | v3.0.0 |
+| whitespace | https://builds.apache.org/job/PreCommit-YARN-Build/9829/artifact/patchprocess/whitespace-eol.txt |
+| unit | https://builds.apache.org/job/PreCommit-YARN-Build/9829/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.8.0_66.txt |
+| unit | https://builds.apache.org/job/PreCommit-YARN-Build/9829/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.7.0_85.txt |
+| unit test logs |  https://builds.apache.org/job/PreCommit-YARN-Build/9829/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.8.0_66.txt https://builds.apache.org/job/PreCommit-YARN-Build/9829/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.7.0_85.txt |
+| JDK v1.7.0_85  Test Results | https://builds.apache.org/job/PreCommit-YARN-Build/9829/testReport/ |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-common hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager U: hadoop-yarn-project/hadoop-yarn |
+| Max memory used | 76MB |
+| Powered by | Apache Yetus   http://yetus.apache.org |
+| Console output | https://builds.apache.org/job/PreCommit-YARN-Build/9829/console |
+
+
+This message was automatically generated.
+
+
+              </div></li><li><div><div><b>body:</b> I uploaded a new patch that removed useless whitespace.
+The current test cases can cover the modified code in this patch. This patch resolved performance issue. So no new unit test cases.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 0s {color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 8m 9s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 2m 10s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 2m 22s {color} | {color:green} trunk passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 30s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 1m 20s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 29s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 2m 46s {color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 16s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 1s {color} | {color:green} trunk passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 1m 7s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 1m 59s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 1m 59s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 2m 14s {color} | {color:green} the patch passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 2m 14s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 28s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 1m 12s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 28s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} Patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 2m 55s {color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 0m 56s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 6s {color} | {color:green} the patch passed with JDK v1.7.0_85 {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 2m 9s {color} | {color:green} hadoop-yarn-common in the patch passed with JDK v1.8.0_66. {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 64m 58s {color} | {color:red} hadoop-yarn-server-resourcemanager in the patch failed with JDK v1.8.0_66. {color} |
+| {color:green}+1{color} | {color:green} unit {color} | {color:green} 2m 13s {color} | {color:green} hadoop-yarn-common in the patch passed with JDK v1.7.0_85. {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 65m 29s {color} | {color:red} hadoop-yarn-server-resourcemanager in the patch failed with JDK v1.7.0_85. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green} 0m 22s {color} | {color:green} Patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 169m 7s {color} | {color:black} {color} |
+\\
+\\
+|| Reason || Tests ||
+| JDK v1.8.0_66 Failed junit tests | hadoop.yarn.server.resourcemanager.TestClientRMTokens |
+|   | hadoop.yarn.server.resourcemanager.TestAMAuthorization |
+| JDK v1.7.0_85 Failed junit tests | hadoop.yarn.server.resourcemanager.TestClientRMTokens |
+|   | hadoop.yarn.server.resourcemanager.security.TestRMDelegationTokens |
+|   | hadoop.yarn.server.resourcemanager.TestAMAuthorization |
+|   | hadoop.yarn.server.resourcemanager.TestRM |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker |  Image:yetus/hadoop:0ca8df7 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12775241/YARN-4398.4.patch |
+| JIRA Issue | YARN-4398 |
+| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
+| uname | Linux bc3bf54a8c60 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
+| git revision | trunk / 53e3bf7 |
+| findbugs | v3.0.0 |
+| unit | https://builds.apache.org/job/PreCommit-YARN-Build/9834/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.8.0_66.txt |
+| unit | https://builds.apache.org/job/PreCommit-YARN-Build/9834/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.7.0_85.txt |
+| unit test logs |  https://builds.apache.org/job/PreCommit-YARN-Build/9834/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.8.0_66.txt https://builds.apache.org/job/PreCommit-YARN-Build/9834/artifact/patchprocess/patch-unit-hadoop-yarn-project_hadoop-yarn_hadoop-yarn-server_hadoop-yarn-server-resourcemanager-jdk1.7.0_85.txt |
+| JDK v1.7.0_85  Test Results | https://builds.apache.org/job/PreCommit-YARN-Build/9834/testReport/ |
+| modules | C: hadoop-yarn-project/hadoop-yarn/hadoop-yarn-common hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager U: hadoop-yarn-project/hadoop-yarn |
+| Max memory used | 76MB |
+| Powered by | Apache Yetus   http://yetus.apache.org |
+| Console output | https://builds.apache.org/job/PreCommit-YARN-Build/9834/console |
+
+
+This message was automatically generated.
+
+
+              </div></li><li><div>
+                [~jianhe] and [~templedf], could you assign this jira to me and help to check the patch into trunk?
+Thanks.
+              </div></li><li><div>
+                [~iceberg565], added you to the contributor list.  Assigned this to you.  You can also now assign jira to yourself. 
+Committing this.
+
+
+              </div></li><li><div>
+                Committed to trunk, branch-2, branch-2.7.
+[~iceberg565], congratulations on your first YARN patch !
+              </div></li><li><div>
+                FAILURE: Integrated in Hadoop-trunk-Commit #8910 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/8910/])
+YARN-4398. Remove unnecessary synchronization in RMStateStore. (jianhe: rev 6b9a5beb2b2f9589ef86670f2d763e8488ee5e90)
+* hadoop-yarn-project/hadoop-yarn/hadoop-yarn-common/src/main/java/org/apache/hadoop/yarn/event/AsyncDispatcher.java
+* hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/main/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/RMStateStore.java
+* hadoop-yarn-project/CHANGES.txt
+
+              </div></li><li><div>
+                ABORTED: Integrated in Hadoop-Hdfs-trunk-Java8 #658 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk-Java8/658/])
+YARN-4398. Remove unnecessary synchronization in RMStateStore. (jianhe: rev 6b9a5beb2b2f9589ef86670f2d763e8488ee5e90)
+* hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/main/java/org/apache/hadoop/yarn/server/resourcemanager/recovery/RMStateStore.java
+* hadoop-yarn-project/CHANGES.txt
+* hadoop-yarn-project/hadoop-yarn/hadoop-yarn-common/src/main/java/org/apache/hadoop/yarn/event/AsyncDispatcher.java
+
+              </div></li><li><div>
+                [~jianhe], thank you.
+              </div></li><li><div>
+                Committed to branch-2.8.
+              </div></li><li><div>
+                Closing the JIRA as part of 2.7.3 release.
               </div></li></ol></div></div></html>

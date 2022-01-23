@@ -1,90 +1,131 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 191
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [hotfix][kafka] Fix typo in filter property in pom.xml
-                </div><div><b>message:</b> [hotfix][kafka] Fix typo in filter property in pom.xml
-
-This closes #9142
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [hotfix][connector] fix typo in filters of maven shade plguin
-                </div><div><b>body:</b> ## What is the purpose of the change
-
-Fix typo in filters of maven shade plugin.
-
-## Brief change log
-* Fix typo
-
-## Verifying this change
-
-This change is a trivial rework / code cleanup without any test coverage.
-
-## Does this pull request potentially affect one of the following parts:
-
-  - Dependencies (does it add or upgrade a dependency): (no)
-  - The public API, i.e., is any changed class annotated with `@Public(Evolving)`: (no)
-  - The serializers: (no)
-  - The runtime per-record code paths (performance sensitive): (no)
-  - Anything that affects deployment or recovery: JobManager (and its components), Checkpointing, Yarn/Mesos, ZooKeeper: (no)
-  - The S3 file system connector: (no)
-
-## Documentation
-
-  - Does this pull request introduce a new feature? (no)
-  - If yes, how is the feature documented? (not applicable)
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Thanks a lot for your contribution to the Apache Flink project. I'm the @flinkbot. I help the community
-to review your pull request. We will use this comment to track the progress of the review.
-
-
-## Automated Checks
-Last check on commit 176b9fe0118f9f4d5714489fb793f7a2bed10c8f (Tue Aug 06 15:43:59 UTC 2019)
-
-**Warnings:**
- * **1 pom.xml files were touched**: Check for build and licensing issues.
- * No documentation files were touched! Remember to keep the Flink docs up to date!
-
-
-&lt;sub&gt;Mention the bot in a comment to re-run the automated checks.&lt;/sub&gt;
-## Review Progress
-
-* ❓ 1. The [description] looks good.
-* ❓ 2. There is [consensus] that the contribution should go into to Flink.
-* ❓ 3. Needs [attention] from.
-* ❓ 4. The change fits into the overall [architecture].
-* ❓ 5. Overall code [quality] is good.
-
-Please see the [Pull Request Review Guide](https://flink.apache.org/contributing/reviewing-prs.html) for a full explanation of the review process.&lt;details&gt;
- The Bot is tracking the review progress through labels. Labels are applied according to the order of the review items. For consensus, approval by a Flink committer of PMC member is required &lt;summary&gt;Bot commands&lt;/summary&gt;
-  The @flinkbot bot supports the following commands:
-
- - `@flinkbot approve description` to approve one or more aspects (aspects: `description`, `consensus`, `architecture` and `quality`)
- - `@flinkbot approve all` to approve all aspects
- - `@flinkbot approve-until architecture` to approve everything until `architecture`
- - `@flinkbot attention @username1 [@username2 ..]` to require somebody's attention
- - `@flinkbot disapprove architecture` to remove an approval you gave earlier
-&lt;/details&gt;
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 the parent thread remains blocked to simulate the child thread holding some lock in the registry/reporter
+ the child thread continues execution and calls getAllVariables()
+ in the past this would block indefinitely since the method acquires the locks of all parent groups
               </div></li><li><div>
-                ## CI report:
+                 start both threads and have them block in the registry, so they acquire the lock of their respective group
+              </div></li><li><div>
+                 wait with a timeout to ensure the finally block is executed _at some point_, un-blocking the parent
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [FLINK-10761][metrics] Do not acquire lock for getAllVariables()
+                </div><div><b>message:</b> [FLINK-10761][metrics] Do not acquire lock for getAllVariables()
 
-* 176b9fe0118f9f4d5714489fb793f7a2bed10c8f : FAILURE [Build](https://travis-ci.com/flink-ci/flink/builds/119454282)
 
-              </div></li><li><div>
-                I check maven plugin code and did some experiments. The conclusion is that Maven maps plugin configuration in xml to a Mojo(by @parameter annotation). And when the mojo has an array parameter(&lt;excludes&gt;&lt;/excludes&gt; in this case), maven do not check the sub-tag of that parameter.
-              </div></li><li><div>
-                That's why the typo exclude works.
-              </div></li><li><div>
-                Thanks for the explanation @docete . Looks good to me. 
-Wait the travis compile pass.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
 
-Btw, do you intend to merge this to  1.9?
-              </div></li><li><div>
-                &gt; Thanks for the explanation @docete . Looks good to me.
-&gt; Wait the travis compile pass.
-&gt; 
-&gt; Btw, do you intend to merge this to 1.9?
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
 
-Yes, should i create another PR for 1.9?
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
+
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
+
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
+
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
+
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
+                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+
+Assume we have a MetricGroup Mc(hild) and Mp(arent).
+
+2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
+Let's assume that Tc has a slight headstart.
+Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
+Tp will block on this lock.
+
+Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
+Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
+The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+
+Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+
+This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Is this strictly a blocker given that it is in Flink for a couple of versions [~chesnay]. I think we should try to fix for 1.7, though.
               </div></li><li><div>
-                @docete , not needed. I will cherry pick to 1.9.
-              </div></li><li><div>
-                @wuchong OK, Thanks.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                Probably doesn't have to be a blocker considering we've never observed it so far outside of dev branches.
+It's fairly unlikely to happen; the only case i can imagine on master is a registration in a UDF from a separate thread while a latency histogram is being registered. This is quite specific, but would deadlock a single task.
+              </div></li><li><div><div><b>body:</b> This is a bit difficult to solve since multiple methods may violate the lock-order. It would be easier to fix if asynchronous registration of metrics is already in place, as in that case no thread could be blocked while registering a metric, and thus while holding a MetricGroup lock.
+
+Given that these issues aren't new and have never been observed I'm unblocking the 1.7 release. We should look into these issues for 1.8 as part of a general concurrency-cleanup in the metric system.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                master: aa92438c4aa6218c5d7e67083152733271697089
+1.7: 45d53d27e4dec934057404674e38c6eab2e66e62
+1.6: cb85e62b5b122b7cbb9eeb72a116dd133467a920
+              </div></li></ol></div></div></html>

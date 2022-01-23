@@ -1,89 +1,536 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 23
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files (Raj Kumar Singh, reviewed by Karen Coppage)
-                </div><div><b>message:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files (Raj Kumar Singh, reviewed by Karen Coppage)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-21915 Make FileLinkInputStream implement CanUnbuffer
+                </div><div><b>message:</b> HBASE-21915 Make FileLinkInputStream implement CanUnbuffer
 
-Closes (#1085)
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Hive 22255 : Hive don't trigger Major Compaction automatically if table contains only base files
-                </div><div><b>body:</b> Creating the PR to fix the multi base-files seems in the table directory after Insert overwrite operations. As a fix, I will be checking doing changes in the initiator thread where it will check for the compaction eligibility.
-1. Initiator thread will check for the if there are no delta and obsolete files containing the base then it will put the table in compaction queue. 
-2. TxnStore will be having one more method to request cleanup.
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                @klcopp I have created the test case, pushing the table/part into the compaction queue will help Worker#isEnoughToCompact to mark it clean
-              </div></li><li><div>
-                @rajkrrsingh Thanks for creating the test case!
+Signed-off-by: Wellington Chevreuil &lt;wellington.chevreuil@gmail.com&gt;
+Signed-off-by: Esteban Gutierrez &lt;esteban@apache.org&gt;
 
-[the isEnoughToCompact check will not mark it clean if there are obsolete directories. markCompacted puts it into "ready for cleaning" state](https://github.com/apache/hive/blob/master/ql/src/java/org/apache/hadoop/hive/ql/txn/compactor/Worker.java#L501-L507)
-I think taking this route is much simpler and less error-prone than expanding the TxnHandler API.
-If you take it, you'll need to add startWorker() to the test.
-              </div></li><li><div>
-                @rajkrrsingh  TestPigHBaseStorageHandler is causing issues on every test rerun, even though the changes that broke it were reverted. I guess the tests don't check out a fresh master branch every time? Anyway, if you close and reopen this PR the tests should pass.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Why do we need this?
-              </div></li><li><div>
-                Maybe use findAny() instead of count()?
-              </div></li><li><div>
-                Unnecessary parenthesis and also I think dir.getObsolete().size() check is not needed, since multiBase is true
-              </div></li><li><div>
-                Meybe we should move this select out to a different method, since this is the copy of the one used in compact().
-Also I would add state cleaning as well. We do not want 2 cleaners running parallel
-              </div></li><li><div>
-                I think, we really want to ignore this, so we would like to return here.
-              </div></li><li><div>
-                Could we do this in a try with resource construct?
-              </div></li><li><div>
-                Again this is very similar that we have in compact(), we might to create a new method for it and reuse.
-              </div></li><li><div>
-                Also using a prepared statement would be nice, I think
-              </div></li><li><div>
-                Can we use preparedstatement here as well?
-              </div></li><li><div>
-                try with resource would be nice here too
-              </div></li><li><div>
-                If there is some exception before in the finally, this unlockInternal will not be called. Isn't this a problem?
-              </div></li><li><div>
-                Further clarified thoughts:
-- It would be good to have a single method inserting to the COMPACTION_QUEUE table
-- We should use a preparedstatement for this so JDBC execution could be faster
-- TxnHandler.compact() should check for only INITIATED/WORKING status - it might still worth tho start a new compaction, even if the cleanup not finished yet
-- TxnHandler.requestCleanup() should check for INITIATED/WORKING/READY_TO_CLEAN status (the first 2 should not be there anyway), so we do not queue multiple compactions for the same table/partition
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
 
-Thanks,
-Peter
-              </div></li><li><div>
-                without setting explicitly here, insert query find it null and skip the [here](https://github.com/rajkrrsingh/hive/blob/3d12959339b22becee0aa986852049b46867f016/standalone-metastore/metastore-server/src/main/java/org/apache/hadoop/hive/metastore/txn/TxnHandler.java#L5288)
-              </div></li><li><div>
-                incorporated the suggested change.
-              </div></li><li><div>
-                incorporated the suggested change.
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div></div></li><li><div><div><b>summary:</b> FileLink$FileLinkInputStream doesn't implement CanUnbuffer
+                </div><div><b>description:</b> FileLinkInputStream is an InputStream which handles the indirection of where the real HFile lives. This implementation is wrapped via FSDataInputStreamWrapper and is transparent when it's being used by a caller. Often, we have an FSDataInputStreamWrapper wrapping a FileLinkInputStream which wraps an FSDataInputStream.
+
+The problem is that FileLinkInputStream does not implement the \{{CanUnbuffer}} interface, which means that the underlying {{FSDataInputStream}} for the HFile the link refers to doesn't get {{unbuffer()}} called on it. This can cause an open Socket to hang around, as described in HBASE-9393.
+
+Both [~wchevreuil] and myself have run into this, each for different users. We think the commonality as to why these users saw this (but we haven't run into it on our own) is that it requires a very large snapshot to be brought into a new system. Big kudos to [~esteban] for his help in diagnosing this as well!
+
+If this analysis is accurate, it would affect all branches.
+
+&nbsp;
+                </div><div><b>label:</b> requirement
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                | (/) *{color:green}+1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 11s{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} ||
+| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green}  0m  0s{color} | {color:green} Patch does not have any anti-patterns. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:orange}-0{color} | {color:orange} test4tests {color} | {color:orange}  0m  0s{color} | {color:orange} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+|| || || || {color:brown} master Compile Tests {color} ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  4m 43s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  2m  5s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 15s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  5m  4s{color} | {color:green} branch has no errors when building our shaded downstream artifacts. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m 45s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 38s{color} | {color:green} master passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  5m 34s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  2m 19s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  2m 19s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 30s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  5m  1s{color} | {color:green} patch has no errors when building our shaded downstream artifacts. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green} 11m 23s{color} | {color:green} Patch does not cause any errors with Hadoop 2.7.4 or 3.0.0. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  3m  7s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 38s{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} ||
+| {color:green}+1{color} | {color:green} unit {color} | {color:green}133m  2s{color} | {color:green} hbase-server in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 26s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black}180m 16s{color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=17.05.0-ce Server=17.05.0-ce Image:yetus/hbase:b002b0b |
+| JIRA Issue | HBASE-21915 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12958934/HBASE-21915.001.patch |
+| Optional Tests |  dupname  asflicense  javac  javadoc  unit  findbugs  shadedjars  hadoopcheck  hbaseanti  checkstyle  compile  |
+| uname | Linux 193a50f4b299 4.4.0-138-generic #164~14.04.1-Ubuntu SMP Fri Oct 5 08:56:16 UTC 2018 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
+| git revision | master / ae0198084c |
+| maven | version: Apache Maven 3.5.4 (1edded0938998edf8bf061f1ceb3cfdeccf443fe; 2018-06-17T18:33:14Z) |
+| Default Java | 1.8.0_181 |
+| findbugs | v3.1.0-RC3 |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/15996/testReport/ |
+| Max. process+thread count | 5514 (vs. ulimit of 10000) |
+| modules | C: hbase-server U: hbase-server |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/15996/console |
+| Powered by | Apache Yetus 0.8.0   http://yetus.apache.org |
+
+
+This message was automatically generated.
 
 
               </div></li><li><div>
-                incorporated the suggested change.
+                Good one lads.
+
+Whats up w/ the call to tryOpen inside the unbuffer? Are we opening the stream when we do this? If fresh open, an unbuffer makes sense? Thanks.
+              </div></li><li><div>
+                Actually had similar thought as [~stack]. Sounds like we are creating a new stream just to unbuffer, leaving any possible previous existing stream open. Shouldn't we just check if there is a current non null IS instance wrapped by FileLink and call unbuffer on it? 
+              </div></li><li><div><div><b>body:</b> {quote}Whats up w/ the call to tryOpen inside the unbuffer? Are we opening the stream when we do this? If fresh open, an unbuffer makes sense? Thanks.
+{quote}
+{quote}Sounds like we are creating a new stream just to unbuffer, leaving any possible previous existing stream open
+{quote}
+Yup! You are both totally right. This was me hacking something together to run out the door ;). Let me polish this first patch, and put some thought into a unit test (although, I'm not sure of one that wouldn't be contrived).
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>body:</b> .002 let's just go with the null-check instead of the {{tryOpen()}} like you both suggested :)
+
+I want to make some kind of test to make sure that all of our InputStreams implement {{CanUnbuffer}} to avoid this problem in the future, but I'm thinking I should just do that separately. We can fix this today/now.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                lgtm +1
 
 
               </div></li><li><div>
-                moved this logline to debug and return from here.
+                +1
               </div></li><li><div>
-                incorporated the suggested change.
+                Thanks folks. Will commit on QA.
+              </div></li><li><div>
+                | (/) *{color:green}+1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 12s{color} | {color:blue} Docker mode activated. {color} |
+|| || || || {color:brown} Prechecks {color} ||
+| {color:green}+1{color} | {color:green} hbaseanti {color} | {color:green}  0m  0s{color} | {color:green} Patch does not have any anti-patterns. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:orange}-0{color} | {color:orange} test4tests {color} | {color:orange}  0m  0s{color} | {color:orange} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+|| || || || {color:brown} master Compile Tests {color} ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  4m 10s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 55s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m  4s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m  5s{color} | {color:green} branch has no errors when building our shaded downstream artifacts. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m 19s{color} | {color:green} master passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green} master passed {color} |
+|| || || || {color:brown} Patch Compile Tests {color} ||
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  4m 11s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green}  1m 53s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green}  1m 53s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m  3s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} shadedjars {color} | {color:green}  4m 10s{color} | {color:green} patch has no errors when building our shaded downstream artifacts. {color} |
+| {color:green}+1{color} | {color:green} hadoopcheck {color} | {color:green}  8m 46s{color} | {color:green} Patch does not cause any errors with Hadoop 2.7.4 or 3.0.0. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  2m 25s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 30s{color} | {color:green} the patch passed {color} |
+|| || || || {color:brown} Other Tests {color} ||
+| {color:green}+1{color} | {color:green} unit {color} | {color:green}131m 59s{color} | {color:green} hbase-server in the patch passed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 27s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black}170m 12s{color} | {color:black} {color} |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker | Client=17.05.0-ce Server=17.05.0-ce Image:yetus/hbase:b002b0b |
+| JIRA Issue | HBASE-21915 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12959294/HBASE-21915.002.patch |
+| Optional Tests |  dupname  asflicense  javac  javadoc  unit  findbugs  shadedjars  hadoopcheck  hbaseanti  checkstyle  compile  |
+| uname | Linux 59031e0797d1 4.4.0-138-generic #164-Ubuntu SMP Tue Oct 2 17:16:02 UTC 2018 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /home/jenkins/jenkins-slave/workspace/PreCommit-HBASE-Build/component/dev-support/hbase-personality.sh |
+| git revision | master / c578020588 |
+| maven | version: Apache Maven 3.5.4 (1edded0938998edf8bf061f1ceb3cfdeccf443fe; 2018-06-17T18:33:14Z) |
+| Default Java | 1.8.0_181 |
+| findbugs | v3.1.0-RC3 |
+|  Test Results | https://builds.apache.org/job/PreCommit-HBASE-Build/16039/testReport/ |
+| Max. process+thread count | 4896 (vs. ulimit of 10000) |
+| modules | C: hbase-server U: hbase-server |
+| Console output | https://builds.apache.org/job/PreCommit-HBASE-Build/16039/console |
+| Powered by | Apache Yetus 0.8.0   http://yetus.apache.org |
+
+
+This message was automatically generated.
 
 
               </div></li><li><div>
-                incorporated the suggested change.
+                This did not come back to branch-1.2 and branch-1.3, as the default hadoop version of 2.5.1 does not contain {{CanUnbuffer}}. To land this there, we'll require a different patch which can be handled separately, IMO.
+              </div></li><li><div>
+                Results for branch branch-2.0
+	[build #1364 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1364/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(x) {color:red}-1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1364//General_Nightly_Build_Report/]
 
 
-              </div></li><li><div>
-                incorporated the suggested change for stmt and pst. try-resource with dbConn make code clumsy with so many nested try-catch so I skipped it.
 
 
+(/) {color:green}+1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1364//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(/) {color:green}+1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1364//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
               </div></li><li><div>
-                unlockInternal is mostly applicable for derby so I think it should not create the problem.
+                Results for branch branch-2.1
+	[build #879 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.1/879/]: (/) *{color:green}+1 overall{color}*
+----
+details (if available):
+
+(/) {color:green}+1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.1/879//General_Nightly_Build_Report/]
+
+
+
+
+(/) {color:green}+1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.1/879//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(/) {color:green}+1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.1/879//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+
+(/) {color:green}+1 client integration test{color}
+
               </div></li><li><div>
-                Nit: I think this is misleading, and unnecessary since we have already logged the values of deltaSize and multiBase.
+                Results for branch branch-1
+	[build #688 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-1/688/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(x) {color:red}-1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1/688//General_Nightly_Build_Report/]
+
+
+(x) {color:red}-1 jdk7 checks{color}
+-- For more information [see jdk7 report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1/688//JDK7_Nightly_Build_Report/]
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1/688//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+
+
+(x) {color:red}-1 source release artifact{color}
+-- See build output for details.
+
               </div></li><li><div>
-                opportunity: add:
-startWorker();
-Assert.assertEquals("ready for cleaning",rsp.getCompacts().get(0).getState());
+                Results for branch master
+	[build #809 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/master/809/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(/) {color:green}+1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/master/809//General_Nightly_Build_Report/]
+
+
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/master/809//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(x) {color:red}-1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/master/809//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+
+(/) {color:green}+1 client integration test{color}
+
               </div></li><li><div>
-                nit: no newline at end of file
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                Results for branch branch-1.4
+	[build #674 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-1.4/674/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(x) {color:red}-1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1.4/674//General_Nightly_Build_Report/]
+
+
+(x) {color:red}-1 jdk7 checks{color}
+-- For more information [see jdk7 report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1.4/674//JDK7_Nightly_Build_Report/]
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-1.4/674//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+              </div></li><li><div>
+                Results for branch branch-2
+	[build #1697 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1697/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(/) {color:green}+1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1697//General_Nightly_Build_Report/]
+
+
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1697//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(/) {color:green}+1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2/1697//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+
+(/) {color:green}+1 client integration test{color}
+
+              </div></li><li><div>
+                Results for branch branch-2.2
+	[build #54 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.2/54/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(/) {color:green}+1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.2/54//General_Nightly_Build_Report/]
+
+
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.2/54//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(/) {color:green}+1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.2/54//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+
+(/) {color:green}+1 client integration test{color}
+
+              </div></li><li><div>
+                [~elserj] I see this on 2.6.1-2.6.3 hadoop compiles...
+
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.6.1:compile (default-compile) on project hbase-server: Compilation failure: Compilation failure: 
+[ERROR] /testptch/hbase/hbase-server/src/main/java/org/apache/hadoop/hbase/io/FileLink.java:[34,28] cannot find symbol
+[ERROR]   symbol:   class CanUnbuffer
+[ERROR]   location: package org.apache.hadoop.fs
+[ERROR] /testptch/hbase/hbase-server/src/main/java/org/apache/hadoop/hbase/io/FileLink.java:[106,83] cannot find symbol
+[ERROR]   symbol:   class CanUnbuffer
+[ERROR]   location: class org.apache.hadoop.hbase.io.FileLink
+[ERROR] /testptch/hbase/hbase-server/src/main/java/org/apache/hadoop/hbase/io/FileLink.java:[285,5] method does not override or implement a method from a supertype
+[ERROR] /testptch/hbase/hbase-server/src/main/java/org/apache/hadoop/hbase/io/FileLink.java:[290,9] cannot find symbol
+[ERROR]   symbol:   method unbuffer()
+[ERROR]   location: variable in of type org.apache.hadoop.fs.FSDataInputStream
+[ERROR] -&gt; [Help 1]
+
+
+See https://builds.apache.org/view/H-L/view/HBase/job/HBase%20Nightly/job/branch-2.0/1398/artifact/output-general/patch-javac-2.6.1.txt
+
+My fault. Should have caught it earlier.
+
+Was thinking of reverting this patch from branch-2.0 or what you think? Change our matrix to drop 2.6.1-2.6.3 hadoop? Thanks.
+              </div></li><li><div>
+                Let me reopen while figuring out the hadoop-2.6.1-2.6.3 issue...
+              </div></li><li><div>
+                {quote}Was thinking of reverting this patch from branch-2.0 or what you think? Change our matrix to drop 2.6.1-2.6.3 hadoop? Thanks.
+{quote}
+Argh! Hadoop, the present that keeps on giving :). Yeah, I didn't realize that I'd have to do this via reflection.
+
+I have zero qualms in dropping those old Hadoop versions (I hope no one is actually still on any of these). I am also OK if you want to revert for now because I don't have the cycles to drop current stuff and fix it.
+              </div></li><li><div>
+                Re-resolving. Will solve the branch-2.0/hadoop-2.6 issue in subtask HBASE-21988. Thanks [~elserj]
+              </div></li><li><div>
+                Results for branch branch-2.0
+	[build #1400 on builds.a.o|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1400/]: (x) *{color:red}-1 overall{color}*
+----
+details (if available):
+
+(/) {color:green}+1 general checks{color}
+-- For more information [see general report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1400//General_Nightly_Build_Report/]
+
+
+
+
+(x) {color:red}-1 jdk8 hadoop2 checks{color}
+-- For more information [see jdk8 (hadoop2) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1400//JDK8_Nightly_Build_Report_(Hadoop2)/]
+
+
+(x) {color:red}-1 jdk8 hadoop3 checks{color}
+-- For more information [see jdk8 (hadoop3) report|https://builds.apache.org/job/HBase%20Nightly/job/branch-2.0/1400//JDK8_Nightly_Build_Report_(Hadoop3)/]
+
+
+(/) {color:green}+1 source release artifact{color}
+-- See build output for details.
+
+              </div></li></ol></div></div></html>

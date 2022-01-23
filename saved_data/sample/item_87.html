@@ -1,180 +1,131 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 87
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                'nothing-to-select', 'select-network', 'select-security-group', 'select-advanced-sg'(advanced sg-enabled zone)
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CLOUDSTACK-537: cloudstack UI - Advanced SG-enabled zone - VM Wizard - fix a bug that networkID was not passed to API call when selected networks don't include security group service.
-                </div><div><b>message:</b> CLOUDSTACK-537: cloudstack UI - Advanced SG-enabled zone - VM Wizard - fix a bug that networkID was not passed to API call when selected networks don't include security group service.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merged revision(s) 1618148 from lucene/dev/trunk:
+                </div><div><b>message:</b> Merged revision(s) 1618148 from lucene/dev/trunk:
+LUCENE-5887: Remove WeakIdentityMap caching in AttributeFactory, AttributeSource, and VirtualMethod in favour of Java 7's ClassValue. Always use MethodHandles to create AttributeImpl classes.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> UI of "Security Group support in Advance zone" feature
-                </div><div><b>description:</b> UI of "Security Group support in Advance zone" feature
+git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/branches/branch_4x@1618149 13f79535-47bb-0310-9956-ffa450edef68
 
-Release Planning:
-This is a subtask of CLOUDSTACK-737, so testing and docs will be part of that new feature record.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Author date:	1 week ago (Fri Nov 16 13:07:32 2012)
-Commit date:	5 minutes ago (Mon Nov 26 11:18:49 2012)
-Commit hash:	e5ced5e4f4b4b6e9e130754334f57b21ffc23af8
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
 
-CLOUDSTACK-537: cloudstack UI - zone wizard - Advanced zone with SG enabled - show Guest Traffic step with 5 fields (gateway, netmask, startIp, endIp, VLAN ID) and pass them to CreateNetwork API when creating default guest network.
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
 
-Contained in branches: master
-Contained in no tag
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
+
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
+
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
+
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
+
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div></div></li><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
+
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
+
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div></div></li><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
+
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
+
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Remove horrible WeakIdentityMap caching in AttributeFactory, AttributeSource and VirtualMethod
+                </div><div><b>description:</b> Especially the use case in AttributeFactory is horrible:
+Because of ClassLoader issues we cannot hold strong references (see LUCENE-5640 for explanation), we need WeakIdentityMap&lt;Class, WeakReference&lt;someVal&gt;&gt;. You could say: let's use a strong value for stuff like MethodHandles (used in AttributeFactory), but because those have a strong reference to the class, our reference to key would be strong, so garbage collector can no longer unload the class. This is why we use the WeakReference also on the value.
+
+The problem is if the value is something like a MethodHandle, which itsself has hard reference to (so it gets garbage collected). Then the cache is useless.
+
+In DefaultAttributeFactory I decided, to make methodhandles strong references, but then I needed to restrict it to our own classloader, otherwise we would have strong references to foreign classloaders.
+
+Since Java 7 there is java.lang.ClassValue, that fixes the following JVM bug: http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6389107
+
+See also: http://stackoverflow.com/questions/7444420/classvalue-in-java-7
+
+In fact internally, there is a also a WeakReference/WeakHashMap used, but only as fallback - and its only one globally, used by many other JVM internals, too. By default it has a very fast path and the call to ClassValue.get() is incredibly fast. This should therefore also improve AttributeFactory alltogether.
+
+Next to AttributeFactory, I also improved the Interfaces cache of AttributeSource (this one assigns an array of Attribute interfaces to an AttributeImpl). The other one is VirtualMethod (assigns its own implementationDistance for every seen subclass).
+
+This also removes almost all uses of WeakIdentityMap, the remaining one is the ByteBuffer stuff in MMapDirectory. Unfortunately I have still no idea how to remove that one... :(
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Patch removing most of the code... Very nice cleanup!
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> New patch with some cleanups (renames of fields,...). Also made sure that the collected interfaces for a given AttributeImpl dont have duplicae interfaces. This was not guaranteed before, but was possible, if superclass defined same interfaces as class. This happened with the Token class...
+
+Will commit this now.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Commit 1618148 from [~thetaphi] in branch 'dev/trunk'
+[ https://svn.apache.org/r1618148 ]
+
+LUCENE-5887: Remove WeakIdentityMap caching in AttributeFactory, AttributeSource, and VirtualMethod in favour of Java 7's ClassValue. Always use MethodHandles to create AttributeImpl classes.
               </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		1 minute ago (Mon Nov 26 11:23:48 2012)
-Commit hash:	d9ac544b063cffc11c1abf8a26200872d018aa09
+                Commit 1618149 from [~thetaphi] in branch 'dev/branches/branch_4x'
+[ https://svn.apache.org/r1618149 ]
 
-CLOUDSTACK-537: cloudstack UI - zone wizard - create default guest network - Only pass gateway/netmask/startIp/endIp/VlanId to CreateNetwork API if it's an Advanced zone with SG. Do not pass them to CreateNetwork API if it's a Basic zone.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		54 seconds ago (Mon Nov 26 11:55:41 2012)
-Commit hash:	36d175126d6573179b92ca8326d5942042e1106c
-
-CLOUDSTACK-537: cloudstack UI - zone wizard - (1) Advanced SG-Enabled zone: enable VirtualRouter and SecurityGroup provider. (2) Advanced SG-Disabled zone: enable VirtualRouter and VpcVirtualRouter provider.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		19 seconds ago (Mon Nov 26 11:57:55 2012)
-Commit hash:	f97f9631d8e84415b0a8845ddbb65f12e3851689
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - zone wizard - skip configuring public traffic type.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		24 seconds ago (Mon Nov 26 11:59:52 2012)
-Commit hash:	759d434ba3405a560edcbf50b50e5e7e2665fe9d
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - zone wizard - hide public traffic step.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		18 minutes ago (Mon Nov 26 12:45:47 2012)
-Commit hash:	7d89d928d9799bed968568002901e6ee34d7135d
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - zone wizard - physical network step - remove public traffic from droppable container.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		1 minute ago (Mon Nov 26 13:03:27 2012)
-Commit hash:	af79da5d80ed9f6ce723860ba2b344a31743b3c5
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - VM wizard - (1) step 5 - Show Security Groups instead of networks. (2) When Launch button is hit, Programmatically find a Shared network with Security Group in the selected zone, then pass it to deployVirtualMachine API.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		41 seconds ago (Mon Nov 26 13:06:30 2012)
-Commit hash:	811c904fc34bd3608dacbaf7b4e2892e0af524d8
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - zone wizard - network offering dropdown - populate only network offerings that include SecurityGroup service.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		40 seconds ago (Mon Nov 26 13:08:30 2012)
-Commit hash:	080a2dc9c5043ad600ce632c3904c236e9f19c1b
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - zone wizard - network offering dropdown - exclude network offerings that include EIP, ELB service.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		43 seconds ago (Mon Nov 26 13:10:44 2012)
-Commit hash:	b94981343813a8698a9e4818d70e444873f684d3
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - Infrastructure menu - zone detail - physical network - guest - network tab - crate network dailog - scope dropdown - list only Accounts option if it's for an Advanced SG-enabled zone.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		37 seconds ago (Mon Nov 26 13:12:41 2012)
-Commit hash:	1fb80fc6ce70fd11f956c0cfedc337bc8bff87a8
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - Network menu - guest network section - (1) hide create network button if there is no Advacned SG-disabled zones. (2) create network dialog - zone dropdown - populate only Advacned SG-disabled zones.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		50 seconds ago (Tue Nov 27 15:09:55 2012)
-Commit hash:	46cec7342ad446e3e6d3e6fd97b0b32d9a2c529f
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-Enabled zone - Instance menu - instance detailView - show SecurityGroups tab for Advanced SG-Enabled zone.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                Author:		Jessica Wang &lt;jessica.wang@citrix.com&gt;#mailto:jessica.wang@citrix.com
-Date:		43 seconds ago (Thu Dec 06 10:43:50 2012)
-Commit hash:	391e873bd94df1f9bcd8e897910e1d5b9c20f84f
-
-CLOUDSTACK-537: cloudstack UI - Advanced SG-enabled zone - zone wizard - cluster dropdown - Make "KVM" the 1st option in dropdown.
-
-Contained in branches: master
-Contained in no tag
-              </div></li><li><div>
-                commit a4c413bc13cae8d6060a4bfd58fb2d6a18bebbc7
-Author: Brian Federle &lt;bfederle@gmail.com&gt;
-Date:   Mon Jan 21 14:30:56 2013 -0800
-
-    CLOUDSTACK-537: Fix for instance wizard
-    
-    When using SG-enabled advanced zone, fix case where 'add guest
-    network' form shows up in select network step -- adding a guest
-    network via the wizard is not supported in this type of setup.
-              </div></li><li><div>
-                Commit a02c66594f3209409737a7c364ce65884a0f1f83 in branch refs/heads/master from [~jessicawang]
-[ https://git-wip-us.apache.org/repos/asf?p=incubator-cloudstack.git;h=a02c665 ]
-
-CLOUDSTACK-537: cloudstack UI - Infrastructure menu - create network dialog - Advanced sg-enabled zone - (1) account-specific network doesn't work at backend. Therefore, remove "account" option from scope dropdown. (2) zone-wide network: list only sg network offerings.
-
-              </div></li><li><div>
-                Commit cc24bebcb6c6f3bddcdb7bd26d7f6a7556c16c07 in branch refs/heads/master from [~jessicawang]
-[ https://git-wip-us.apache.org/repos/asf?p=incubator-cloudstack.git;h=cc24beb ]
-
-CLOUDSTACK-537: cloudstack UI - Advanced sg-enabled zone - VM Wizard - step 5 - select network screen - populate only sg networks (i.e. not show non-sg networks).
-
-              </div></li><li><div>
-                Commit e56cb26f5c93a22acf1d9326f68d391d19c58614 in branch refs/heads/4.1 from [~jessicawang]
-[ https://git-wip-us.apache.org/repos/asf?p=incubator-cloudstack.git;h=e56cb26 ]
-
-CLOUDSTACK-537: cloudstack UI - Infrastructure menu - create network dialog - Advanced sg-enabled zone - (1) account-specific network doesn't work at backend. Therefore, remove "account" option from scope dropdown. (2) zone-wide network: list only sg network offerings.
-
-              </div></li><li><div>
-                Commit e9c923aee04abd99c9b4184a972cb8cd90b6d010 in branch refs/heads/4.1 from [~jessicawang]
-[ https://git-wip-us.apache.org/repos/asf?p=incubator-cloudstack.git;h=e9c923a ]
-
-CLOUDSTACK-537: cloudstack UI - Advanced sg-enabled zone - VM Wizard - step 5 - select network screen - populate only sg networks (i.e. not show non-sg networks).
-
-              </div></li><li><div>
-                Feature is not checked in so removing this from 41. Angie will be checking this
-              </div></li><li><div>
-                tested the removal - closing
-              </div></li><li><div>
-                Tested   ASF 4.1 cloudstack latest build  3/26/13:
-
-1. create advance zone SG disabled, VPC, VPC network, VM deployment successful
-
-2. basic zone creation failed        https://issues.apache.org/jira/browse/CLOUDSTACK-1812 
-
-3. create advance zone SG enabled failed with error: failed to create a guest network for basic zone. Error: Only account specific isolated network with sourceNat service disabled are allowed in security group enabled zone.
-However, it created a zone which is disabled, with physical network.  
-
-
+Merged revision(s) 1618148 from lucene/dev/trunk:
+LUCENE-5887: Remove WeakIdentityMap caching in AttributeFactory, AttributeSource, and VirtualMethod in favour of Java 7's ClassValue. Always use MethodHandles to create AttributeImpl classes.
               </div></li></ol></div></div></html>

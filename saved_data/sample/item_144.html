@@ -1,658 +1,1629 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 144
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-25981][R] Enables Arrow optimization from R DataFrame to Spark DataFrame
-                </div><div><b>message:</b> [SPARK-25981][R] Enables Arrow optimization from R DataFrame to Spark DataFrame
-
-## What changes were proposed in this pull request?
-
-This PR targets to support Arrow optimization for conversion from R DataFrame to Spark DataFrame.
-Like PySpark side, it falls back to non-optimization code path when it's unable to use Arrow optimization.
-
-This can be tested as below:
-
-```bash
-$ ./bin/sparkR --conf spark.sql.execution.arrow.enabled=true
-```
-
-```r
-collect(createDataFrame(mtcars))
-```
-
-### Requirements
-  - R 3.5.x
-  - Arrow package 0.12+
-    ```bash
-    Rscript -e 'remotes::install_github("apache/arrowapache-arrow-0.12.0", subdir = "r")'
-    ```
-
-**Note:** currently, Arrow R package is not in CRAN. Please take a look at ARROW-3204.
-**Note:** currently, Arrow R package seems not supporting Windows. Please take a look at ARROW-3204.
-
-### Benchmarks
-
-**Shall**
-
-```bash
-sync &amp;&amp; sudo purge
-./bin/sparkR --conf spark.sql.execution.arrow.enabled=false
-```
-
-```bash
-sync &amp;&amp; sudo purge
-./bin/sparkR --conf spark.sql.execution.arrow.enabled=true
-```
-
-**R code**
-
-```r
-createDataFrame(mtcars) # Initializes
-rdf &lt;- read.csv("500000.csv")
-
-test &lt;- function() {
-  options(digits.secs = 6) # milliseconds
-  start.time &lt;- Sys.time()
-  createDataFrame(rdf)
-  end.time &lt;- Sys.time()
-  time.taken &lt;- end.time - start.time
-  print(time.taken)
-}
-
-test()
-```
-
-**Data (350 MB):**
-
-```r
-object.size(read.csv("500000.csv"))
-350379504 bytes
-```
-
-"500000 Records"  http://eforexcel.com/wp/downloads-16-sample-csv-files-data-sets-for-testing/
-
-**Results**
-
-```
-Time difference of 29.9468 secs
-```
-
-```
-Time difference of 3.222129 secs
-```
-
-The performance improvement was around **950%**.
-Actually, this PR improves around **1200%**+ because this PR includes a small optimization about regular R DataFrame -&gt; Spark DatFrame. See https://github.com/apache/spark/pull/22954#discussion_r231847272
-
-### Limitations:
-
-For now, Arrow optimization with R does not support when the data is `raw`, and when user explicitly gives float type in the schema. They produce corrupt values.
-In this case, we decide to fall back to non-optimization code path.
-
-## How was this patch tested?
-
-Small test was added.
-
-I manually forced to set this optimization `true` for _all_ R tests and they were _all_ passed (with few of fallback warnings).
-
-**TODOs:**
-- [x] Draft codes
-- [x] make the tests passed
-- [x] make the CRAN check pass
-- [x] Performance measurement
-- [x] Supportability investigation (for instance types)
-- [x] Wait for Arrow 0.12.0 release
-- [x] Fix and match it to Arrow 0.12.0
-
-Closes #22954 from HyukjinKwon/r-arrow-createdataframe.
-
-Lead-authored-by: hyukjinkwon &lt;gurwls223@apache.org&gt;
-Co-authored-by: Hyukjin Kwon &lt;gurwls223@apache.org&gt;
-Signed-off-by: Hyukjin Kwon &lt;gurwls223@apache.org&gt;
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-25981][R] Enables Arrow optimization from R DataFrame to Spark DataFrame
-                </div><div><b>body:</b> ## What changes were proposed in this pull request?
-
-This PR targets to support Arrow optimization for conversion from R DataFrame to Spark DataFrame.
-Like PySpark side, it falls back to non-optimization code path when it's unable to use Arrow optimization.
-
-This can be tested as below:
-
-```bash
-$ ./bin/sparkR --conf spark.sql.execution.arrow.enabled=true
-```
-
-```r
-collect(createDataFrame(mtcars))
-```
-
-### Requirements
-  - R 3.5.x 
-  - Arrow package 0.12+
-    ```bash
-    Rscript -e 'remotes::install_github("apache/arrow@apache-arrow-0.12.0", subdir = "r")'
-    ```
-
-**Note:** currently, Arrow R package is not in CRAN. Please take a look at ARROW-3204.
-**Note:** currently, Arrow R package seems not supporting Windows. Please take a look at ARROW-3204.
-
-
-### Benchmarks
-
-**Shall**
-
-```bash
-sync &amp;&amp; sudo purge
-./bin/sparkR --conf spark.sql.execution.arrow.enabled=false
-```
-
-```bash
-sync &amp;&amp; sudo purge
-./bin/sparkR --conf spark.sql.execution.arrow.enabled=true
-```
-
-**R code**
-
-```r
-createDataFrame(mtcars) # Initializes
-rdf &lt;- read.csv("500000.csv")
-
-test &lt;- function() {
-  options(digits.secs = 6) # milliseconds
-  start.time &lt;- Sys.time()
-  createDataFrame(rdf)
-  end.time &lt;- Sys.time()
-  time.taken &lt;- end.time - start.time
-  print(time.taken)
-}
-
-test()
-```
-
-**Data (350 MB):**
-
-```r
-object.size(read.csv("500000.csv"))
-350379504 bytes
-```
-
-"500000 Records"  http://eforexcel.com/wp/downloads-16-sample-csv-files-data-sets-for-testing/
-
-**Results**
-
-```
-Time difference of 29.9468 secs
-```
-
-```
-Time difference of 3.222129 secs
-```
-
-The performance improvement was around **950%**.
-Actually, this PR improves around **1200%**+ because this PR includes a small optimization about regular R DataFrame -&gt; Spark DatFrame. See https://github.com/apache/spark/pull/22954#discussion_r231847272
-
-### Limitations:
-
-For now, Arrow optimization with R does not support when the data is `raw`, and when user explicitly gives float type in the schema. They produce corrupt values.
-In this case, we decide to fall back to non-optimization code path.
-
-## How was this patch tested?
-
-Small test was added.
-
-I manually forced to set this optimization `true` for _all_ R tests and they were _all_ passed (with few of fallback warnings).
-
-**TODOs:**
-- [x] Draft codes
-- [x] make the tests passed
-- [x] make the CRAN check pass
-- [x] Performance measurement
-- [x] Supportability investigation (for instance types)
-- [x] Wait for Arrow 0.12.0 release
-- [x] Fix and match it to Arrow 0.12.0
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Let me leave a cc @felixcheung, @BryanCutler, @yanboliang, @shivaram FYI.
-              </div></li><li><div>
-                **[Test build #98508 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98508/testReport)** for PR 22954 at commit [`90011a5`](https://github.com/apache/spark/commit/90011a5ff48f2c5fa5fae0e2573fcdaa85d44976).
- * This patch **fails to generate documentation**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98510 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98510/testReport)** for PR 22954 at commit [`46eaeca`](https://github.com/apache/spark/commit/46eaeca5854281a5688badbe71981029096674a5).
- * This patch **fails to generate documentation**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98512 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98512/testReport)** for PR 22954 at commit [`614170e`](https://github.com/apache/spark/commit/614170e2187ebb904a767adb9289ac48300e533c).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98514 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98514/testReport)** for PR 22954 at commit [`b15d79c`](https://github.com/apache/spark/commit/b15d79c0d734d04a783470d793cf52e5c6c99b9d).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                So far, the regressions tests are passed and newly added test for R optimization is verified locally. Let me fix CRAN test and some nits.
-              </div></li><li><div>
-                Thanks, @felixcheung. I will address those comments during cleaning up.
-              </div></li><li><div>
-                For encryption stuff, I will try to handle that as well (maybe as a followup(?)) so that we support it even when that's enabled.
-              </div></li><li><div>
-                @felixcheung! performance improvement was **955%** ! I described the benchmark I took in PR description.
-              </div></li><li><div>
-                adding @falaki and @mengxr as well.
-              </div></li><li><div>
-                **[Test build #98595 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98595/testReport)** for PR 22954 at commit [`8813192`](https://github.com/apache/spark/commit/881319298b844d934b1eb02994d7f1a85274efaa).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98603 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98603/testReport)** for PR 22954 at commit [`7be15d3`](https://github.com/apache/spark/commit/7be15d36989ba1a00a86bb5eeb0b3d6fb7da3c4c).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98613 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98613/testReport)** for PR 22954 at commit [`2ddbd69`](https://github.com/apache/spark/commit/2ddbd694663b7ff0f5b3a8099ba87e4800397a57).
-              </div></li><li><div>
-                I have finished most of todos except waiting for R API of Arrow 0.12.0 and fixing some changes accordingly.
-              </div></li><li><div>
-                **[Test build #98615 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98615/testReport)** for PR 22954 at commit [`2ba6add`](https://github.com/apache/spark/commit/2ba6addbcd52940ef989880bff69fe126a4dd2e1).
- * This patch **fails Spark unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98614 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98614/testReport)** for PR 22954 at commit [`0903736`](https://github.com/apache/spark/commit/0903736b46e1ff737577f7db3f29db67795701ee).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                retest this please
-              </div></li><li><div>
-                **[Test build #98628 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98628/testReport)** for PR 22954 at commit [`2ba6add`](https://github.com/apache/spark/commit/2ba6addbcd52940ef989880bff69fe126a4dd2e1).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                I don't know R well enough to review that code, but the results look awesome! Nice work @HyukjinKwon!!
-              </div></li><li><div>
-                Hey guys thanks for reviewing! Will address them soon.
-              </div></li><li><div>
-                Let me hide some comments that are addressed (it looks messy). Please make unhide if I mistakenly hide some comments that are not addressed yet.
-              </div></li><li><div>
-                **[Test build #98690 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98690/testReport)** for PR 22954 at commit [`6f28aa5`](https://github.com/apache/spark/commit/6f28aa5c79854cc3df176e0fa0fa6f3e7d21a98a).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98692 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98692/testReport)** for PR 22954 at commit [`a81134e`](https://github.com/apache/spark/commit/a81134efe787bbd3b7a5b92d03b91e5f4e2f3cf6).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                Hm .. the CRAN passed in my local. Let me workaround for now.
-              </div></li><li><div>
-                **[Test build #98696 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98696/testReport)** for PR 22954 at commit [`b2e0fc2`](https://github.com/apache/spark/commit/b2e0fc2d9e5e18b334b0177157ebd282b654c0a0).
- * This patch **fails some tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98697 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98697/testReport)** for PR 22954 at commit [`92419d0`](https://github.com/apache/spark/commit/92419d055c9f9eb4cbe1172158863866b4401b4b).
- * This patch **fails PySpark unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98699 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98699/testReport)** for PR 22954 at commit [`c3f47ce`](https://github.com/apache/spark/commit/c3f47ce04c82f6fb6efe6d55baa19ddc8cf50dd3).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                Yea .. I will make the followup works right away after this one get merged. Thanks @felixcheung. Let me address the rest of comments, and wait for Arrow release.
-
-@BryanCutler BTW, do you know the rough expected timing for Arrow 0.12.0 release?
-              </div></li><li><div>
-                **[Test build #98713 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98713/testReport)** for PR 22954 at commit [`d9d9f98`](https://github.com/apache/spark/commit/d9d9f982d26a5dd2141515e0c9089243b7b93554).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #98755 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98755/testReport)** for PR 22954 at commit [`954bc0e`](https://github.com/apache/spark/commit/954bc0eec206902cb8176338e1f72886f5b3c626).
- * This patch **fails due to an unknown error code, -9**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                retest this please.
-              </div></li><li><div>
-                **[Test build #98760 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/98760/testReport)** for PR 22954 at commit [`954bc0e`](https://github.com/apache/spark/commit/954bc0eec206902cb8176338e1f72886f5b3c626).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                &gt; @BryanCutler BTW, do you know the rough expected timing for Arrow 0.12.0 release?
-
-I think we should be starting the release process soon, so maybe in a week or two.
-              </div></li><li><div>
-                FYI the release tracker (quite useful!) https://cwiki.apache.org/confluence/display/ARROW/Arrow+0.12.0+Release
-
-              </div></li><li><div>
-                @HyukjinKwon it's released!
-              </div></li><li><div>
-                btw @HyukjinKwon would you be interested in a post about this, similar to ARROW-4262?
-              </div></li><li><div>
-                Sure!
-              </div></li><li><div>
-                Let me finish this one and then check the appropriate place to make the documentation (maybe around https://spark.apache.org/docs/latest/sql-pyspark-pandas-with-arrow.html?).
-              </div></li><li><div>
-                I was thinking a blog post in the Arrow project ;)
-
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Walk through the children of this node, using a new summary array
+ for the (sub)tree rooted at this node
               </div></li><li><div>
-                Gotya, yea, I am interested in it of course. I'll start to work on that after this PR merged.
+                 update the passed summary array with the values for this node's subtree
               </div></li><li><div>
-                **[Test build #101513 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/101513/testReport)** for PR 22954 at commit [`767af86`](https://github.com/apache/spark/commit/767af864a328b8dfb7bbcecea331e3f84ab45149).
- * This patch **fails due to an unknown error code, -9**.
- * This patch merges cleanly.
- * This patch adds no public classes.
+                 Create directory /hdfs-2053
               </div></li><li><div>
-                retest this please
+                 Create a file under subdirectory B
               </div></li><li><div>
-                **[Test build #101551 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/101551/testReport)** for PR 22954 at commit [`767af86`](https://github.com/apache/spark/commit/767af864a328b8dfb7bbcecea331e3f84ab45149).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
+                 Create a file under subdirectory C (which has a space quota)
               </div></li><li><div>
-                To cut it short, I think this PR is ready to go. I reran the benchmark, and updated PR descriptions.
-
-Few things to mention:
-
-1. Arrow is not related on CRAN and looks it's going to take few months (see [ARROW-3204](https://issues.apache.org/jira/browse/ARROW-3204)). So, for now, it should be manually installed.
-    - It can be installed by `Rscript -e 'remotes::install_github("apache/arrow@apache-arrow-0.12.0", subdir = "r")'`.
-    - I used maxOS Mojave 10.14.2 and faced some problems to fix at my env. Please connect me if you guys face some issue during installing this. If this is globally happening, I will document this somewhere.
-
-2. Looks we can run the build via AppVeyor when it's on CRAN (see [ARROW-3204](https://issues.apache.org/jira/browse/ARROW-3204)).
-
-3. We should remove the workarounds that I used to avoid CRAN check (see https://github.com/apache/spark/pull/22954#discussion_r250585248 and https://github.com/apache/spark/pull/22954#discussion_r250618871)
-
-Next items (im going to investigate first before filing JIRAs):
-
-1. Im gonna take a look if we can do this Spark DataFrame -&gt; R DataFrame too
-2. Also, I'm going to take a look for R native function APIs like lapply and gapply and see if we can optimize this
-3. Before Spark 3.0 release, I will document this. Hopefully, we can get rid of both workaround I mentioned above and Arrow is on CRAN before this.
-              </div></li><li><div>
-                **[Test build #101633 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/101633/testReport)** for PR 22954 at commit [`66b120b`](https://github.com/apache/spark/commit/66b120b3dbf3d0e6581429ec6cf10131452b5bb7).
- * This patch **fails Spark unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #101630 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/101630/testReport)** for PR 22954 at commit [`92eec4e`](https://github.com/apache/spark/commit/92eec4e0d63bb28a0d84d2761863f35751a3f448).
- * This patch **fails Spark unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #101632 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/101632/testReport)** for PR 22954 at commit [`854c9d8`](https://github.com/apache/spark/commit/854c9d83f1b1b41ffdac44ffd25072c2d5df9eb0).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                @felixcheung and @shivaram, are you okay with this plan https://github.com/apache/spark/pull/22954#issuecomment-457214769 ? If so, I think we can go ahead.
-              </div></li><li><div>
-                Yes, install_github is fine. I’d say #2 gapply etc is higher priority. Sounds good to me.
-
-
-
-              </div></li><li><div>
-                Yea will do. Do you mind if we go ahead with this PR @felixcheung? 
-              </div></li><li><div>
-                Sure.
-
-
-
-              </div></li><li><div>
-                Thanks. @felixcheung.
-
-Merged to master.
-              </div></li><li><div>
-                BTW, https://issues.apache.org/jira/browse/SPARK-26759 has subtasks for Arrow optimization (just FYI if anyone missed it)
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                perhaps best to add a clearer error message?
-              </div></li><li><div>
-                is it possible to not depend on this withr? 
-              </div></li><li><div>
-                btw, is it worthwhile to check the arrow package version?
-              </div></li><li><div>
-                I think you can use sparkR.conf
-              </div></li><li><div>
-                might need to give it a dir prefix to use - the tempfile default is not CRAN compliant and possibly some ACL issue
-              </div></li><li><div>
-                It's actually dependent on Arrow's API calls .. Those APIs were only added in few weeks ago. I will make it clean when R API of Arrow is close to release (at 0.12.0)
-              </div></li><li><div>
-                hmmm .. yea I will add the version check later when R API of Arrow is officially released to CRAN.
-              </div></li><li><div>
-                Note that this PR optimizes the original code path as well here - when the input is local R DataFrame, here we avoid `firstRDD` operation.
-
-In the master branch, the benchmark shows:
-
-```
-Exception in thread "dispatcher-event-loop-6" java.lang.OutOfMemoryError: Java heap space
-	at java.util.Arrays.copyOf(Arrays.java:3236)
-	at java.io.ByteArrayOutputStream.grow(ByteArrayOutputStream.java:118)
-	at java.io.ByteArrayOutputStream.ensureCapacity(ByteArrayOutputStream.java:93)
-	at java.io.ByteArrayOutputStream.write(ByteArrayOutputStream.java:153)
-	at org.apache.spark.util.ByteBufferOutputStream.write(ByteBufferOutputStream.scala:41)
-	at java.io.ObjectOutputStream$BlockDataOutputStream.drain(ObjectOutputStream.java:1877)
-```
-
-If I try this with `100000.csv` (79MB) record, it takes longer. To cut it short:
-
-**Current master**:
-
-```
-Time difference of 8.502607 secs
-```
-
-**With this PR, but without Arrow**
-
-```
-Time difference of 5.143395 secs
-```
-
-**With this PR, but with Arrow**
-
-
-```
-Time difference of 0.6981369 secs
-```
-
-So, technically this PR improves more then **1200%**
-              </div></li><li><div>
-                These workarounds will be removed when Arrow 0.12.0 is released. I did it to make CARN passed.
-              </div></li><li><div>
-                It's actually a bit odd that I need to manually require this package. Otherwise, it complains, for instance, here https://github.com/apache/arrow/blob/d3ec69069649013229366ebe01e22f389597dc19/r/R/on_exit.R#L20
-              </div></li><li><div>
-                I &lt;3 4 digits!
-              </div></li><li><div>
-                ok
-              </div></li><li><div>
-                require1 sounds a bit like a hack though...
-              </div></li><li><div>
-                what's the advantage of adding this wrapper here - I've thinking to eliminate most of these if possible - and just use callJMethod on `ArrowConverters` say?
-              </div></li><li><div>
-                should this go by default with default parallelism ?
-              </div></li><li><div>
-                `1 : ceiling`? `1 : nrow`?
-              </div></li><li><div>
-                how is this slices computed? is it similar to https://github.com/apache/spark/blob/c3b4a94a91d66c172cf332321d3a78dba29ef8f0/R/pkg/R/context.R#L152
-              </div></li><li><div>
-                so is this an API missing in Arrow?
-              </div></li><li><div>
-                actually, I think if you use withr here it will call close_on_exit for you? (but when?)
+                 Test HDFS-2053 :
               </div></li><li><div>
-                is it always in the conf - I think you can also pass in a default value to sparkR.conf
+                 Factors to vary the sizes of test files created in each subdir.
+ The actual factors are not really important but they allow us to create
+ identifiable file sizes per subdir, which helps during debugging.
               </div></li><li><div>
-                can you check -  I think `is` `is.x` doesn't something do the right thing when
-
-head(df, 1) and one of the field is `NA`
-              </div></li><li><div>
-                ? https://stat.ethz.ch/R-manual/R-devel/library/base/html/warning.html
-              </div></li><li><div>
-                unlink?
-              </div></li><li><div>
-                refactor this into a method?
-              </div></li><li><div>
-                ooops
-              </div></li><li><div>
-                nit: a `RDD` -&gt; an `RDD`
-              </div></li><li><div>
-                Any idea what's going on with the `FloatType`? Is it a problem on the arrow side?
-              </div></li><li><div>
-                nit: `arrow` -&gt; `Arrow`
-              </div></li><li><div>
-                Yup .. it is .. looks we shouldn't have this error from a cursory look in R API of Arrow. Maybe this can be gone when I use official R Arrow release version. Let me check it later.
-              </div></li><li><div>
-                Hmhmhm .. yea. What I was trying to do is to add SQL related codes called in R from JVM, into here when they are not official APIs in order to avoid: we change the internal API's signature within Scala, and it causes R test failure. I was trying to do the similar things within PySpark side. Let me keep it if you don't mind.
-              </div></li><li><div>
-                We should; however, it follows the original code path's behaviour. I matched it as the same so that we can compare the performances in the same conditions. If you don't mind, I will fix both in a separate PR.
-              </div></li><li><div>
-                This resembles PySpark side logic:
-
-https://github.com/apache/spark/blob/d367bdcf521f564d2d7066257200be26b27ea926/python/pyspark/sql/session.py#L554-L556
-
-              </div></li><li><div>
-                Hm, possibly yea. Let me try it. In this way, we could get rid of `require`.
-              </div></li><li><div>
-                Yea,I checked that it always has the default value. I initially left the default value but took it out after double checking.
-              </div></li><li><div>
-                Yup, let me try.
-              </div></li><li><div>
-                I suspect that it happens when `numeric` (which is like `1.0`) is casted into float type. I think it's related with casting behaviour. Let me take a look and file a JIRA there in Arrow side but if you don't mind I will focus on matching exact type cases for now ... 
-              </div></li><li><div>
-                Yea, I at least managed to get rid of this hack itself. Will push soon.
-              </div></li><li><div>
-                I believe either way is fine.
-              </div></li><li><div>
-                Looks okay in this case specifically:
-
-```r
-&gt; any(sapply(head(data.frame(list(list(a=NA))), 1), is.raw))
-[1] FALSE
-&gt; any(sapply(head(data.frame(list(list(a=NA))), 1), function(x) is(x, "POSIXct")))
-[1] FALSE
-&gt; any(sapply(head(data.frame(list(list(a=1))), 1), is.raw))
-[1] FALSE
-&gt; any(sapply(head(data.frame(list(list(a="a"))), 1), function(x) is(x, "POSIXct")))
-[1] FALSE
-&gt; any(sapply(head(data.frame(list(list(a=raw(1)))), 1), is.raw))
-[1] TRUE
-&gt; any(sapply(head(data.frame(list(list(a=as.POSIXct("2000-01-01")))), 1), function(x) is(x, "POSIXct")))
-[1] TRUE
-```
-              </div></li><li><div>
-                Let me try to reuse the R side slicing logic.
-              </div></li><li><div>
-                hmm, I see your point... but there could be hundreds of these wrapper we need add if we set as a practice, I'm guessing. 
-
-a few problems with these wrappers I see:
-1. they are extra work to add or maintain
-2. many are very simple, not much value add
-3. many get abandoned over the years - they are not called and not removed
-
-but I kinda see your way, let's keep this one and review any new one in the future.
-              </div></li><li><div>
-                ah, any idea that was done that way in python? this seems to be different from sc.paralleize which is what https://github.com/apache/spark/blob/c3b4a94a91d66c172cf332321d3a78dba29ef8f0/R/pkg/R/context.R#L152 is implementing (scala code in ParallelCollectionRDD)
-              </div></li><li><div>
-                ok
-              </div></li><li><div>
-                LG, I tested a few cases too
-              </div></li><li><div>
-                yes, just more consistent. I also don't know for sure why all other instances are calling unlink
-              </div></li><li><div>
-                maybe out of bit range? 53 bit https://stat.ethz.ch/R-manual/R-patched/library/base/html/double.html
-
-(numeric is double in R)
-              </div></li><li><div>
-                that will be good. circumventing CRAN check for method name is... problematic..
-(there are other more hacky way too, but ..)
-              </div></li><li><div>
-                Not sure. I think the intention is the same. Let me stick to R's one for now.
-              </div></li><li><div>
-                does this fail? or just a way to inject a finally?
-              </div></li><li><div>
-                are we going to ask shane to install arrow/withr on the Jenkins machines?
-              </div></li><li><div>
-                future: consolidate the default here and inside makeSplits
-              </div></li><li><div>
-                nit: just `FALSE` is good
+                 Create a file under subdirectory A
               </div></li><li><div>
-                Just to inject the finally .. :-) ..
+                 Check space consumed for /hdfs-2053
               </div></li><li><div>
-                Maybe we should hold it for now .. because I realised R API for Arrow requires R 3.5.x and Jenkins's one is 3.1.x if I remember this correctly. Ideally, we could probably do that via AppVeyor first if everything goes fine.
+                 Create subdirectories /hdfs-2053/{A,B,C}
               </div></li><li><div>
-                Should we move `writeToTempFileInArrow` call into next `tryCatch`?
-              </div></li><li><div>
-                When `shouldUseArrow` is true, I think it means we already done using arrow? Maybe just `useArrow`?
-              </div></li><li><div>
-                Is this going to read a file in Arrow stream format? Or the comment should be fixed.
-              </div></li><li><div>
-                Yup, correct. Let me address other comments as well.
-              </div></li><li><div>
-                Oh if it's only when casting to a float, then maybe not that big of an issue. I just wanted to make sure a bug was filed for Arrow if the problem is there.
-              </div></li><li><div>
-                I think it's a bug because it always produces a corrupt value when I try to use `number` as explicit float types.
-              </div></li><li><div>
-                super nit if you will need additional commit: `... Pandas DataFrame," +` -&gt; `... Pandas DataFrame, " +`
-              </div></li><li><div>
-                Oh yeah. I need to push additional commit when it's released. Will fix it together later.
-              </div></li><li><div>
-                FWIW, sparklyr and arrow implementation uses the same trick to avoid CRAN failure.
-              </div></li><li><div>
-                Assuming from ARROW-3204, Arrow is still not in the CRAN and looks it's going to take few months, and looks we can run the build via AppVeyor when it's on CRAN.
-              </div></li><li><div>
-                yes, published to CRAN not happening yet for Arrow. install_github should be fine? it's a one time thing
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> [R] Enable package to be made available on CRAN
-                </div><div><b>description:</b> As of&nbsp;[ARROW-1325|https://issues.apache.org/jira/browse/ARROW-1325],&nbsp;the project contains a minimal working R package that takes advantage of R's built-in support for calling C++ code and uses Rcpp for added support.
-
-Though the exact public interface of the package hasn't been developed yet (so this issue may be running before we walk), one major feature in its development will be release to [CRAN|https://cran.r-project.org/], the official package repository for the R language.
+                 Set space quota for subdirectory C
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-2053. Bug in INodeDirectory#computeContentSummary warning. Contributed by Michael Noll
+                </div><div><b>message:</b> HDFS-2053. Bug in INodeDirectory#computeContentSummary warning. Contributed by Michael Noll
 
-Completing this story would mean:
- * Getting source code to state where&nbsp; [R CMD CHECK|https://www.r-bloggers.com/how-i-learned-to-stop-worrying-and-love-r-cmd-check/]&nbsp;passes with 0 ERRORS, 0 WARNINGS, and 0 NOTES
- * Setting up build process for source and precompiled binary packages (see&nbsp; [data.table|https://github.com/Rdatatable/data.table]&nbsp;and&nbsp;[XGBoost|https://github.com/dmlc/xgboost]&nbsp;as examples of packages that do this)
- * Submission to CRAN and acceptance of the first release
 
-&nbsp;
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/branch-0.20@1140850 13f79535-47bb-0310-9956-ffa450edef68
 
-Distribution via CRAN would be a much more natural fit for most R users' workflows than the&nbsp;current build-from-source workflow, and comes with all the other benefits of package managers (e.g. version pegging, easy distribution of platform-specific binaries).
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                I agree that this software should be made available on CRAN. Because of GPL dependencies we (the Arrow PMC) may have to leave the actual distribution of binaries for this software to the R community to do as it wishes. We can develop the tools to assist with that here
-              </div></li><li><div>
-                +100! I can't wait to use Arrow R API!
-              </div></li><li><div>
-                A few folks&nbsp;working on R and Arrow got together today, we&nbsp;agree that the R Arrow package should be in CRAN as soon as possible. However, this is likely to take a few months since we have to first:
- # Have an appropriate build process for Windows which Jeroen is leading, see [rwinlib/arrow|[https://github.com/rwinlib/arrow].]
- # Proper appveyor automation. The&nbsp;UrsaLabs&nbsp;team is planning to hire a build engineer to help, in the meantime, Kirill might be able to help get this going to make sure Jeroen's work does not regress as Arrow 0.13 gets developed.
- # Have an appropriate build process for OS X.
- # The Arrow libraries need to get distributed in the official Debian repository to be allowed in CRAN. Wes mentioned that,&nbsp;Kouhei (hoping I got this right), might be able to help the project navigate this in the next few months.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
 
-So, while we completely agree with you that is imperative that Arrow gets in CRAN, in the meantime, we could still make use of Arrow in OS X and Linux using the remotes package (or devtools)&nbsp;by installing the Arrow runtime first, followed by:
-{code:java}
-remotes::install_github("apache/arrow", subdir = "r")
 {code}
-              </div></li><li><div>
-                The Homebrew lead maintainer has dropped arrow from homebrew because it isn't building: https://github.com/Homebrew/homebrew-core/commit/6cd7f61d2d07d5fd9f8747ea0f620169cc8a2434 . So this further complicates things for R bindings on MacOS.
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
 
-I am guessing that the build broke because the 0.11 tarball has been removed from the apache website, even though 0.12 hasn't even been announced yet? [https://www.apache.org/dist/arrow/]
+# ...add some test data (few kB or MB) to all three dirs...
 
-&nbsp;
-              </div></li><li><div>
-                AFAIK no one from this community has been maintaining the Homebrew recipe. So that will obviously have to change so that updating the Homebrew recipe is part of the release management process. No one did anything wrong here
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
 
-I'm creating a sub-task about Homebrew and attaching it as a child of this issue
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
 
-EDIT: opened ARROW-4300
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Bug in INodeDirectory#computeContentSummary warning
+                </div><div><b>description:</b> *How to reproduce*
+
+{code}
+# create test directories
+$ hadoop fs -mkdir /hdfs-1377/A
+$ hadoop fs -mkdir /hdfs-1377/B
+$ hadoop fs -mkdir /hdfs-1377/C
+
+# ...add some test data (few kB or MB) to all three dirs...
+
+# set space quota for subdir C only
+$ hadoop dfsadmin -setSpaceQuota 1g /hdfs-1377/C
+
+# the following two commands _on the parent dir_ trigger the warning
+$ hadoop fs -dus /hdfs-1377
+$ hadoop fs -count -q /hdfs-1377
+{code}
+
+Warning message in the namenode logs:
+
+{code}
+2011-06-09 09:42:39,817 WARN org.apache.hadoop.hdfs.server.namenode.NameNode: Inconsistent diskspace for directory C. Cached: 433872320 Computed: 438465355
+{code}
+
+Note that the commands are run on the _parent directory_ but the warning is shown for the _subdirectory_ with space quota.
+
+*Background*
+The bug was introduced by the HDFS-1377 patch, which is currently committed to at least branch-0.20, branch-0.20-security, branch-0.20-security-204, branch-0.20-security-205 and release-0.20.3-rc2.  In the patch, {{src/hdfs/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java}} was updated to trigger the warning above if the cached and computed diskspace values are not the same for a directory with quota.
+
+The warning is written by {{computecontentSummary(long[] summary)}} in {{INodeDirectory}}. In the method an inode's children are recursively walked through while the {{summary}} parameter is passed and updated along the way.
+
+{code}
+  /** {@inheritDoc} */
+  long[] computeContentSummary(long[] summary) {
+    if (children != null) {
+      for (INode child : children) {
+        child.computeContentSummary(summary);
+      }
+    }
+{code}
+
+The condition that triggers the warning message compares the current node's cached diskspace (via {{node.diskspaceConsumed()}}) with the corresponding field in {{summary}}.
+
+{code}
+      if (-1 != node.getDsQuota() &amp;&amp; space != summary[3]) {
+        NameNode.LOG.warn("Inconsistent diskspace for directory "
+          +getLocalName()+". Cached: "+space+" Computed: "+summary[3]);
+{code}
+
+However {{summary}} may already include diskspace information from other inodes at this point (i.e. from different subtrees than the subtree of the node for which the warning message is shown; in our example for the tree at {{/hdfs-1377}}, {{summary}} can already contain information from {{/hdfs-1377/A}} and {{/hdfs-1377/B}} when it is passed to inode {{/hdfs-1377/C}}).  Hence the cached value for {{C}} can incorrectly be different from the computed value.
+
+*How to fix*
+
+The supplied patch creates a fresh summary array for the subtree of the current node.  The walk through the children passes and updates this {{subtreeSummary}} array, and the condition is checked against {{subtreeSummary}} instead of the original {{summary}}.  The original {{summary}} is updated with the values of {{subtreeSummary}} before it returns.
+
+*Unit Tests*
+
+I have run "ant test" on my patched build without any errors*.  However the existing unit tests did not catch this issue for the original HDFS-1377 patch, so this might not mean anything. ;-)
+
+That said I am unsure what the most appropriate way to unit test this issue would be.  A straight-forward approach would be to automate the steps in the _How to reproduce section_ above and check whether the NN logs an incorrect warning message.  But I'm not sure how this check could be implemented.  Feel free to provide some pointers if you have some ideas.
+
+*Note about Fix Version/s*
+
+The patch _should_ apply to all branches where the HDFS-1377 patch has committed to.  In my environment, the build was Hadoop 0.20.203.0 release with a (trivial) backport of HDFS-1377 (0.20.203.0 release does not ship with the HDFS-1377 fix).  I could apply the patch successfully to {{branch-0.20-security}}, {{branch-0.20-security-204}} and {{release-0.20.3-rc2}}, for instance.  Since I'm a bit confused regarding the upcoming 0.20.x release versions (0.20.x vs. 0.20.20x.y) I have been so bold and added 0.20.203.0 to the list of affected versions even though it is actually only affected when HDFS-1377 is applied to it...
+
+Best,
+Michael
+
+
+*Well, I get one error for {{TestRumenJobTraces}} but first this seems to be completely unrelated and second I get the same test error when running the tests on the stock 0.20.203.0 release build.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Patch version 1 for HDFS-2053.
+
+The patch should apply to all branches to which the original HDFS-1377 patch has been applied to. See the ticket description for more details regarding "Fix Version/s".
               </div></li><li><div>
-                I'll keep attaching child issues to this issue that are required (or related, like setting up CI for Windows) as part of the testing and packaging process. If there is anything necessary that is not in the issue tracker already please create new issues
+                Again, I am not sure how to properly identify the correct names of the versions.  For instance, the patch successfully applies to branch-0.20-security-204 but I am not sure whether this translates to version "0.20.204.0" in the dropdown list.
               </div></li><li><div>
-                I don't see an issue for distributing into Debian/Fedora so I'll open one and link here, will also&nbsp;request&nbsp;help from&nbsp;dev@arrow.apache.org.
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12481915/HDFS-2053_v1.txt
+  against trunk revision 1133476.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/750//console
+
+This message is automatically generated.
               </div></li><li><div>
-                Let this be closed when the package is finally on CRAN; it can't really be resolved until after the next Apache release has taken place anyway
+                New patch version, no properly using 'git diff --no-prefix' to generate it. Doh!
               </div></li><li><div>
-                Issue resolved by pull request 4908
-[https://github.com/apache/arrow/pull/4908]
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12481918/HDFS-2053_v2.txt
+  against trunk revision 1133476.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/751//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> Hey Michael - thank you for the excellent report!
+
+In summary, the condition used to warn in FSDirectory#computeContentSummary has a bug, it compares the cached value for the directory not to a computed value for that directory but to a computed value that includes the directory and it's siblings. 
+
+The bug results in a spurious warning, it doesn't impact eg the correctness of quotas. Given this I think two things are reasonable:
+# Remove the warning (which removes the bug)
+# Compute the correct summary for just that directory (your patch)
+
+The latter sounds good to me. Allocating a 4 long array for each level in the directory hierarchy isn't bad and this method isn't on a hot path.
+
+Nit, I'd change array allocation to the following since we assume summary has len 4 and should be faster.
+
+{noformat}
+assert 4 == summary.length;
+long[] subtreeSummary = new long[]{0,0,0,0}
+{noformat}
+
+Wrt testing how about right after space is calculated adding the following:
+
+{noformat}
+assert -1 == node.getDsQuota() || space == subtreeSummary[3];
+{noformat}
+
+Asserts are enabled by default when the tests are run, if TestQuota doesn't trigger this assert then add a test similar to what you did manullay which will trigger it.
+
+Also, please generate a patch against trunk (HDFS-2053_v2.txt doesn't apply for me).
+
+Thanks!
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Hi Eli, many thanks for your quick reply and feedback!
+
+FYI: I have integrated your suggestions into the patch. Currently I am waiting for "ant test" to finish to see whether {{TestQuota}} does indeed trigger this assert, and thus whether I actually need to add any special test to it.
+
+@unit testing:
+From what I have seen {{TestQuota#testSpaceCommands()}} would be the place to add a test for this issue, and {{dfs.getContentSummary().getSpaceConsumed(Path)}} would be the way to "indirectly" check the diskspace consumed by a directory and its children. It seems to be semantically equivalent to the actual {{INodeDirectory#computeContentSummary(long[])}} method I want to test but it appears to be several layers up the call stack [1]. Is this correct?
+
+If so my test case using {{dfs.getContentSummary()}} would be basically:
+
+1. Create parent dir + 3 subdirs {{A,B,C}}.
+2. {{DFSTestUtil.createFile()}} a file of {a,b,c} * {{fileLength}} in {{A,B,C}}, respectively.
+3. Test whether {{getSpaceConsumed()}} of {{A,B,C}} equals the expected value, i.e. {a,b,c} * {{fileLength}} * {{replication}}.
+4. Test whether {{getSpaceConsumed()}} of the parent dir equals {a+b+c} * {{fileLength}} * {{replication}}.
+
+I'm just asking since I'm not fully sure whether {{dfs.getContentSummary()}} would not mask etc. any hidden issues in the "lower level" method {{INodeDirectory.computeContentSummary()}}.
+
+Best,
+Michael
+
+
+
+[1] {{FSDirectory#getContentSummary(String)}} seems to be the method that actually calls {{InodeDirectory#computeContentSummary(long[])}} at some point.
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Apologies for the slow reply!  You are correct about the test case, I think what you suggest would catch it. Will review the new patch when you post it.  Thanks, Eli 
+              </div></li><li><div>
+                New version of the patch based on trunk, integrating Eli's feedback and unit test.
+              </div></li><li><div>
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12483937/HDFS-2053_v3.txt
+  against trunk revision 1140030.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+    +1 system test framework.  The patch passed system test framework compile.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/847//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/847//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/847//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1  looks good
+              </div></li><li><div>
+                Patch for branch-20 attached.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12484473/hdfs-2053_v3-b20.patch
+  against trunk revision 1140707.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/861//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-trunk-Commit #763 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk-Commit/763/])
+    HDFS-2053. Bug in INodeDirectory#computeContentSummary warning. Contributed by Michael Noll
+
+eli : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1140707
+Files : 
+* /hadoop/common/trunk/hdfs/CHANGES.txt
+* /hadoop/common/trunk/hdfs/src/test/hdfs/org/apache/hadoop/hdfs/TestQuota.java
+* /hadoop/common/trunk/hdfs/src/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+
+              </div></li><li><div>
+                I've committed this to trunk and branch-20 (after running the tests). Thanks Micahel!
+              </div></li><li><div>
+                You're welcome.  Thanks for the quick integration, Eli!
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-trunk #710 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/710/])
+    HDFS-2053. Bug in INodeDirectory#computeContentSummary warning. Contributed by Michael Noll
+
+eli : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1140707
+Files : 
+* /hadoop/common/trunk/hdfs/CHANGES.txt
+* /hadoop/common/trunk/hdfs/src/test/hdfs/org/apache/hadoop/hdfs/TestQuota.java
+* /hadoop/common/trunk/hdfs/src/java/org/apache/hadoop/hdfs/server/namenode/INodeDirectory.java
+
+              </div></li><li><div>
+                Eli, can you please commit this to 0.20.s. This will be picked up when 0.20.205 branch is created.
+              </div></li><li><div>
+                I've merged this to branch-0.20-security.
+              </div></li><li><div>
+                Closed upon release of 0.20.205.0
               </div></li></ol></div></div></html>

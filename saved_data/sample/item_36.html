@@ -1,60 +1,556 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 36
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix flaky travis build on checking license header
-                </div><div><b>message:</b> Fix flaky travis build on checking license header
-
-Descriptions of the changes in this PR:
-
-*Problem*
-
-In some environments, `BK_VERSION` is computed as `Downloading`, which is not a valid bookkeeper version. It fails the `dev/check-binary-license` script.
-
-```
-[0K$ if [ "$TRAVIS_OS_NAME" == "linux" ]; then dev/check-binary-license ./bookkeeper-dist/server/target/bookkeeper-server-${BK_VERSION}-bin.tar.gz; fi
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-```
-
-*Solution*
-
-Remove this `BK_VERSION` setting and use "*" in the file path.
-
-Author: Sijie Guo &lt;sijie@apache.org&gt;
-
-Reviewers: Ivan Kelly &lt;ivank@apache.org&gt;
-
-This closes #1183 from sijie/address_travis_yml
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fix flaky travis build on checking license header
-                </div><div><b>body:</b> Descriptions of the changes in this PR:
-
-*Problem*
-
-In some environments, `BK_VERSION` is computed as `Downloading`, which is not a valid bookkeeper version. It fails the `dev/check-binary-license` script.
-
-```
-[0K$ if [ "$TRAVIS_OS_NAME" == "linux" ]; then dev/check-binary-license ./bookkeeper-dist/server/target/bookkeeper-server-${BK_VERSION}-bin.tar.gz; fi
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-tar: ./bookkeeper-dist/server/target/bookkeeper-server-Downloading: Cannot open: No such file or directory
-tar: Error is not recoverable: exiting now
-```
-
-*Solution*
-
-Remove this `BK_VERSION` setting and use "*" in the file path.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 InterruptedException too.  If so, we failed.  Even if tickle opening fails
+ then it is a failure.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-4452  Possibility of RS opening a region though tickleOpening fails due to
+                </div><div><b>message:</b> HBASE-4452  Possibility of RS opening a region though tickleOpening fails due to
+               znode version mismatch (Ramkrishna)
 
 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                The IT failure is a result of there being no docker networks available, probably due to failed runs of tests. will push fix.
+git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1174447 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li><li><div><div><b>summary:</b> Possibility of RS opening a region though tickleOpening fails due to znode version mismatch
+                </div><div><b>description:</b> Consider the following code
+{code}
+    long period = Math.max(1, assignmentTimeout/ 3);
+    long lastUpdate = now;
+    while (!signaller.get() &amp;&amp; t.isAlive() &amp;&amp; !this.server.isStopped() &amp;&amp;
+        !this.rsServices.isStopping() &amp;&amp; (endTime &gt; now)) {
+      long elapsed = now - lastUpdate;
+      if (elapsed &gt; period) {
+        // Only tickle OPENING if postOpenDeployTasks is taking some time.
+        lastUpdate = now;
+        tickleOpening("post_open_deploy");
+      }
+{code}
+Whenever the postopenDeploy tasks takes considerable time we try to tickleOpening so that there is no timeout deducted.  But before it could do this if the TimeoutMonitor tries to assign the node to another RS then the other RS will move the node from OFFLINE to OPENING.  Hence when the first RS tries to do tickleOpening the operation will fail. Now here lies the problem,
+{code}
+    String encodedName = this.regionInfo.getEncodedName();
+    try {
+      this.version =
+        ZKAssign.retransitionNodeOpening(server.getZooKeeper(),
+          this.regionInfo, this.server.getServerName(), this.version);
+    } catch (KeeperException e) {
+{code}
+Now this.version becomes -1 as the operation failed.
+Now as in the first code snippet as the return type is not captured after tickleOpening() fails we go on with moving the node to OPENED.  Here again we dont have any check for this condition as already the version has been changed to -1.  Hence the OPENING to OPENED becomes successful. Chances of double assignment.
+{noformat}
+2011-09-22 00:57:29,930 WARN org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempt to transition the unassigned node for 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENING failed, the node existed but was version 5 not the expected version 2
+2011-09-22 00:57:33,494 WARN org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Failed refreshing OPENING; region=69797d064f773d1aa9adba56e7ff90a3, context=post_open_deploy
+2011-09-22 00:58:02,356 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Attempting to transition node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:11,853 DEBUG org.apache.hadoop.hbase.zookeeper.ZKAssign: regionserver:60020-0x1328ceaa1ff000d Successfully transitioned node 69797d064f773d1aa9adba56e7ff90a3 from RS_ZK_REGION_OPENING to RS_ZK_REGION_OPENED
+2011-09-22 00:58:13,956 DEBUG org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler: Opened t9,,1316633193606.69797d064f773d1aa9adba56e7ff90a3.
+
+{noformat}
+Correct me if this analysis is wrong.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Good catch, Ramkrishna.
+This is the only place where return value from tickleOpening() isn't checked.
               </div></li><li><div>
-                IGNORE IT CI
+                Running the test cases.. will submit the patch tomorrow morning.  
               </div></li><li><div>
-                This change is only related to travis ci.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                Ted testcases are running fine with this.
+Hope it does not cause any problem like HBASE-4153 :)
+              </div></li><li><div><div><b>body:</b> Minor comment:
+{code}
++    // InterruptedException too.  If so, we failed.  Even if tickle opening fails
++    // then it is a failure.
+{code}
+I think we don't need 'Even' above.
+
+Also, I would initialize the new boolean with false.
+
+Running test suite.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                @Ted, reason for initializing to true is like the tickleOpening may not be invoked always unlesss the PostOpenDeploytask takes more time.  That is why i initialized to true.
+
+Want to change it ?
+              </div></li><li><div>
+                @Ramkrishna:
+Your consideration makes sense.
+There is no need to change.
+              </div></li><li><div>
+                Test suite passed with patch.
++1.
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                lgtm.  nice catch.  pulling in to 0.92
+              </div></li><li><div>
+                Patch for 0.90 branch.
+
+TestOpenRegionHandler passes.
+              </div></li><li><div>
+                Integrated to 0.90, 0.92 and TRUNK.
+
+Thanks for the patch Ramkrishna.
+
+Thanks for the review Stack and Jonathan.
+              </div></li><li><div>
+                Integrated in HBase-TRUNK #2244 (See [https://builds.apache.org/job/HBase-TRUNK/2244/])
+    HBASE-4452  Possibility of RS opening a region though tickleOpening fails due to
+               znode version mismatch (Ramkrishna)
+
+tedyu : 
+Files : 
+* /hbase/trunk/CHANGES.txt
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/handler/OpenRegionHandler.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.92 #15 (See [https://builds.apache.org/job/HBase-0.92/15/])
+    HBASE-4452  Possibility of RS opening a region though tickleOpening fails due to
+               znode version mismatch (Ramkrishna)
+
+tedyu : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/handler/OpenRegionHandler.java
+
+              </div></li><li><div>
+                This issue was closed as part of a bulk closing operation on 2015-11-20. All issues that have been resolved and where all fixVersions have been released have been closed (following discussions on the mailing list).
+              </div></li></ol></div></div></html>

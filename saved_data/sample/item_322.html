@@ -1,41 +1,222 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 322
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-15081: Metrics for core: isLeader, replicaState (#2198)
-                </div><div><b>message:</b> SOLR-15081: Metrics for core: isLeader, replicaState (#2198)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+     * 
+     * Ledger-Op (Create/Delete) timeout
+     * 
+     * @return
+     
+              </div></li><li><div>
+                *
+     * Ledger-Op (Create/Delete) timeout after which callback will be completed with failure
+     * 
+     * @param metadataOperationsTimeoutSeconds
+     
+              </div></li><li><div>
+                *
+     * check if ledger-op task is already completed by timeout-task. If completed then delete the created ledger
+     * 
+     * @param rc
+     * @param lh
+     * @param ctx
+     * @return
+     
+              </div></li><li><div>
+                *
+     * Create ledger async and schedule a timeout task to check ledger-creation is complete else it fails the callback
+     * with TimeoutException.
+     * 
+     * @param bookKeeper
+     * @param config
+     * @param digestType
+     * @param cb
+     * @param emptyMap
+     
+              </div></li><li><div>
+                 ledger-creation is already timed out and callback is already completed so, delete this ledger and return.
+              </div></li><li><div>
+                 operation timeout while updating managed-ledger metadata.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Add ledger op timeout to avoid topics stuck on ledger-creation (#2535)
+                </div><div><b>message:</b> Add ledger op timeout to avoid topics stuck on ledger-creation (#2535)
 
-Note that getLastPublished returns an Enum type.  TextWriter.writeVal should probably support Enums, which would simplify this code.
+* Add ledger op timeout to avoid topics stuck on ledger-creation
 
-(cherry picked from commit a233ed2fd1bc7e0f6366f74d33ec21007aec90bc)
+* rename to metadataOperationsTimeoutSeconds
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> SOLR-15081: Metrics for core: isLeader, status
-                </div><div><b>body:</b> https://issues.apache.org/jira/browse/SOLR-15081
-Copying the description: 
+* ad service config for managedLedgerMetadataOperationsTimeoutSeconds
 
-&gt; The core level metrics hold some interesting information, but I don't see information pertaining to the SolrCloud status of the core.  In particular, I'd like to see the leader status here, and also the replica state.  The use-case I have in mind is enabling the Prometheus Exporter to get the doc count (and maybe other basics) of only the leader replicas, thereby counting unique documents instead of a fully replicated figure.  This is an approximation to doing a match-all-docs query on all collections, but is a more sound approach when one has orders of magnitude more collections than nodes.
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Since we do reference coreContainer on like 1215 should we keep this check?
-              </div></li><li><div>
-                I removed the check for CoreContainer nullness as it seemed impossible for it to be null.  SolrCores hang off of a CoreContainer.
-              </div></li><li><div>
-                *NULLPTR_DEREFERENCE:*  accessing memory that is the null pointer on line 1215 indirectly during the call to `ClusterState.getCollectionOrNull(...)`.
-              </div></li><li><div>
-                *NULLPTR_DEREFERENCE:*  accessing memory that is the null pointer on line 1216 indirectly during the call to `DocCollection.getLeader(...)`.
-              </div></li><li><div>
-                *NULLPTR_DEREFERENCE:*  accessing memory that is the null pointer on line 1220 indirectly during the call to `ClusterState.getCollectionOrNull(...)`.
-              </div></li><li><div>
-                *NULLPTR_DEREFERENCE:*  accessing memory that is the null pointer on line 1221 indirectly during the call to `DocCollection.getReplica(...)`.
-              </div></li><li><div>
-                *NULL_DEREFERENCE:*  object `myReplica` last assigned on line 1221 could be null and is dereferenced at line 1222.
-              </div></li><li><div>
-                I wrote these notes and code months ago, shelved it and nearly forgotten, and today I remembered it and submitted it.  The TODO here was kind of a note-to-self that can be removed.  I'd welcome anyone's thoughts on this though.  There appears, to me, to be overlap in scope between metrics and "status" type requests.  Years ago I thought Metrics was just numbers, but lately I've seen it can have all sorts of strings and basically completely compete with "status".
-              </div></li><li><div>
-                Maybe use `cloudDescriptor.isLeader()`, it's simpler...
-              </div></li><li><div>
-                Similarly `cloudDescriptor.getLastPublished()`.
-              </div></li><li><div>
-                Yeah, metrics today overlap a lot with "status" requests... something to clean up in 9x.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
 
-Initially the metrics API wasn't able to properly report complex values (esp. when reported via JMX) but this has been fixed around 7.0 or so - support for non-numeric values had to be added specifically to report things like paths, non-numeric state, etc. and for complex properties like eg. system properties, caches, etc. Now it can report basically anything you want.
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li><li><div><div><b>title:</b> Add ledger op timeout to avoid topics stuck on ledger-creation
+                </div><div><b>body:</b> ### Motivation
+
+Frequently, we are having issue where many topics across the all brokers get stuck on creating-ledger state and create-ledger-callback never gets completed. Right now, it mainly happens when 
+1.  Anytime ZK leader restarts
+2. ZK quorum restarts due to [32 bit rollover](https://jira.apache.org/jira/browse/ZOOKEEPER-1278)
+In such cases, zk-client doesn't complete the callback and broker keeps waiting with creating-ledger state until we unload the topic. It happens frequently to us and it's hard to catch such stuck topics and it requires roll-over broker restart.
+So, Broker should have a way to timeout LedgerOp (create/delete) and complete callback with timeout-exception.
+
+### Modifications
+
+Add Ledger-Op timeout configuration, and managed-ledger fails callback if ledger-creation doesn't complete in that time duration.
+
+### Result
+
+Broker can recover stuck managed-ledger which are waiting on ledger creation callback.
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @merlimat can you please review it as we want to use this patch in our current deployed-release.
               </div></li><li><div>
-                I don't think it's inherently wrong to have overlap between status and metrics, as long as the overlapping information is coming from the same source.
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                @merlimat fixed it.
+              </div></li><li><div>
+                rerun integration tests
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div><div><b>body:</b> Maybe use a more explicit name like `metadataOperationsTimeoutSeconds` ? 
+
+Also, the default in `ServiceConfiguration` seems to be 60sec
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                sure, let me rename it. 
+
+&gt; Also, the default in ServiceConfiguration seems to be 60sec
+Sure, I can make it 60 sec but in this PR, default time we are setting as `ZooKeeperSessionTimeout (default 30sec) *2` as it mainly happens when zk-client fails to complete callback when zk leader restarts. 
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> acceptedEpoch not handling zxid rollover in lower 32bits
+                </div><div><b>description:</b> When the lower 32bits of a zxid "roll over" (zxid is a 64 bit number, however the upper 32 are considered the epoch number) the epoch number (upper 32 bits) are incremented and the lower 32 start at 0 again.
+
+This should work fine, however, afaict, in the current 3.4/3.5 the acceptedEpoch/currentEpoch files are not being updated for this case.
+
+See ZOOKEEPER-335 for changes from 3.3 branch.
+                </div></div></li><li><div><div><b>summary:</b> acceptedEpoch not handling zxid rollover in lower 32bits
+                </div><div><b>description:</b> When the lower 32bits of a zxid "roll over" (zxid is a 64 bit number, however the upper 32 are considered the epoch number) the epoch number (upper 32 bits) are incremented and the lower 32 start at 0 again.
+
+This should work fine, however, afaict, in the current 3.4/3.5 the acceptedEpoch/currentEpoch files are not being updated for this case.
+
+See ZOOKEEPER-335 for changes from 3.3 branch.
+                </div></div></li><li><div><div><b>summary:</b> acceptedEpoch not handling zxid rollover in lower 32bits
+                </div><div><b>description:</b> When the lower 32bits of a zxid "roll over" (zxid is a 64 bit number, however the upper 32 are considered the epoch number) the epoch number (upper 32 bits) are incremented and the lower 32 start at 0 again.
+
+This should work fine, however, afaict, in the current 3.4/3.5 the acceptedEpoch/currentEpoch files are not being updated for this case.
+
+See ZOOKEEPER-335 for changes from 3.3 branch.
+                </div></div></li><li><div><div><b>summary:</b> acceptedEpoch not handling zxid rollover in lower 32bits
+                </div><div><b>description:</b> When the lower 32bits of a zxid "roll over" (zxid is a 64 bit number, however the upper 32 are considered the epoch number) the epoch number (upper 32 bits) are incremented and the lower 32 start at 0 again.
+
+This should work fine, however, afaict, in the current 3.4/3.5 the acceptedEpoch/currentEpoch files are not being updated for this case.
+
+See ZOOKEEPER-335 for changes from 3.3 branch.
+                </div></div></li><li><div><div><b>summary:</b> acceptedEpoch not handling zxid rollover in lower 32bits
+                </div><div><b>description:</b> When the lower 32bits of a zxid "roll over" (zxid is a 64 bit number, however the upper 32 are considered the epoch number) the epoch number (upper 32 bits) are incremented and the lower 32 start at 0 again.
+
+This should work fine, however, afaict, in the current 3.4/3.5 the acceptedEpoch/currentEpoch files are not being updated for this case.
+
+See ZOOKEEPER-335 for changes from 3.3 branch.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                I just tested this with my test from ZOOKEEPER-1277 and it fails with out the hzxid change in ZooKeeperServer. However even with that patch it still fails, I'm assuming because the acceptedEpoch, etc... files are not being updated properly. 
+
+Camille can you take a look?
+              </div></li><li><div>
+                This patch passes the simple test, however the others all fail. This is the test/fix from ZOOKEEPER-1277
+              </div></li><li><div>
+                This turns out to be a duplicate of ZOOKEEPER-1277 - that patch causes the leader to be re-elected just prior to rollover. 1277 was applied to 3.3/3.4/3.5(trunk)
+              </div></li></ol></div></div></html>

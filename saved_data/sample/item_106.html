@@ -1,164 +1,714 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 106
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-20195][SPARKR][SQL] add createTable catalog API and deprecate createExternalTable
-                </div><div><b>message:</b> [SPARK-20195][SPARKR][SQL] add createTable catalog API and deprecate createExternalTable
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 also not created on secondary store
+              </div></li><li><div>
+                 not created on primary store
+              </div></li><li><div>
+                 no need to change state in volumes table
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+                </div><div><b>message:</b> CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+deleting the volume from backend.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
 
-## What changes were proposed in this pull request?
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
 
-Following up on #17483, add createTable (which is new in 2.2.0) and deprecate createExternalTable, plus a number of minor fixes
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
 
-## How was this patch tested?
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
 
-manual, unit tests
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
 
-Author: Felix Cheung &lt;felixcheung_m@hotmail.com&gt;
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
 
-Closes #17511 from felixcheung/rceatetable.
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-20159][SPARKR][SQL] Support all catalog API in R
-                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
 
-Add a set of catalog API in R
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
 
-```
-"currentDatabase",
-"listColumns",
-"listDatabases",
-"listFunctions",
-"listTables",
-"recoverPartitions",
-"refreshByPath",
-"refreshTable",
-"setCurrentDatabase",
-```
-https://github.com/apache/spark/pull/17483/files#diff-6929e6c5e59017ff954e110df20ed7ff
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
 
-## How was this patch tested?
+Attaching management server log file and cloud db.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
 
-manual tests, unit tests
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                **[Test build #75393 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75393/testReport)** for PR 17483 at commit [`e4808b6`](https://github.com/apache/spark/commit/e4808b656172e5d2994e0159ac4c0e326de1cb8a).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                cc @gatorsmile for any SQL specific inputs
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
 
-@felixcheung I will take a look at this later today. Meanwhile in the PR description can you note down what are the new functions being added in this change ?
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> [object_store_refactor] Deleting uploaded volume is not deleting the volume from backend
+                </div><div><b>description:</b> Deleting uploaded volume is not deleting the volume from backend and not marking removed field in volumes table.
+
+Steps to Reproduce:
+================
+1.Bring up CS with vmware cluster using NFS for both primary and secondary storage
+2.Upload one volume using uploadVolume API
+3.When the volume is in "Uploaded" state try to delete the volume
+
+Result:
+======
+from volume_store_ref volume entry got deleted but volume was not deleted from secondary storage and removed filed was not set in volumes table.
+
+Observations:
+===========
+Log snippet from management server log file as follows:
+2013-08-28 03:18:08,269 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===START===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:08,414 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-20:null) Access granted to Acct[2-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_86df51a8
+2013-08-28 03:18:08,421 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-20:null) Discrepency in the resource count (original count=77179526656 correct count = 78867689472) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-08-28 03:18:08,446 DEBUG [cloud.api.ApiServlet] (catalina-exec-20:null) ===END===  10.146.0.131 -- GET  command=deleteVolume&amp;id=e9ee6c0d-d149-4771-a494-6efda849b2ce&amp;response=json&amp;sessionkey=vNQ7kc2GdEuxzKje8MQ2xSAqbAQ%3D&amp;_=1377674288184
+2013-08-28 03:18:32,766 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pri_esx_306
+2013-08-28 03:18:32,772 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,774 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,776 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: 37f6be5b-0899-48b4-9fd8-1fe483f47c0e
+2013-08-28 03:18:32,777 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-20-2volumes/2/20/7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova]
+
+Volume in the backend:
+[root@Rhel63-Sanjeev 20]# pwd
+/tmp/nfs/sec_306/volumes/2/20
+[root@Rhel63-Sanjeev 20]# ls -l
+total 898008
+-rwxrwxrwx+ 1 root root 459320832 Aug 27 13:57 7e5778fd-c4bf-35b3-9e7a-9ab8500ab469.ova
+-rwxrwxrwx+ 1 root root 459312128 Sep 17  2010 CentOS5.3-x86_64-disk1.vmdk
+-rwxrwxrwx+ 1 root root       147 Sep 17  2010 CentOS5.3-x86_64.mf
+-rwxrwxrwx+ 1 root root      5340 Sep 17  2010 CentOS5.3-x86_64.ovf
+-rwxrwxrwx+ 1 root root       340 Aug 27 13:58 volume.properties
+[root@Rhel63-Sanjeev 20]#
+
+Attaching management server log file and cloud db.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Can this be tested on Xen
+              </div></li><li><div><div><b>body:</b> Edison / Min - We just remove the DB entries as part of the scavenger thread - why ? We should clean the DB entries as part of the API itself.
+Also in the scavenger thread if there are some DB entries left over we should delete them physically and not just the db entries - scavenger thread ensures sanity in case cleanup failed for some reason. Is there a reason why we dont do that anymore?
+
+Sanjeev - I see that deleteVolumeCmd didn't issue any HV delete command for vmware ? Is that correct ?
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Increasing the priority to Critical since I see this issue even with Xen. 
+Uploaded vhd and after the upload completion, deleted from CS. However I din't see any deleteCommand sent to either SSVM or hypervisor.
+
+Attaching latest management server log file and cloud DB.
               </div></li><li><div>
-                updated PR description!
+                I have observed this issue too.
               </div></li><li><div>
-                btw, @gatorsmile it looks like `listColumns` should throw `NoSuchTableException` and/or `NoSuchDatabaseException` instead of `AnalysisException` [here](https://github.com/apache/spark/blob/master/sql/core/src/main/scala/org/apache/spark/sql/internal/CatalogImpl.scala#L148)
+                This will be happening for all the hypervisors but only for uploaded volumes.
+              </div></li><li><div>
+                Based on our design, deleteVolumeCmd should trigger object store driver to delete the volume from secondary storage, that is why we removed logic of deleting volume from backend in scavenger thread. This seems a bug in handling deleteVolume for uploaded volume. What if you restart management server or restart SSVM, volume sync triggered there should remove it from secondary storage.
+              </div></li><li><div>
+                I just verified, restart SSVM or restart MS will remove the uploaded volum from secondary storage. But the only issue here is that that destroyed volume is still showing up in the UI due to removed column is not set for this volume. 
+              </div></li><li><div>
+                Commit 362bf5b8b472ed2a75ae712abc724e4d1bf06f35 in branch refs/heads/4.2-forward from [~minchen07]
+[ https://git-wip-us.apache.org/repos/asf?p=cloudstack.git;h=362bf5b ]
+
+CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+deleting the volume from backend.
 
               </div></li><li><div>
-                **[Test build #75417 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75417/testReport)** for PR 17483 at commit [`5ab5834`](https://github.com/apache/spark/commit/5ab583443d60f6bf1d85608552962b46ac088633).
- * This patch **fails R style tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
+                The new commit will remove uploaded volume from secondary storage as well as from UI in issuing delete command.
               </div></li><li><div>
-                **[Test build #75418 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75418/testReport)** for PR 17483 at commit [`28195b9`](https://github.com/apache/spark/commit/28195b98bf71c36b47e3e191b24715806f8aed6e).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #75420 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75420/testReport)** for PR 17483 at commit [`9c768ae`](https://github.com/apache/spark/commit/9c768ae983f8fbeed11b7c308ca7f5662f88d809).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #75422 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75422/testReport)** for PR 17483 at commit [`5093891`](https://github.com/apache/spark/commit/5093891e5a8fc0f299ebb4303ddb488e86f87221).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #75447 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75447/testReport)** for PR 17483 at commit [`3c66930`](https://github.com/apache/spark/commit/3c6693035b023d7c9c9e2caa3014247c130eb037).
- * This patch **fails SparkR unit tests**.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                @gatorsmile I added a [line about recoverPartitions](https://github.com/apache/spark/pull/17483/files#diff-0921ddb2ea3cb3b1c329ae37ee829e9aR412), I think we should also be more clear in other language bindings?
+                Commit a20097b967bbe5bba5ee704d03c808c2a54b5268 in branch refs/heads/master from [~minchen07]
+[ https://git-wip-us.apache.org/repos/asf?p=cloudstack.git;h=a20097b ]
 
-Also open https://issues.apache.org/jira/browse/SPARK-20188
+CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+deleting the volume from backend.
 
               </div></li><li><div>
-                **[Test build #75451 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75451/testReport)** for PR 17483 at commit [`2aea0cb`](https://github.com/apache/spark/commit/2aea0cb0f9b55acf741788aa72a573853560f3d9).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                **[Test build #75452 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/75452/testReport)** for PR 17483 at commit [`aff13a8`](https://github.com/apache/spark/commit/aff13a860282375a650f6323987c73364ed439cd).
- * This patch passes all tests.
- * This patch merges cleanly.
- * This patch adds no public classes.
-              </div></li><li><div>
-                merged to master. thanks for the review!
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                this is added to createExternalTable (won't work with json source otherwise)
-everything else is simply moved as-is from SQLContext.R
-              </div></li><li><div>
-                Just FYI, `createExternalTable ` is deprecated. See the PR: https://github.com/apache/spark/pull/16528
+                Hi Min,
 
-Let me make the corresponding changes in SQLContext too. 
-              </div></li><li><div>
-                yes, I'm aware. I'm not sure if we need to make changes to SQLContext - schema is required for json source but it's ok in Scala to use createTable instead.
+The fix is not working as you mentioned in the comment. Uploaded volume is getting deleted from DB and from back-end only when storage gc is kicked in. However should be deleted as and when the deleteVolume API is fired.
 
-It makes sense to add in R here though because
-- there is no createTable method (hmm, reviewing that PR you reference, maybe we should add it)
-- createTable just sounds too generic and too much like many existing R methods (in R, table is everywhere!), that I wasn't sure it's a good idea to add in R
-- createExternalTable since 2.0 is decoupled from SQLContext or SparkSession - it doesn't take either as parameter and it's calling on catalog
+Following is the snippet during delete Volume and during GC:
 
-              </div></li><li><div>
-                is `tables()` deprecated now ?
-              </div></li><li><div>
-                We dont have tests for `recoverPartitions` `refreshByPath` and `refreshTable` ? 
-              </div></li><li><div>
-                I agree that `createTable` sounds very general, but I dont think its used by base R or any popular R package ?
-              </div></li><li><div>
-                right, there are some differences of the output (most notability catalog.listTables returns a `Dataset&lt;Table&gt;` - but I'm converting that into a DataFrame anyway), and I thought list* would be more consistent with other methods like `listColumn()`, `listDatabases()`
+2013-09-17 20:03:04,557 DEBUG [cloud.api.ApiServlet] (catalina-exec-23:null) ===START===  10.146.0.129 -- GET  command=deleteVolume&amp;id=be37b4a9-f083-4d41-8654-3db5ff726255&amp;response=json&amp;sessionkey=FwuJPNi1MfU2slw1a6dgM9liVLA%3D&amp;_=1379408947517
+2013-09-17 20:03:05,243 DEBUG [agent.manager.AgentManagerImpl] (AgentManager-Handler-2:null) SeqA 9-12329: Processing Seq 9-12329:  { Cmd , MgmtId: -1, via: 9, Ver: v1, Flags: 11, [{"com.cloud.agent.api.ConsoleProxyLoadReportCommand":{"_proxyVmId":41,"_loadInfo":"{\n  \"connections\": []\n}","wait":0}}] }
+2013-09-17 20:03:05,256 DEBUG [agent.manager.AgentManagerImpl] (AgentManager-Handler-2:null) SeqA 9-12329: Sending Seq 9-12329:  { Ans: , MgmtId: 7652490870806, via: 9, Ver: v1, Flags: 100010, [{"com.cloud.agent.api.AgentControlAnswer":{"result":true,"wait":0}}] }
+2013-09-17 20:03:05,293 DEBUG [cloud.user.AccountManagerImpl] (catalina-exec-23:null) Access granted to Acct[9adeb308-1a21-11e3-b1b5-06f5bc000016-admin] to Domain:1/ by AffinityGroupAccessChecker_EnhancerByCloudStack_185497a3
+2013-09-17 20:03:05,377 INFO  [cloud.resourcelimit.ResourceLimitManagerImpl] (catalina-exec-23:null) Discrepency in the resource count (original count=459320832 correct count = 2147483648) for type secondary_storage for account ID 2 is fixed during resource count recalculation.
+2013-09-17 20:03:05,411 INFO  [cloud.storage.VolumeManagerImpl] (catalina-exec-23:null) Expunging volume 96 from secondary data store
+2013-09-17 20:03:05,418 DEBUG [storage.volume.VolumeServiceImpl] (catalina-exec-23:null) Marking volume that was never created as destroyed: Vol[96|vm=null|DATADISK]
+2013-09-17 20:03:05,467 DEBUG [cloud.api.ApiServlet] (catalina-exec-23:null) ===END===  10.146.0.129 -- GET  command=deleteVolume&amp;id=be37b4a9-f083-4d41-8654-3db5ff726255&amp;response=json&amp;sessionkey=FwuJPNi1MfU2slw1a6dgM9liVLA%3D&amp;_=1379408947517
 
-```
-&gt; head(tables("default"))
-  database tableName isTemporary
-1  default      json       FALSE
-Warning message:
-'tables' is deprecated.
-Use 'listTables' instead.
-See help("Deprecated")
-&gt; head(listTables("default"))
-  name database description tableType isTemporary
-1 json  default        &lt;NA&gt;  EXTERNAL       FALSE
-```
 
-If you think it makes sense, we could make `tables` an alias of `listTables` - it's going to call slightly different code on the Scala side and there are new columns and one different column name being returned.
+2013-09-17 20:11:49,466 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: pr
+2013-09-17 20:11:49,473 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Storage pool garbage collector found 0 templates to clean up in storage pool: p2
+2013-09-17 20:11:49,497 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 templates to cleanup on template_store_ref for store: sec
+2013-09-17 20:11:49,504 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 0 snapshots to cleanup on snapshot_store_ref for store: sec
+2013-09-17 20:11:49,510 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Secondary storage garbage collector found 1 volumes to cleanup on volume_store_ref for store: sec
+2013-09-17 20:11:49,513 DEBUG [cloud.storage.StorageManagerImpl] (StorageManager-Scavenger-1:null) Deleting volume store DB entry: VolumeDataStore[2-96-2volumes/2/96/e28c14c2-6efe-3bec-aa85-0c1d8d4811e8.ova]
+
+So reopening the bug.
+              </div></li><li><div>
+                Commit af2951ad56481ae599f0f0e0c4e47eb5ffefca5b in branch refs/heads/4.2-forward from [~minchen07]
+[ https://git-wip-us.apache.org/repos/asf?p=cloudstack.git;h=af2951a ]
+
+CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+deleting the volume from backend.
+              </div></li><li><div>
+                Commit 6fccd74ae8da5b865ad1a4a166802f105c6a5b2e in branch refs/heads/master from [~minchen07]
+[ https://git-wip-us.apache.org/repos/asf?p=cloudstack.git;h=6fccd74 ]
+
+CLOUDSTACK-4534:[object_store_refactor] Deleting uploaded volume is not
+deleting the volume from backend.
 
               </div></li><li><div>
-                `createExternalTable` is misleading now, because the table could be `managed` if users did not provide the value of `path`. Thus, we decided to rename it. 
-              </div></li><li><div>
-                Yes. I knew it. See the JIRA: https://issues.apache.org/jira/browse/SPARK-19952. @hvanhovell plans to remove it in 2.3.0
-              </div></li><li><div>
-                right, I was just concerned that with `data.table`, `read.table` etc, table == data.frame in R as supposed to `hive table` or `managed table`, which could be fairly confusing.
-anyway, I think I'll follow up with a PR for `createTable` but as of now `path` is optional for `createExternalTable`, even though it's potentially misleading, it does work now.
-
-              </div></li><li><div>
-                changed.
-              </div></li><li><div>
-                ok, thanks
-              </div></li><li><div>
-                sharp eyes :) I was planning to add tests.
-
-I tested these manually, but the steps are more involved and these are only thin wrappers in R I think we should defer to scala tests.
-
-              </div></li><li><div>
-                &gt; If you drop a managed table both data and meta data will be deleted if you drop an external table only metadata is deleted, external table is a way to protect data against accidental drop commands.
-
-Thus, it is a pretty important concept. It could be either Hive or Spark native one. 
-              </div></li><li><div>
-                if I am not mistaken, the method `getTables()` is not used any more in R. Can we remove it from `r.SQLUtils`:
-https://github.com/apache/spark/blob/e8982ca7ad94e98d907babf2d6f1068b7cd064c6/sql/core/src/main/scala/org/apache/spark/sql/api/r/SQLUtils.scala#L219-L226
-? cc @HyukjinKwon 
-
-              </div></li><li><div>
-                https://github.com/apache/spark/pull/30527
-              </div></li><li><div>
-                Yeah, I saw the PR. LGTM
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                Verified with latest build from 4.2 . Works fine.
+              </div></li></ol></div></div></html>

@@ -1,42 +1,365 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 310
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 But if more threads compete, then waiting a bit (random delay) can improve our chances. The delay should in
- theory grow as the number of concurrent threads attempting updates increase, but we don't know that number, so
- doing exponential backoff instead.
- max wait 2^13ms=8.192 sec
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> SOLR-14928: add exponential backoff wait time when Compare And Swap fails in distributed cluster state update due to concurrent update (#2438)
-                </div><div><b>message:</b> SOLR-14928: add exponential backoff wait time when Compare And Swap fails in distributed cluster state update due to concurrent update (#2438)
+                 a dummy call just to test if the API works for merge_batches=True
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merge pull request #1989 from pluskid/master
+                </div><div><b>message:</b> Merge pull request #1989 from pluskid/master
 
+Fix module.predict
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> mxnet.ndarray.NDArray objects cannot be concatenated
+                </div><div><b>body:</b> I had some problems after converting my network from `mxnet.model.FeedForward` to `mxnet.module.Module` when using the `predict()` method.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> SOLR-14928: add exponential backoff for distributed cluster state updates
-                </div><div><b>body:</b> add exponential backoff wait time when Compare And Swap fails in distributed cluster state update due to concurrent update
+With a module that has been trained, and a DataIterator `test_iter`, the following returns an error:
+
+``` python
+mod.predict(test_iter)
+```
+
+The exception raised is:
+
+```
+---------------------------------------------------------------------------
+ValueError                                Traceback (most recent call last)
+&lt;ipython-input-134-73b4dc77d8cf&gt; in &lt;module&gt;()
+----&gt; 1 model.predict(test_iter)
+
+python/mxnet/module/base_module.py in predict(self, eval_data, num_batch, merge_batches, reset, always_output_list)
+    259                        'in mini-batches. Maybe bucketing is used?'
+    260             output_list2 = [np.concatenate([out[i] for out in output_list])
+--&gt; 261                             for i in range(num_outputs)]
+
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+[The code in question appears here](https://github.com/dmlc/mxnet/blob/master/python/mxnet/module/base_module.py#L260)
+
+The problem seems to be due to trying to concatenate `mxnet.ndarray.NDArray` objects, which appear to have dimension 0.
+
+``` python
+&gt;&gt;&gt; pred = model.predict(test_iter, merge_batches=False) # This works 
+&gt;&gt;&gt; np.ndim(pred[0][0]) 
+0
+# Checking that it's not due to end-of-batch-effects
+&gt;&gt;&gt; len(pred)
+79
+&gt;&gt;&gt; pred[0]
+[&lt;mxnet.ndarray.NDArray at 0x1269f9240&gt;]
+&gt;&gt;&gt; np.concatenate([pred[0][0], pred[1][0]]) 
+...
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+There is no problem when using `mxnet.model.FeedForward.predict()`, so I took a look to see what was different between the two `predict()` functions. 
+
+In the `FeedForward` one, outputs are converted to numpy arrays before concatenation, which solves the problem pretty easily.
+
+[`mxnet.model.FeedForward.predict`](https://github.com/dmlc/mxnet/blob/master/python/mxnet/model.py#L619)
+
+I will attach a minor change in lieu of rewriting the NDArray module to support concatenation. 
+
+                </div></div></li><li><div><div><b>title:</b> mxnet.ndarray.NDArray objects cannot be concatenated
+                </div><div><b>body:</b> I had some problems after converting my network from `mxnet.model.FeedForward` to `mxnet.module.Module` when using the `predict()` method.
+
+With a module that has been trained, and a DataIterator `test_iter`, the following returns an error:
+
+``` python
+mod.predict(test_iter)
+```
+
+The exception raised is:
+
+```
+---------------------------------------------------------------------------
+ValueError                                Traceback (most recent call last)
+&lt;ipython-input-134-73b4dc77d8cf&gt; in &lt;module&gt;()
+----&gt; 1 model.predict(test_iter)
+
+python/mxnet/module/base_module.py in predict(self, eval_data, num_batch, merge_batches, reset, always_output_list)
+    259                        'in mini-batches. Maybe bucketing is used?'
+    260             output_list2 = [np.concatenate([out[i] for out in output_list])
+--&gt; 261                             for i in range(num_outputs)]
+
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+[The code in question appears here](https://github.com/dmlc/mxnet/blob/master/python/mxnet/module/base_module.py#L260)
+
+The problem seems to be due to trying to concatenate `mxnet.ndarray.NDArray` objects, which appear to have dimension 0.
+
+``` python
+&gt;&gt;&gt; pred = model.predict(test_iter, merge_batches=False) # This works 
+&gt;&gt;&gt; np.ndim(pred[0][0]) 
+0
+# Checking that it's not due to end-of-batch-effects
+&gt;&gt;&gt; len(pred)
+79
+&gt;&gt;&gt; pred[0]
+[&lt;mxnet.ndarray.NDArray at 0x1269f9240&gt;]
+&gt;&gt;&gt; np.concatenate([pred[0][0], pred[1][0]]) 
+...
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+There is no problem when using `mxnet.model.FeedForward.predict()`, so I took a look to see what was different between the two `predict()` functions. 
+
+In the `FeedForward` one, outputs are converted to numpy arrays before concatenation, which solves the problem pretty easily.
+
+[`mxnet.model.FeedForward.predict`](https://github.com/dmlc/mxnet/blob/master/python/mxnet/model.py#L619)
+
+I will attach a minor change in lieu of rewriting the NDArray module to support concatenation. 
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> mxnet.ndarray.NDArray objects cannot be concatenated
+                </div><div><b>body:</b> I had some problems after converting my network from `mxnet.model.FeedForward` to `mxnet.module.Module` when using the `predict()` method.
+
+With a module that has been trained, and a DataIterator `test_iter`, the following returns an error:
+
+``` python
+mod.predict(test_iter)
+```
+
+The exception raised is:
+
+```
+---------------------------------------------------------------------------
+ValueError                                Traceback (most recent call last)
+&lt;ipython-input-134-73b4dc77d8cf&gt; in &lt;module&gt;()
+----&gt; 1 model.predict(test_iter)
+
+python/mxnet/module/base_module.py in predict(self, eval_data, num_batch, merge_batches, reset, always_output_list)
+    259                        'in mini-batches. Maybe bucketing is used?'
+    260             output_list2 = [np.concatenate([out[i] for out in output_list])
+--&gt; 261                             for i in range(num_outputs)]
+
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+[The code in question appears here](https://github.com/dmlc/mxnet/blob/master/python/mxnet/module/base_module.py#L260)
+
+The problem seems to be due to trying to concatenate `mxnet.ndarray.NDArray` objects, which appear to have dimension 0.
+
+``` python
+&gt;&gt;&gt; pred = model.predict(test_iter, merge_batches=False) # This works 
+&gt;&gt;&gt; np.ndim(pred[0][0]) 
+0
+# Checking that it's not due to end-of-batch-effects
+&gt;&gt;&gt; len(pred)
+79
+&gt;&gt;&gt; pred[0]
+[&lt;mxnet.ndarray.NDArray at 0x1269f9240&gt;]
+&gt;&gt;&gt; np.concatenate([pred[0][0], pred[1][0]]) 
+...
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+There is no problem when using `mxnet.model.FeedForward.predict()`, so I took a look to see what was different between the two `predict()` functions. 
+
+In the `FeedForward` one, outputs are converted to numpy arrays before concatenation, which solves the problem pretty easily.
+
+[`mxnet.model.FeedForward.predict`](https://github.com/dmlc/mxnet/blob/master/python/mxnet/model.py#L619)
+
+I will attach a minor change in lieu of rewriting the NDArray module to support concatenation. 
+
+                </div></div></li><li><div><div><b>title:</b> mxnet.ndarray.NDArray objects cannot be concatenated
+                </div><div><b>body:</b> I had some problems after converting my network from `mxnet.model.FeedForward` to `mxnet.module.Module` when using the `predict()` method.
+
+With a module that has been trained, and a DataIterator `test_iter`, the following returns an error:
+
+``` python
+mod.predict(test_iter)
+```
+
+The exception raised is:
+
+```
+---------------------------------------------------------------------------
+ValueError                                Traceback (most recent call last)
+&lt;ipython-input-134-73b4dc77d8cf&gt; in &lt;module&gt;()
+----&gt; 1 model.predict(test_iter)
+
+python/mxnet/module/base_module.py in predict(self, eval_data, num_batch, merge_batches, reset, always_output_list)
+    259                        'in mini-batches. Maybe bucketing is used?'
+    260             output_list2 = [np.concatenate([out[i] for out in output_list])
+--&gt; 261                             for i in range(num_outputs)]
+
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+[The code in question appears here](https://github.com/dmlc/mxnet/blob/master/python/mxnet/module/base_module.py#L260)
+
+The problem seems to be due to trying to concatenate `mxnet.ndarray.NDArray` objects, which appear to have dimension 0.
+
+``` python
+&gt;&gt;&gt; pred = model.predict(test_iter, merge_batches=False) # This works 
+&gt;&gt;&gt; np.ndim(pred[0][0]) 
+0
+# Checking that it's not due to end-of-batch-effects
+&gt;&gt;&gt; len(pred)
+79
+&gt;&gt;&gt; pred[0]
+[&lt;mxnet.ndarray.NDArray at 0x1269f9240&gt;]
+&gt;&gt;&gt; np.concatenate([pred[0][0], pred[1][0]]) 
+...
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+There is no problem when using `mxnet.model.FeedForward.predict()`, so I took a look to see what was different between the two `predict()` functions. 
+
+In the `FeedForward` one, outputs are converted to numpy arrays before concatenation, which solves the problem pretty easily.
+
+[`mxnet.model.FeedForward.predict`](https://github.com/dmlc/mxnet/blob/master/python/mxnet/model.py#L619)
+
+I will attach a minor change in lieu of rewriting the NDArray module to support concatenation. 
+
+                </div></div></li><li><div><div><b>title:</b> mxnet.ndarray.NDArray objects cannot be concatenated
+                </div><div><b>body:</b> I had some problems after converting my network from `mxnet.model.FeedForward` to `mxnet.module.Module` when using the `predict()` method.
+
+With a module that has been trained, and a DataIterator `test_iter`, the following returns an error:
+
+``` python
+mod.predict(test_iter)
+```
+
+The exception raised is:
+
+```
+---------------------------------------------------------------------------
+ValueError                                Traceback (most recent call last)
+&lt;ipython-input-134-73b4dc77d8cf&gt; in &lt;module&gt;()
+----&gt; 1 model.predict(test_iter)
+
+python/mxnet/module/base_module.py in predict(self, eval_data, num_batch, merge_batches, reset, always_output_list)
+    259                        'in mini-batches. Maybe bucketing is used?'
+    260             output_list2 = [np.concatenate([out[i] for out in output_list])
+--&gt; 261                             for i in range(num_outputs)]
+
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+[The code in question appears here](https://github.com/dmlc/mxnet/blob/master/python/mxnet/module/base_module.py#L260)
+
+The problem seems to be due to trying to concatenate `mxnet.ndarray.NDArray` objects, which appear to have dimension 0.
+
+``` python
+&gt;&gt;&gt; pred = model.predict(test_iter, merge_batches=False) # This works 
+&gt;&gt;&gt; np.ndim(pred[0][0]) 
+0
+# Checking that it's not due to end-of-batch-effects
+&gt;&gt;&gt; len(pred)
+79
+&gt;&gt;&gt; pred[0]
+[&lt;mxnet.ndarray.NDArray at 0x1269f9240&gt;]
+&gt;&gt;&gt; np.concatenate([pred[0][0], pred[1][0]]) 
+...
+ValueError: zero-dimensional arrays cannot be concatenated
+```
+
+There is no problem when using `mxnet.model.FeedForward.predict()`, so I took a look to see what was different between the two `predict()` functions. 
+
+In the `FeedForward` one, outputs are converted to numpy arrays before concatenation, which solves the problem pretty easily.
+
+[`mxnet.model.FeedForward.predict`](https://github.com/dmlc/mxnet/blob/master/python/mxnet/model.py#L619)
+
+I will attach a minor change in lieu of rewriting the NDArray module to support concatenation. 
+
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
+                OK, I am unsure of how to get this to work since I already have a pull request pending, but there's some sort of issue with the linter so it hasn't been merged.
+So now they appear to be two commits on the same pull request, #1977
+
+The change I suggested was for `mxnet/python/mxnet/module/base_module.py`, altering line 247:
+
+```
+-            outputs = [out[0:out.shape[0]-pad] for out in self.get_outputs()]
++            outputs = [out[0:out.shape[0]-pad].asnumpy() for out in self.get_outputs()]
+```
+
+I can attest that it fixed my issues using `predict` and seemed like the easiest change that would ensure similar behavior.
+
+              </div></li><li><div><div><b>body:</b> @rldotai Thanks for spotting this bug! I proposed a different fix in #1989, which still keeps the `NDArray` as output types, but call `nd.concatenate` instead of `np.concatenate`. Returning `NDArray` allows us to better utilize the asynchronized execution engine in the backend and also a relatively consistent API. Please call `asnumpy()` explicitly on the returned results if you need to work with numpy. Thanks again!
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                No worries, just glad to help.
+
+              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Fix module.predict
+                </div><div><b>body:</b> See #1985
+
+Also changed `fit` to reset eval metric on training data for each batch, to be compatible with the recent changes in `FeedForward`.
 
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                It appears you merged this PR like 7 hours after you filed it without a review?  Normally we either wait for an approved code review, or merge in 2 business days, whichever comes first.  If you wish to commit without review, it's also best to comment on your intention to do so stating "lazy consensus" (perhaps saying so at the very start).
-              </div></li><li><div>
-                &gt; It appears you merged this PR like 7 hours after you filed it without a review? Normally we either wait for an approved code review, or merge in 2 business days, whichever comes first. If you wish to commit without review, it's also best to comment on your intention to do so stating "lazy consensus" (perhaps saying so at the very start).
+                let me know if you think it is good to merge things in. the r test seems to be broken for unknown reasons @thirdwing can you look into if some of the testcase break because recent updates in dependent libraries?
 
-I agree with you @dsmiley in general about letting the PR's some baking time and opportunity for comments, but this is a minor change (applying a well known pattern) to a previous large PR that didn't get much attention even though I left it out 11 days and requested feedback (Mike Drob did have a look and Noble did make a comment, but no real review happened). Initial [PR 2285](https://github.com/apache/lucene-solr/pull/2285), and I used a rebased one later for merge [PR 2364](https://github.com/apache/lucene-solr/pull/2364).
+              </div></li><li><div>
+                Looks like you removed the metric reset. I meant it should be reset whenever you print metric. Is that what it's doing now?
 
-If you do have concerns or comments about the change in this PR, please don't hesitate. Having merged it doesn't mean it can't be changed!
-              </div></li><li><div>
-                FYI https://cwiki.apache.org/confluence/display/LUCENE/Commit+Process+Guidelines#CommitProcessGuidelines-ExceptionsforMinorChanges
+Otherwise looks good to me
 
-Wether this change is "minor" or not is, I suppose, subjective.
+              </div></li><li><div>
+                @piiswrong Yes, the validation on val set will reset the eval_metric. Otherwise, the eval_metric will also got reset at the beginning of each epoch.
 
-Don't bother recapitalizing; it's not worth yet another commit (commits are for-ever).  Perhaps maybe if we touch this in the future for something else.
-              </div></li><li><div>
-                It occurred to me why this raised a red flag to me -- it's because it's a PR.  If you truly felt the change in question was so minor then simply commit directly to master.  I certainly do this on occasion for typos, javadocs, or maybe a fix to a failing test.  But the creation of the PR suggests you have an interest in a code review?  Then please wait more than 7 hours for one if you want one :-)
-              </div></li><li><div>
-                @dsmiley I don’t want to push directly. I want to be able to review what will be committed to the upstream repo in case I made a mistake. So I always do PR’s.
-              </div></li><li><div>
-                I review what I commit locally in my IDE tooling.  I think IntelliJ does a nice job of this.
+@tqchen can you merge it? Thanks!
+
               </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                My instinct would be to lowercase this field name because it's not really some constant.  It's rather rare in the codebase to use all-caps in other situations.
-              </div></li><li><div>
-                This variable was moved here as part of a refactoring, see [PR 2390](https://github.com/apache/lucene-solr/pull/2390).
-When introduced in [2014 in OverseerCollectionMessageHandler](https://github.com/apache/lucene-solr/commit/3f999895448c9524c77ff33b801f43cfb6f8b8bd#diff-942546903f5862bde980b5392f8a4cf99e9b16fe1d48f7d1a0e61661dc36a173R167) this variable already had that uppercase name.
+                I think reset on each reporting is better
 
-Do you want me to lowercase it? Likely matter of personal taste, but to me it seems ok uppercase. 
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+              </div></li><li><div><div><b>body:</b> I agree with this change but this is not backward compatible. Maybe add a option to output ndarray and set false as default?
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                OK agreed.
+
+              </div></li><li><div><div><b>body:</b> I think in this particular case it is better to keep a relatively unified interface than to keep it (exactly) backward compatible. Otherwise, it is also a question that whether you want to return np.array or ndarray for `iter_predict`. I think since the module API is already not exactly compatible with `FeedForward`, my personal opinion is to use this chance to have a cleaner interface here. I guess it might also perform better without those blocking `asnumpy()` call after each `forward`.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Ok I didn't notice this is for module. Then I guess it's ok since there isn't much legacy code depending on this
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

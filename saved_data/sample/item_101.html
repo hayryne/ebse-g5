@@ -1,158 +1,206 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 101
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-7345][SQL] Spark cannot detect renamed columns using JDBC connector
-                </div><div><b>message:</b> [SPARK-7345][SQL] Spark cannot detect renamed columns using JDBC connector
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Replace our AggregateValuesRule with Calcite's. (#3845)
+                </div><div><b>message:</b> Replace our AggregateValuesRule with Calcite's. (#3845)
 
-Issue appears when one tries to create DataFrame using sqlContext.load("jdbc"...) statement when "dbtable" contains query with renamed columns.
-If original column is used in SQL query once the resulting DataFrame will contain non-renamed column.
-If original column is used in SQL query several times with different aliases, sqlContext.load will fail.
-Original implementation of JDBCRDD.resolveTable uses getColumnName to detect column names in RDD schema.
-Suggested implementation uses getColumnLabel to handle column renames in SQL statement which is aware of SQL "AS" statement.
 
-Readings:
-http://stackoverflow.com/questions/4271152/getcolumnlabel-vs-getcolumnname
-http://stackoverflow.com/questions/12259829/jdbc-getcolumnname-getcolumnlabel-db2
-
-Official documentation unfortunately a bit misleading in definition of "suggested title" purpose however clearly defines behavior of AS keyword in SQL statement.
-http://docs.oracle.com/javase/7/docs/api/java/sql/ResultSetMetaData.html
-getColumnLabel - Gets the designated column's suggested title for use in printouts and displays. The suggested title is usually specified by the SQL AS clause. If a SQL AS is not specified, the value returned from getColumnLabel will be the same as the value returned by the getColumnName method.
-
-Author: Oleg Sidorkin &lt;oleg.sidorkin@gmail.com&gt;
-
-Closes #6032 from osidorkin/master and squashes the following commits:
-
-10fc44b [Oleg Sidorkin] [SPARK-7345][SQL] Regression test for JDBCSuite (resolved scala style test error)
-2aaf6f7 [Oleg Sidorkin] [SPARK-7345][SQL] Regression test for JDBCSuite (renamed fields in JDBC query)
-b7d5b22 [Oleg Sidorkin] [SPARK-7345][SQL] Regression test for JDBCSuite
-09559a0 [Oleg Sidorkin] [SPARK-7345][SQL] Spark cannot detect renamed columns using JDBC connector
-
-(cherry picked from commit d7a37bcaf123389fb0828eefb92659c6d9cb3460)
-Signed-off-by: Reynold Xin &lt;rxin@databricks.com&gt;
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-7345][SQL] Spark cannot detect renamed columns using JDBC connector
-                </div><div><b>body:</b> Issue appears when one tries to create DataFrame using sqlContext.load("jdbc"...) statement when "dbtable" contains query with renamed columns.
-If original column is used in SQL query once the resulting DataFrame will contain non-renamed column.
-If original column is used in SQL query several times with different aliases, sqlContext.load will fail.
-Original implementation of JDBCRDD.resolveTable uses getColumnName to detect column names in RDD schema.
-Suggested implementation uses getColumnLabel to handle column renames in SQL statement which is aware of SQL "AS" statement.
-
-Readings:
-http://stackoverflow.com/questions/4271152/getcolumnlabel-vs-getcolumnname
-http://stackoverflow.com/questions/12259829/jdbc-getcolumnname-getcolumnlabel-db2
-
-Official documentation unfortunately a bit misleading in definition of "suggested title" purpose however clearly defines behavior of AS keyword in SQL statement.
-http://docs.oracle.com/javase/7/docs/api/java/sql/ResultSetMetaData.html
-getColumnLabel - Gets the designated column's suggested title for use in printouts and displays. The suggested title is usually specified by the SQL AS clause. If a SQL AS is not specified, the value returned from getColumnLabel will be the same as the value returned by the getColumnName method.
-
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Replace our AggregateValuesRule with Calcite's.
+                </div><div><b>body:</b> Our rule was contributed to Calcite in https://issues.apache.org/jira/browse/CALCITE-1489 and released in 1.11.0.
+                </div></div></li><li><div><div><b>title:</b> Replace our AggregateValuesRule with Calcite's.
+                </div><div><b>body:</b> Our rule was contributed to Calcite in https://issues.apache.org/jira/browse/CALCITE-1489 and released in 1.11.0.
+                </div></div></li><li><div><div><b>title:</b> Replace our AggregateValuesRule with Calcite's.
+                </div><div><b>body:</b> Our rule was contributed to Calcite in https://issues.apache.org/jira/browse/CALCITE-1489 and released in 1.11.0.
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Can one of the admins verify this patch?
+                👍 
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
 
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Add rule, AggregateValuesRule, that applies to Aggregate on empty relation
+                </div><div><b>description:</b> Add rule, AggegateValuesRule, that applies to Aggregate on empty relation. In CALCITE-1488, [~gian] wrote:
+
+{quote}
+I still have a problem with Aggregates that lack a group set, like SELECT COUNT\(\*\) FROM s.foo WHERE 1 = 0. PruneEmptyRules doesn't reduce that, since the result is going to be one row, not empty. The ValuesReduceRules don't either, because they don't touch Aggregates.
+
+I ended up addressing this with a rule on my end: https://gist.github.com/gianm/1c192a47a7ce284be8af986f97e6dd8f
+
+Does that approach make sense? If so do you think it makes sense to contribute to Calcite?
+One thing I'm not sure about is if there's a better way to figure out what should be 0 and what should be NULL other than hard-coding COUNT and SUM0.
+{quote}
+
+Let's call it {{AggregateValuesRule}}, consistent with the naming convention where we start with the type of rel(s) being acted on. Initially it would apply to an empty {{Values}}, but potentially it could apply to one or more values.
+
+I don't recall aggregates having a way to tell us what they will return on empty (or constant) input. In future we could use the constant reducer for that, but for now, the rule should match a particular set of aggregates: {{COUNT}} and {{SUM0}} return zero; {{MIN}}, {{MAX}}, {{SUM}} return null. It must abort if it sees an aggregate it does not know how to handle.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Hi Julian,
+
+Could you elaborate a little more on what this rule will do and why is this required ?
               </div></li><li><div>
-                ok to test
-
+                Sorry, I forgot to include the preceding discussion from CALCITE-1488. I just added it to the description. Hopefully it makes sense now.
               </div></li><li><div>
-                 Merged build triggered.
-
+                Thanks [~julianhyde] it makes sense now
               </div></li><li><div>
-                Merged build started.
+                Patch in: https://github.com/apache/calcite/pull/324
 
+I applied this to my local fork too, and it's working for me.
+              </div></li><li><div><div><b>body:</b> [~julianhyde] do you think this rule should replace PruneEmptyRules.AGGREGATE_INSTANCE? In that we get rid of that one, and make AggregateValuesRule handle both empty and nonempty groupSets.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I think we should keep both.
+* The grand-total case returns 1 row, which is the total of 0 rows. It performs something akin to constant reduction. Handled by the new {{AggregateValuesRule}}.
+* The non-grand-total case returns 0 rows and therefore truly "prunes" the tree. Handled by the existing {{PruneEmptyRules#AGGREGATE_INSTANCE}}.
               </div></li><li><div>
-                  [Test build #32314 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32314/consoleFull) for   PR 6032 at commit [`09559a0`](https://github.com/apache/spark/commit/09559a0b3eebaaabd3bb896cb3f8ca5e4ca835bc).
-
+                Okay, cool. Then I think the patch in #324 should work.
               </div></li><li><div>
-                Thanks for fixing this! Would it be possible to add a regression test to `JDBCSuite`?
-
+                Fixed in http://git-wip-us.apache.org/repos/asf/calcite/commit/3f92157d. Thanks for the PR, [~gian]!
               </div></li><li><div>
-                Will do.
-
-              </div></li><li><div>
-                  [Test build #32314 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32314/consoleFull) for   PR 6032 at commit [`09559a0`](https://github.com/apache/spark/commit/09559a0b3eebaaabd3bb896cb3f8ca5e4ca835bc).
-- This patch **passes all tests**.
-- This patch merges cleanly.
-- This patch adds no public classes.
-
-              </div></li><li><div>
-                Merged build finished. Test PASSed.
-
-              </div></li><li><div>
-                Test PASSed.
-Refer to this link for build results (access rights to CI server needed): 
-https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32314/
-Test PASSed.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                  [Test build #32324 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32324/consoleFull) for   PR 6032 at commit [`b7d5b22`](https://github.com/apache/spark/commit/b7d5b22e1539ea7398a53d5e609b65e2d8c1ba0f).
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                  [Test build #32325 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32325/consoleFull) for   PR 6032 at commit [`2aaf6f7`](https://github.com/apache/spark/commit/2aaf6f7f4cf15085e237dbde8760b0f429205f38).
-
-              </div></li><li><div>
-                  [Test build #32325 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32325/consoleFull) for   PR 6032 at commit [`2aaf6f7`](https://github.com/apache/spark/commit/2aaf6f7f4cf15085e237dbde8760b0f429205f38).
-- This patch **fails Scala style tests**.
-- This patch merges cleanly.
-- This patch adds no public classes.
-
-              </div></li><li><div>
-                Merged build finished. Test FAILed.
-
-              </div></li><li><div>
-                Test FAILed.
-Refer to this link for build results (access rights to CI server needed): 
-https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32325/
-Test FAILed.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                  [Test build #32326 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32326/consoleFull) for   PR 6032 at commit [`10fc44b`](https://github.com/apache/spark/commit/10fc44bab608719388f45a524ce68d7875e75811).
-
-              </div></li><li><div>
-                  [Test build #32324 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32324/consoleFull) for   PR 6032 at commit [`b7d5b22`](https://github.com/apache/spark/commit/b7d5b22e1539ea7398a53d5e609b65e2d8c1ba0f).
-- This patch **passes all tests**.
-- This patch merges cleanly.
-- This patch adds no public classes.
-
-              </div></li><li><div>
-                Merged build finished. Test PASSed.
-
-              </div></li><li><div>
-                Test PASSed.
-Refer to this link for build results (access rights to CI server needed): 
-https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32324/
-Test PASSed.
-
-              </div></li><li><div>
-                  [Test build #32326 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32326/consoleFull) for   PR 6032 at commit [`10fc44b`](https://github.com/apache/spark/commit/10fc44bab608719388f45a524ce68d7875e75811).
-- This patch **passes all tests**.
-- This patch merges cleanly.
-- This patch adds no public classes.
-
-              </div></li><li><div>
-                Merged build finished. Test PASSed.
-
-              </div></li><li><div>
-                Test PASSed.
-Refer to this link for build results (access rights to CI server needed): 
-https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/32326/
-Test PASSed.
-
-              </div></li><li><div>
-                Thanks. I'm merging this in master, branch-1.4, and branch-1.3.
-
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                Resolved in release 1.11.0 (2017-01-11).
+              </div></li></ol></div></div></html>

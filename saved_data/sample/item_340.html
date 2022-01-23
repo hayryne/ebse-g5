@@ -1,146 +1,252 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 340
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Check Dataflow Job Status Before Terminate
-                </div><div><b>message:</b> Check Dataflow Job Status Before Terminate
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 log.debug("Calling continue scan : "+scanState.range+" loc = "+loc);
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-4145 Eliminate Text wrapping of tableIDs
+                </div><div><b>message:</b> ACCUMULO-4145 Eliminate Text wrapping of tableIDs
 
-This closes #951
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Eliminate constant unnecessary Text wrapping of immutable tableIDs
+                </div><div><b>description:</b> I started looking at ACCUMULO-4138 to see how KeyExtent is used to do overlaps, and I noticed a *lot* of {{new KeyExtent(new Text(String), ...)}} calls, where that first parameter is the Text version of tableId.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Check Dataflow Job Status Before Terminate
-                </div><div><b>body:</b> Be sure to do all of the following to help us incorporate your contribution
-quickly and easily:
-- [x] Make sure the PR title is formatted like:
-  `[BEAM-&lt;Jira issue #&gt;] Description of pull request`
-- [x] Make sure tests pass via `mvn clean verify`. (Even better, enable
-     Travis-CI on your fork and ensure the whole test matrix passes).
-- [x] Replace `&lt;Jira issue #&gt;` in the title with the actual Jira issue
-     number, if there is one.
-- [ ] If this contribution is large, please file an Apache
-     [Individual Contributor License Agreement](https://www.apache.org/licenses/icla.txt).
+It appears, we even do this practice so much, that KeyExtent has a built-in WeakReference caching of these tableIds, so the Java GC we can dedupe them and avoid creating too many.
 
----
+The thing is... a lot of this attempt to optimize appears to be the result of unnecessarily wrapping all these immutable String tableIDs with a Text object, yet it doesn't really seem to buy us anything. In most of our API and a lot of internal utilities, these are already Strings with references elsewhere in the code... so even if we dedupe the Text objects, we're not doing anything about these Strings. Worse, we're actually doing some protective copying here and there as we pass around these Text objects, using TextUtil, etc. This is completely unnecessary, because they were immutable before we copied them and wrapped them.
 
-Add job status check before canceling job in order to avoid cancel terminated job and throw exception.
+In some cases, we actually call toString on the text objects to pass them around, and they get flip-flopped a few times between String and Text, depending on what the internal API accepts.
 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                +R: @peihe
+At best, using the Text object helps us serialize KeyExtent... but that's questionably beneficial since DataOutput can already serialize with: {{out.writeUTF(String)}}, so that's not actually that helpful.
 
-              </div></li><li><div>
-                PTAL: @peihe 
+The only other benefit I could possibly see is with compareTo for lexicographical comparison, but I have a hard time believing Text can compare faster than {{java.lang.String}}, and there shouldn't be any difference in the results of the comparison between the UTF-8 encoding of Text and the modified UTF encoding which is native to Java Strings, certainly not for the base-36 characters and fixed constants (for special tables) we use in tableIDs.
 
-              </div></li><li><div>
-                LGTM
+We should just completely strip out all the Text versions of tableId, wherever possible. I've already done this as an exercise in the 1.6 branch, but it might be potentially risky as these are put in Java maps which don't have strict type checking ({{map.get(Object)}}, for instance) and are sometimes compared with {{.equals(Object)}}. For what it's worth, the only public API this really touches is {{o.a.a.core.data.KeyExtent}}, which was only inadvertently in the public API and has since been moved (IIRC). We can preserve the old methods for compatibility, if necessary (deprecated, of course).
 
-R: @lukecwik to merge
+Also, getting rid of these Text objects, and just sticking with the immutable String objects, we'll be able to take advantage of future JVM improvements for String deduplication, like http://java-performance.info/java-string-deduplication/
+                </div></div></li><li><div><div><b>summary:</b> Eliminate constant unnecessary Text wrapping of immutable tableIDs
+                </div><div><b>description:</b> I started looking at ACCUMULO-4138 to see how KeyExtent is used to do overlaps, and I noticed a *lot* of {{new KeyExtent(new Text(String), ...)}} calls, where that first parameter is the Text version of tableId.
 
-              </div></li><li><div>
-                PTAL @lukecwik
+It appears, we even do this practice so much, that KeyExtent has a built-in WeakReference caching of these tableIds, so the Java GC we can dedupe them and avoid creating too many.
 
-              </div></li><li><div>
-                Its easier to review the diff if you make new commits instead of squashing, just mark them with !fixup at the beginning as per the Beam dev guide and they will be squashed when merging
+The thing is... a lot of this attempt to optimize appears to be the result of unnecessarily wrapping all these immutable String tableIDs with a Text object, yet it doesn't really seem to buy us anything. In most of our API and a lot of internal utilities, these are already Strings with references elsewhere in the code... so even if we dedupe the Text objects, we're not doing anything about these Strings. Worse, we're actually doing some protective copying here and there as we pass around these Text objects, using TextUtil, etc. This is completely unnecessary, because they were immutable before we copied them and wrapped them.
 
-              </div></li><li><div>
-                LGTM, merging
+In some cases, we actually call toString on the text objects to pass them around, and they get flip-flopped a few times between String and Text, depending on what the internal API accepts.
 
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                jobs.update() is not supposed to be called, right?
+At best, using the Text object helps us serialize KeyExtent... but that's questionably beneficial since DataOutput can already serialize with: {{out.writeUTF(String)}}, so that's not actually that helpful.
 
-could you add Mockito.verify()?
+The only other benefit I could possibly see is with compareTo for lexicographical comparison, but I have a hard time believing Text can compare faster than {{java.lang.String}}, and there shouldn't be any difference in the results of the comparison between the UTF-8 encoding of Text and the modified UTF encoding which is native to Java Strings, certainly not for the base-36 characters and fixed constants (for special tables) we use in tableIDs.
 
-              </div></li><li><div>
-                Yes, job status should return immediately after status check. But still need to verify Jobs.update() will not be called.
+We should just completely strip out all the Text versions of tableId, wherever possible. I've already done this as an exercise in the 1.6 branch, but it might be potentially risky as these are put in Java maps which don't have strict type checking ({{map.get(Object)}}, for instance) and are sometimes compared with {{.equals(Object)}}. For what it's worth, the only public API this really touches is {{o.a.a.core.data.KeyExtent}}, which was only inadvertently in the public API and has since been moved (IIRC). We can preserve the old methods for compatibility, if necessary (deprecated, of course).
 
-done.
+Also, getting rid of these Text objects, and just sticking with the immutable String objects, we'll be able to take advantage of future JVM improvements for String deduplication, like http://java-performance.info/java-string-deduplication/
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Eliminate constant unnecessary Text wrapping of immutable tableIDs
+                </div><div><b>description:</b> I started looking at ACCUMULO-4138 to see how KeyExtent is used to do overlaps, and I noticed a *lot* of {{new KeyExtent(new Text(String), ...)}} calls, where that first parameter is the Text version of tableId.
 
-              </div></li><li><div>
-                sorry, I meant:
-1. remove the mock setup for update.
-2. verify all other mocks are executed (also in testCancelUnterminatedJob()).
-3. verify(mockJobs, never()).update(any(...), any(...), any(...));
+It appears, we even do this practice so much, that KeyExtent has a built-in WeakReference caching of these tableIds, so the Java GC we can dedupe them and avoid creating too many.
 
-              </div></li><li><div>
-                thanks for clarify :)
-done.
+The thing is... a lot of this attempt to optimize appears to be the result of unnecessarily wrapping all these immutable String tableIDs with a Text object, yet it doesn't really seem to buy us anything. In most of our API and a lot of internal utilities, these are already Strings with references elsewhere in the code... so even if we dedupe the Text objects, we're not doing anything about these Strings. Worse, we're actually doing some protective copying here and there as we pass around these Text objects, using TextUtil, etc. This is completely unnecessary, because they were immutable before we copied them and wrapped them.
 
-              </div></li><li><div>
-                Are you able to look at the failure reason in addition to checking job state?
+In some cases, we actually call toString on the text objects to pass them around, and they get flip-flopped a few times between String and Text, depending on what the internal API accepts.
 
-This way it closes a race condition where the job reaches a terminal condition between the fetching state and cancel calls
+At best, using the Text object helps us serialize KeyExtent... but that's questionably beneficial since DataOutput can already serialize with: {{out.writeUTF(String)}}, so that's not actually that helpful.
 
-              </div></li><li><div>
-                Do you mean that look at the IOException from execute() calls? Got confused how it will help to stop the race condition since the race condition is already happened. Or the "failure reason" means other messages?
+The only other benefit I could possibly see is with compareTo for lexicographical comparison, but I have a hard time believing Text can compare faster than {{java.lang.String}}, and there shouldn't be any difference in the results of the comparison between the UTF-8 encoding of Text and the modified UTF encoding which is native to Java Strings, certainly not for the base-36 characters and fixed constants (for special tables) we use in tableIDs.
 
-              </div></li><li><div>
-                It's possible that job status can be changed between fetching state and execute() calls. So one suggestion to avoid this race condition is to make cancel calls whatever job state is and fetching state when Exception is thrown. Return current state if it's terminated, otherwise throw exception. 
+We should just completely strip out all the Text versions of tableId, wherever possible. I've already done this as an exercise in the 1.6 branch, but it might be potentially risky as these are put in Java maps which don't have strict type checking ({{map.get(Object)}}, for instance) and are sometimes compared with {{.equals(Object)}}. For what it's worth, the only public API this really touches is {{o.a.a.core.data.KeyExtent}}, which was only inadvertently in the public API and has since been moved (IIRC). We can preserve the old methods for compatibility, if necessary (deprecated, of course).
 
-              </div></li><li><div>
-                Yes, look at the IOException, if it is a failure to cancel because the job is already in a terminal state then you know you don't have to rethrow and can just do the warn message.
+Also, getting rid of these Text objects, and just sticking with the immutable String objects, we'll be able to take advantage of future JVM improvements for String deduplication, like http://java-performance.info/java-string-deduplication/
+                </div></div></li><li><div><div><b>summary:</b> Eliminate constant unnecessary Text wrapping of immutable tableIDs
+                </div><div><b>description:</b> I started looking at ACCUMULO-4138 to see how KeyExtent is used to do overlaps, and I noticed a *lot* of {{new KeyExtent(new Text(String), ...)}} calls, where that first parameter is the Text version of tableId.
 
-              </div></li><li><div>
-                done.
+It appears, we even do this practice so much, that KeyExtent has a built-in WeakReference caching of these tableIds, so the Java GC we can dedupe them and avoid creating too many.
 
-              </div></li><li><div>
-                you can drop times(1), it is the default
+The thing is... a lot of this attempt to optimize appears to be the result of unnecessarily wrapping all these immutable String tableIDs with a Text object, yet it doesn't really seem to buy us anything. In most of our API and a lot of internal utilities, these are already Strings with references elsewhere in the code... so even if we dedupe the Text objects, we're not doing anything about these Strings. Worse, we're actually doing some protective copying here and there as we pass around these Text objects, using TextUtil, etc. This is completely unnecessary, because they were immutable before we copied them and wrapped them.
 
-              </div></li><li><div>
-                I don't think this is needed for your test anymore since the state check is only done on failure now nor the mocking of job state higher above
+In some cases, we actually call toString on the text objects to pass them around, and they get flip-flopped a few times between String and Text, depending on what the internal API accepts.
 
-              </div></li><li><div>
-                I don't think you need this line for your test anymore
+At best, using the Text object helps us serialize KeyExtent... but that's questionably beneficial since DataOutput can already serialize with: {{out.writeUTF(String)}}, so that's not actually that helpful.
 
-              </div></li><li><div>
-                add verifyNoMoreInteractions(mockJobs)
+The only other benefit I could possibly see is with compareTo for lexicographical comparison, but I have a hard time believing Text can compare faster than {{java.lang.String}}, and there shouldn't be any difference in the results of the comparison between the UTF-8 encoding of Text and the modified UTF encoding which is native to Java Strings, certainly not for the base-36 characters and fixed constants (for special tables) we use in tableIDs.
 
-              </div></li><li><div>
-                add verifyNoMoreInteractions(mockJobs)
+We should just completely strip out all the Text versions of tableId, wherever possible. I've already done this as an exercise in the 1.6 branch, but it might be potentially risky as these are put in Java maps which don't have strict type checking ({{map.get(Object)}}, for instance) and are sometimes compared with {{.equals(Object)}}. For what it's worth, the only public API this really touches is {{o.a.a.core.data.KeyExtent}}, which was only inadvertently in the public API and has since been moved (IIRC). We can preserve the old methods for compatibility, if necessary (deprecated, of course).
 
-              </div></li><li><div>
-                You shouldn't need this line anymore
+Also, getting rid of these Text objects, and just sticking with the immutable String objects, we'll be able to take advantage of future JVM improvements for String deduplication, like http://java-performance.info/java-string-deduplication/
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Eliminate constant unnecessary Text wrapping of immutable tableIDs
+                </div><div><b>description:</b> I started looking at ACCUMULO-4138 to see how KeyExtent is used to do overlaps, and I noticed a *lot* of {{new KeyExtent(new Text(String), ...)}} calls, where that first parameter is the Text version of tableId.
 
-              </div></li><li><div>
-                Move this line to be after the execute(), this will prevent coding bugs where default fallthrough returns cancelled status
+It appears, we even do this practice so much, that KeyExtent has a built-in WeakReference caching of these tableIds, so the Java GC we can dedupe them and avoid creating too many.
 
-              </div></li><li><div>
-                The concern of keeping it is to make sure the initial state of job is desired. But yes, state check will not be reached in this case. Remove it and the mocking of job state may be better.
+The thing is... a lot of this attempt to optimize appears to be the result of unnecessarily wrapping all these immutable String tableIDs with a Text object, yet it doesn't really seem to buy us anything. In most of our API and a lot of internal utilities, these are already Strings with references elsewhere in the code... so even if we dedupe the Text objects, we're not doing anything about these Strings. Worse, we're actually doing some protective copying here and there as we pass around these Text objects, using TextUtil, etc. This is completely unnecessary, because they were immutable before we copied them and wrapped them.
 
-              </div></li><li><div>
-                done
+In some cases, we actually call toString on the text objects to pass them around, and they get flip-flopped a few times between String and Text, depending on what the internal API accepts.
 
-              </div></li><li><div>
-                thanks! done
+At best, using the Text object helps us serialize KeyExtent... but that's questionably beneficial since DataOutput can already serialize with: {{out.writeUTF(String)}}, so that's not actually that helpful.
 
-              </div></li><li><div>
-                see, will pay attention to it in future.
-done.
+The only other benefit I could possibly see is with compareTo for lexicographical comparison, but I have a hard time believing Text can compare faster than {{java.lang.String}}, and there shouldn't be any difference in the results of the comparison between the UTF-8 encoding of Text and the modified UTF encoding which is native to Java Strings, certainly not for the base-36 characters and fixed constants (for special tables) we use in tableIDs.
 
-              </div></li><li><div>
-                done
+We should just completely strip out all the Text versions of tableId, wherever possible. I've already done this as an exercise in the 1.6 branch, but it might be potentially risky as these are put in Java maps which don't have strict type checking ({{map.get(Object)}}, for instance) and are sometimes compared with {{.equals(Object)}}. For what it's worth, the only public API this really touches is {{o.a.a.core.data.KeyExtent}}, which was only inadvertently in the public API and has since been moved (IIRC). We can preserve the old methods for compatibility, if necessary (deprecated, of course).
 
-              </div></li><li><div>
-                done
+Also, getting rid of these Text objects, and just sticking with the immutable String objects, we'll be able to take advantage of future JVM improvements for String deduplication, like http://java-performance.info/java-string-deduplication/
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                GitHub user ctubbsii opened a pull request:
 
-              </div></li><li><div>
-                done
+    https://github.com/apache/accumulo/pull/70
 
-              </div></li><li><div>
-                see. Thanks for pointed out.
-done
+    ACCUMULO-4145 Eliminate Text wrapping of tableIDs
+
+    Best effort attempt to eliminate Text wrapping of tableIDs for 1.6 branch, to example the extent of the changes.
+    Preserves KeyExtent caching with WeakHashMap (might not be needed, or possibly could be replaced with String.intern()).
+    Preserves Text serialization/deserialization of tableIDs in KeyExtent serialization/deserialization (needed for backwards compatibility and KeyExtents serialized in WALs).
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/ctubbsii/accumulo ACCUMULO-4145-string-tableIDs
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/accumulo/pull/70.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #70
+    
+----
+commit fbad09c7cd42709cebbcd35e23ddbd58fb45aea5
+Author: Christopher Tubbs &lt;ctubbsii@apache.org&gt;
+Date:   2016-02-15T06:56:45Z
+
+    ACCUMULO-4145 Eliminate Text wrapping of tableIDs
+
+----
 
               </div></li><li><div>
-                When using "when" clauses they are not strict and use functions like any(Job.class)/anyString only using something specific if a different result needs to be returned based upon an input parameter. The "verify" clauses should be the strict ones.
+                Github user ctubbsii commented on the pull request:
 
-This helps make tests not fail due to NPEs since a null would be returned if the mock call wasn't satisfied and will instead fail with a much cleaner message saying parameters X, Y, and Z were expected but got A, B, and C
-
-This applies to this test and the ones you added below
-
-              </div></li><li><div>
-                It's a very good explanation for "when" use case! I spend more time reading about "verify" and "when", and become more clear when/how to use them.
+    https://github.com/apache/accumulo/pull/70#issuecomment-184089574
+  
+    For reference, String.intern() should not be used for Java 1.6 runtime, as that could grow the PermGen space significantly. It could possibly replace the WeakHashMap in 1.7, because intern storage has been moved to the main Java heap. It might not actually be needed at all, since we've effectively eliminated all the extra objects and copies that were left around with Text. And, in Java 1.8 update 30, the G1 GC has a String dedupe feature which may eliminate the extra copies without needing to intern.
 
               </div></li><li><div>
-                But "verify" can't be used to mock function return. 
+                I double checked. KeyExtent is not in the public API (confirmed with README), so this would change no public API... at least not in 1.6. I'd have to double check to see if it affects any public API in newer branches. We first need to determine if we'd want to go ahead and do this in 1.6/1.7 or wait until 1.8.
+              </div></li><li><div><div><b>body:</b> KeyExtent is referenced by methods that are in the public API.   During the 1.7.0 API cleanup I did the following for KeyExtent.
 
-How about using any(Job.class)/anyString in "when" clauses and verify the function parameters using "verify" with eq. I think this is what you suggest right?
+ * Deprecated data.KeyExtent and all public API methods that use it.
+ * Created TabletId class in public API and replaced deprecated methods that used KeyExtent with new ones that used TabletId
+ * Created a new data.impl.KeyExtent class that all internal code uses.  Only deprecated APIs use data.KeyExtent now
+ * Made data.KeyExtent wrap data.impl.KeyExtent
+
+I made data.KeyExtent wrap data.impl.KeyExtent instead of extend so that when new methods are added to data.impl.KeyExtent, data.KeyExtent does not automatically inherit those methods.  This freezes the deprecated KeyExtent API.
+
+Given that in 1.7.0 I tried to be really conservative with API changes and minimize the possibility of breaking user code, I would not be in favor of these changes for 1.6.  The GeoWave input format uses tablet locator and key extent (until 1.8.0 is realesed with tablet location in the API).
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Okay, so the safest thing is to wait until 1.8, and to avoid modifying the frozen, deprecated KeyExtent API.
+              </div></li><li><div>
+                Github user ctubbsii closed the pull request at:
+
+    https://github.com/apache/accumulo/pull/70
 
               </div></li><li><div>
-                Yes, that is what I was getting at that you need to use both when and verify. You should use when+any+anyString+... to setup what should be returned and verify+eq+... to ensure that the correct parameters were given.
+                GitHub user ctubbsii opened a pull request:
 
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+    https://github.com/apache/accumulo/pull/72
+
+    ACCUMULO-4145 Eliminate Text wrapping of tableIDs
+
+    * Best attempt to eliminate text wrapping of tableIDs on master branch.
+    * Some ByteBuffer wrapping still occurs due to thrift using bytes to transfer tableId instead of string.
+    * Some Text wrapping is needed for:
+     - preserving existing KeyExtent serialization
+     - putting tableIDs in replication-related table entries
+     - avoiding public API changes to deprecated KeyExtent.
+    
+    All unit tests pass, and -Psunny ITs, as well as checkstyle, findbugs, and modernizer
+    This replaces #70
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/ctubbsii/accumulo ACCUMULO-4145
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/accumulo/pull/72.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #72
+    
+----
+commit 413244765adb7a60cef8de701de6983d4c99c8e2
+Author: Christopher Tubbs &lt;ctubbsii@apache.org&gt;
+Date:   2016-02-18T23:56:54Z
+
+    ACCUMULO-4145 Eliminate Text wrapping of tableIDs
+
+----
+
+              </div></li><li><div>
+                Github user keith-turner commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/72#discussion_r53470957
+  
+    --- Diff: core/src/main/java/org/apache/accumulo/core/client/impl/ScannerImpl.java ---
+    @@ -60,7 +59,7 @@ public ScannerImpl(ClientContext context, String table, Authorizations authoriza
+         checkArgument(table != null, "table is null");
+         checkArgument(authorizations != null, "authorizations is null");
+         this.context = context;
+    -    this.table = new Text(table);
+    +    this.table = table;
+    --- End diff --
+    
+    seems like this is a tableId... could change the name
+
+              </div></li><li><div>
+                Github user keith-turner commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/72#discussion_r53473276
+  
+    --- Diff: core/src/main/java/org/apache/accumulo/core/client/impl/TabletLocator.java ---
+    @@ -96,19 +96,19 @@ public static synchronized void clearLocators() {
+         locators.clear();
+       }
+     
+    -  public static synchronized TabletLocator getLocator(ClientContext context, Text tableId) {
+    +  public static synchronized TabletLocator getLocator(ClientContext context, String tableId) {
+    --- End diff --
+    
+    For external projects that are using this, I am happy 1.8 finally has locator in the public API.
+
+              </div></li><li><div>
+                Github user keith-turner commented on a diff in the pull request:
+
+    https://github.com/apache/accumulo/pull/72#discussion_r53473836
+  
+    --- Diff: core/src/test/java/org/apache/accumulo/core/client/impl/TabletLocatorImplTest.java ---
+    @@ -63,10 +63,10 @@
+     public class TabletLocatorImplTest {
+     
+       private static final KeyExtent RTE = RootTable.EXTENT;
+    -  private static final KeyExtent MTE = new KeyExtent(new Text(MetadataTable.ID), null, RTE.getEndRow());
+    --- End diff --
+    
+    nice to see all the `new Text` to go away
+
+              </div></li><li><div>
+                Github user keith-turner commented on the pull request:
+
+    https://github.com/apache/accumulo/pull/72#issuecomment-186260830
+  
+    +1
+
+
+              </div></li><li><div>
+                Github user ctubbsii closed the pull request at:
+
+    https://github.com/apache/accumulo/pull/72
+
+              </div></li></ol></div></div></html>

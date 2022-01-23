@@ -1,64 +1,201 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 92
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-3688][SQL]LogicalPlan can't resolve column correctlly
-                </div><div><b>message:</b> [SPARK-3688][SQL]LogicalPlan can't resolve column correctlly
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> GEODE-8875: Removing packages element from log4j2 configuration file
+                </div><div><b>message:</b> GEODE-8875: Removing packages element from log4j2 configuration file
 
-This PR fixed the resolving problem described in https://issues.apache.org/jira/browse/SPARK-3688
-```
-CREATE TABLE t1(x INT);
-CREATE TABLE t2(a STRUCT&lt;x: INT&gt;, k INT);
-SELECT a.x FROM t1 a JOIN t2 b ON a.x = b.k;
-```
+This element causes log4j to scan all geode jars on startup. This slows down
+the startup time of all geode processes, including gfsh.
 
-Author: tianyi &lt;tianyi.asiainfo@gmail.com&gt;
+It is not necessary because log4j has an annotation processor to generate a
+config file that helps it find plugs that it needs.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Geode is spending a lot of time in log4j classpath scanning on startup
+                </div><div><b>description:</b> When running gfsh, it takes a long time even to run the `gfsh help` command. For example, with our docker image it takes 10 seconds just to display the help from
+{code}
+docker run apachegeode/geode:latest time gfsh help
+{code}
 
-Closes #4524 from tianyi/SPARK-3688 and squashes the following commits:
+Doing some CPU sampling, it looks like the majority of the time is in log4j2 scanning for plugins.
+{noformat}
+TRACE 300879: (thread=200001)
+        java.lang.ClassLoader.defineClass1(ClassLoader.java:Unknown line)
+        java.lang.ClassLoader.defineClass(ClassLoader.java:763)
+        java.security.SecureClassLoader.defineClass(SecureClassLoader.java:142)
+        java.net.URLClassLoader.defineClass(URLClassLoader.java:468)
+        java.net.URLClassLoader.access$100(URLClassLoader.java:74)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:369)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:363)
+        java.security.AccessController.doPrivileged(AccessController.java:Unknown line)
+        java.net.URLClassLoader.findClass(URLClassLoader.java:362)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:424)
+        sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:349)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:357)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.addIfMatching(ResolverUtil.java:449)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.loadImplementationsInJar(ResolverUtil.java:351)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.findInPackage(ResolverUtil.java:233)
+        org.apache.logging.log4j.core.config.plugins.util.PluginRegistry.loadFromPackage(PluginRegistry.java:221)
+        org.apache.logging.log4j.core.config.plugins.util.PluginManager.collectPlugins(PluginManager.java:152)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:224)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:288)
+      org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:579)
 
-237a256 [tianyi] resolve a name with table.column pattern first.
+{noformat}
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-3688][SQL]LogicalPlan can't resolve column correctlly
-                </div><div><b>body:</b> This PR fixed the resolving problem described in https://issues.apache.org/jira/browse/SPARK-3688
+After further investigation, this scanning appears to be caused by this line in our log4j2-cli.xml file, which sets the packages to be "org.apache.geode" This causes log4j2 to scan all of our jar files.
 
-```
-CREATE TABLE t1(x INT);
-CREATE TABLE t2(a STRUCT&lt;x: INT&gt;, k INT);
-SELECT a.x FROM t1 a JOIN t2 b ON a.x = b.k;
-```
+{code}
+&lt;Configuration status="WARN" shutdownHook="disable" packages="org.apache.geode"&gt;
+{code}
 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Can one of the admins verify this patch?
+This scanning is completely unnecessary because log4j already has an annotation processor which generates a file that log4j2 can find without any scanning.
+
+This probably affects geode server startup, not just gfsh, because log4j2.xml has this setting as well.
+                </div></div></li><li><div><div><b>summary:</b> Geode is spending a lot of time in log4j classpath scanning on startup
+                </div><div><b>description:</b> When running gfsh, it takes a long time even to run the `gfsh help` command. For example, with our docker image it takes 10 seconds just to display the help from
+{code}
+docker run apachegeode/geode:latest time gfsh help
+{code}
+
+Doing some CPU sampling, it looks like the majority of the time is in log4j2 scanning for plugins.
+{noformat}
+TRACE 300879: (thread=200001)
+        java.lang.ClassLoader.defineClass1(ClassLoader.java:Unknown line)
+        java.lang.ClassLoader.defineClass(ClassLoader.java:763)
+        java.security.SecureClassLoader.defineClass(SecureClassLoader.java:142)
+        java.net.URLClassLoader.defineClass(URLClassLoader.java:468)
+        java.net.URLClassLoader.access$100(URLClassLoader.java:74)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:369)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:363)
+        java.security.AccessController.doPrivileged(AccessController.java:Unknown line)
+        java.net.URLClassLoader.findClass(URLClassLoader.java:362)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:424)
+        sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:349)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:357)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.addIfMatching(ResolverUtil.java:449)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.loadImplementationsInJar(ResolverUtil.java:351)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.findInPackage(ResolverUtil.java:233)
+        org.apache.logging.log4j.core.config.plugins.util.PluginRegistry.loadFromPackage(PluginRegistry.java:221)
+        org.apache.logging.log4j.core.config.plugins.util.PluginManager.collectPlugins(PluginManager.java:152)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:224)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:288)
+      org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:579)
+
+{noformat}
+
+After further investigation, this scanning appears to be caused by this line in our log4j2-cli.xml file, which sets the packages to be "org.apache.geode" This causes log4j2 to scan all of our jar files.
+
+{code}
+&lt;Configuration status="WARN" shutdownHook="disable" packages="org.apache.geode"&gt;
+{code}
+
+This scanning is completely unnecessary because log4j already has an annotation processor which generates a file that log4j2 can find without any scanning.
+
+This probably affects geode server startup, not just gfsh, because log4j2.xml has this setting as well.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Geode is spending a lot of time in log4j classpath scanning on startup
+                </div><div><b>description:</b> When running gfsh, it takes a long time even to run the `gfsh help` command. For example, with our docker image it takes 10 seconds just to display the help from
+{code}
+docker run apachegeode/geode:latest time gfsh help
+{code}
+
+Doing some CPU sampling, it looks like the majority of the time is in log4j2 scanning for plugins.
+{noformat}
+TRACE 300879: (thread=200001)
+        java.lang.ClassLoader.defineClass1(ClassLoader.java:Unknown line)
+        java.lang.ClassLoader.defineClass(ClassLoader.java:763)
+        java.security.SecureClassLoader.defineClass(SecureClassLoader.java:142)
+        java.net.URLClassLoader.defineClass(URLClassLoader.java:468)
+        java.net.URLClassLoader.access$100(URLClassLoader.java:74)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:369)
+        java.net.URLClassLoader$1.run(URLClassLoader.java:363)
+        java.security.AccessController.doPrivileged(AccessController.java:Unknown line)
+        java.net.URLClassLoader.findClass(URLClassLoader.java:362)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:424)
+        sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:349)
+        java.lang.ClassLoader.loadClass(ClassLoader.java:357)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.addIfMatching(ResolverUtil.java:449)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.loadImplementationsInJar(ResolverUtil.java:351)
+        org.apache.logging.log4j.core.config.plugins.util.ResolverUtil.findInPackage(ResolverUtil.java:233)
+        org.apache.logging.log4j.core.config.plugins.util.PluginRegistry.loadFromPackage(PluginRegistry.java:221)
+        org.apache.logging.log4j.core.config.plugins.util.PluginManager.collectPlugins(PluginManager.java:152)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:224)
+        org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:288)
+      org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:579)
+
+{noformat}
+
+After further investigation, this scanning appears to be caused by this line in our log4j2-cli.xml file, which sets the packages to be "org.apache.geode" This causes log4j2 to scan all of our jar files.
+
+{code}
+&lt;Configuration status="WARN" shutdownHook="disable" packages="org.apache.geode"&gt;
+{code}
+
+This scanning is completely unnecessary because log4j already has an annotation processor which generates a file that log4j2 can find without any scanning.
+
+This probably affects geode server startup, not just gfsh, because log4j2.xml has this setting as well.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                upthewaterspout opened a new pull request #5957:
+URL: https://github.com/apache/geode/pull/5957
+
+
+   This element causes log4j to scan all geode jars on startup. This slows down
+   the startup time of all geode processes, including gfsh.
+   
+   It is not necessary because log4j has an annotation processor to generate a
+   config file that helps it find plugs that it needs.
+   
+
+
+----------------------------------------------------------------
+This is an automated message from the Apache Git Service.
+To respond to the message, please log on to GitHub and use the
+URL above to go to the specific comment.
+
+For queries about this service, please contact Infrastructure at:
+users@infra.apache.org
 
               </div></li><li><div>
-                ok to test
+                upthewaterspout merged pull request #5957:
+URL: https://github.com/apache/geode/pull/5957
+
+
+   
+
+
+----------------------------------------------------------------
+This is an automated message from the Apache Git Service.
+To respond to the message, please log on to GitHub and use the
+URL above to go to the specific comment.
+
+For queries about this service, please contact Infrastructure at:
+users@infra.apache.org
 
               </div></li><li><div>
-                  [Test build #27278 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/27278/consoleFull) for   PR 4524 at commit [`237a256`](https://github.com/apache/spark/commit/237a256c9f037b7be70ebc5972ce62305323c67e).
-- This patch merges cleanly.
+                Commit d058f0dd1f23a6339cd0860933e58e428cb9eea7 in geode's branch refs/heads/develop from Dan Smith
+[ https://gitbox.apache.org/repos/asf?p=geode.git;h=d058f0d ]
 
+GEODE-8875: Removing packages element from log4j2 configuration file
+
+This element causes log4j to scan all geode jars on startup. This slows down
+the startup time of all geode processes, including gfsh.
+
+It is not necessary because log4j has an annotation processor to generate a
+config file that helps it find plugs that it needs.
               </div></li><li><div>
-                  [Test build #27278 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/27278/consoleFull) for   PR 4524 at commit [`237a256`](https://github.com/apache/spark/commit/237a256c9f037b7be70ebc5972ce62305323c67e).
-- This patch **passes all tests**.
-- This patch merges cleanly.
-- This patch adds no public classes.
+                upthewaterspout merged pull request #5957:
+URL: https://github.com/apache/geode/pull/5957
 
-              </div></li><li><div>
-                Test PASSed.
-Refer to this link for build results (access rights to CI server needed): 
-https://amplab.cs.berkeley.edu/jenkins//job/SparkPullRequestBuilder/27278/
-Test PASSed.
 
-              </div></li><li><div>
-                I merged this since we're close to the deadline.  Thanks!
+   
 
-Please address @rxin comments in a follow up.
 
-              </div></li><li><div>
-                FYI I added more inline comment https://github.com/apache/spark/pull/4539
+----------------------------------------------------------------
+This is an automated message from the Apache Git Service.
+To respond to the message, please log on to GitHub and use the
+URL above to go to the specific comment.
 
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                If we are going to merge this, can you add javadoc for these two methods to explain what they do, and what the differences are?
+For queries about this service, please contact Infrastructure at:
+users@infra.apache.org
 
-              </div></li><li><div>
-                Also they should be private or at least protected.
-
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+              </div></li></ol></div></div></html>

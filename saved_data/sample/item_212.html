@@ -1,272 +1,477 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 212
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 Must fail. Table name is not register anymore.
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [FLINK-4288] [table] Make it possible to unregister tables
-                </div><div><b>message:</b> [FLINK-4288] [table] Make it possible to unregister tables
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-19617][SS] Fix the race condition when starting and stopping a query quickly (branch-2.1)
+                </div><div><b>message:</b> [SPARK-19617][SS] Fix the race condition when starting and stopping a query quickly (branch-2.1)
 
-This closes #2511.
+## What changes were proposed in this pull request?
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [FLINK-4288] [table] Make it possible to unregister tables
-                </div><div><b>body:</b> Thanks for contributing to Apache Flink. Before you open your pull request, please take the following check list into consideration.
-If your changes take all of the items into account, feel free to open your pull request. For more information and/or questions please refer to the [How To Contribute guide](http://flink.apache.org/how-to-contribute.html).
-In addition to going through the list, please provide a meaningful description of your changes.
-- [x] General
-  - The pull request references the related JIRA issue ("[FLINK-XXX] Jira title text")
-  - The pull request addresses only one issue
-  - Each commit in the PR has a meaningful commit message (including the JIRA id)
-- [ ] Documentation
-  - Documentation has been added for new functionality
-  - Old documentation affected by the pull request has been updated
-  - JavaDoc for public methods has been added
-- [x] Tests &amp; Build
-  - Functionality added by the pull request is covered by tests
-  - `mvn clean verify` has been executed successfully locally or a Travis build has passed
+Backport #16947 to branch 2.1. Note: we still need to support old Hadoop versions in 2.1.*.
 
-This PR adds the possibility to unregister tables. Although Calcite supports mutable schemas, deleting a table instead of replacing it was not easy to implement. I will add some documentation if you are fine with this PR.
+## How was this patch tested?
+
+Jenkins
+
+Author: Shixiong Zhu &lt;shixiong@databricks.com&gt;
+
+Closes #16979 from zsxwing/SPARK-19617-branch-2.1.
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> [SPARK-19617][SS]Fix the race condition when starting and stopping a query quickly
+                </div><div><b>body:</b> ## What changes were proposed in this pull request?
+
+The streaming thread in StreamExecution uses the following ways to check if it should exit:
+- Catch an InterruptException.
+- `StreamExecution.state` is TERMINATED.
+
+When starting and stopping a query quickly, the above two checks may both fail:
+- Hit [HADOOP-14084](https://issues.apache.org/jira/browse/HADOOP-14084) and swallow InterruptException
+- StreamExecution.stop is called before `state` becomes `ACTIVE`. Then [runBatches](https://github.com/apache/spark/blob/dcc2d540a53f0bd04baead43fdee1c170ef2b9f3/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala#L252) changes the state from `TERMINATED` to `ACTIVE`.
+
+If the above cases both happen, the query will hang forever.
+
+This PR changes `state` to `AtomicReference` and uses`compareAndSet` to make sure we only change the state from `INITIALIZING` to `ACTIVE`. It also removes the `runUninterruptibly` hack from ``HDFSMetadata`, because HADOOP-14084 won't cause any problem after we fix the race condition.
+
+## How was this patch tested?
+
+Jenkins
 
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                I updated this PR. I will create a followup issue to refactor all TableEnvironment registration tests to unit tests.
+                **[Test build #72972 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/72972/testReport)** for PR 16947 at commit [`d52ac13`](https://github.com/apache/spark/commit/d52ac13252798791115930ea8db9a05797e7ed7a).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds no public classes.
               </div></li><li><div>
-                Thanks for the update. +1 to merge.
+                **[Test build #72988 has started](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/72988/testReport)** for PR 16947 at commit [`fb27a97`](https://github.com/apache/spark/commit/fb27a97b148d5e074227760ae83d6b2e95520ed7).
               </div></li><li><div>
-                Thanks @fhueske. I will add some sentences to the documentation and merge this.
+                retest this please
+              </div></li><li><div>
+                &gt; It also removes the runUninterruptibly hack from ``HDFSMetadata`
+
+I will submit a backport PR for 2.1 to not include this change because this is needed for 2.1 due to  HADOOP-10622 (Master only support Hadoop 2.6+, which already fixed HADOOP-10622).
+              </div></li><li><div>
+                **[Test build #3575 has finished](https://amplab.cs.berkeley.edu/jenkins/job/NewSparkPullRequestBuilder/3575/testReport)** for PR 16947 at commit [`7317b0f`](https://github.com/apache/spark/commit/7317b0fe7bff83f55750d9558c2f1edc4b703a15).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds no public classes.
+              </div></li><li><div>
+                minor grammar issue in the comment, otherwise LGTM.
+              </div></li><li><div>
+                LGTM. Merge when tests finish to master and 2.1
+              </div></li><li><div>
+                @tdas we need another PR for 2.1 since this PR assumes Hadoop 2.6+. I'm doing it now.
+              </div></li><li><div>
+                **[Test build #73078 has finished](https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/73078/testReport)** for PR 16947 at commit [`13f76f6`](https://github.com/apache/spark/commit/13f76f63843e7cb0a82c920de3ae016299744b0b).
+ * This patch passes all tests.
+ * This patch merges cleanly.
+ * This patch adds no public classes.
+              </div></li><li><div>
+                Thanks! Merging to master.
+              </div></li><li><div>
+                #16979 is the backport for branch-2.1.
               </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                I think the benefit of this wrapper is rather limited.
-Couldn't we just call `schema.tableMap.remove()` in `TableEnvironment`?
-
+                Most changes here are space changes. You can use https://github.com/apache/spark/pull/16947/files?w=1 to review it.
               </div></li><li><div>
-                Do we need to check if the name is valid? Couldn't we just try to delete it?
-
+                Didnt we disable interrupt because with local files, hadoop used shell commands to do file manipulation which could hang when interrupted? Are we removing this now because that has been fixed in hadoop?
               </div></li><li><div>
-                Do we want to return a boolean success value or throw an exception if the table does not exist?
+                &gt; Are we removing this now because that has been fixed in hadoop?
 
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Make it possible to unregister tables
-                </div><div><b>description:</b> Table names can not be changed yet. After registration you can not modify the table behind a table name. Maybe this behavior is too restrictive.
+Yes. We dropped the support to Hadoop 2.5 and earlier versions.
+              </div></li><li><div><div><b>body:</b> finish the cleanup
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
+                </div></div></li><li><div><div><b>summary:</b> Shell.joinThread swallows InterruptedException
+                </div><div><b>description:</b> In "Shell.joinThread", when the user tries to interrupt the thread that runs Shell.joinThread, it will catch InterruptedException and propagate it to thread t. However, it doesn't set the interrupt state of the current thread before returning, so the user codes won't know it's already interrupted.
+
+See https://github.com/apache/hadoop/blob/9e19f758c1950cbcfcd1969461a8a910efca0767/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Shell.java#L1035
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Because {{SchemaPlus}} has no {{remove}} function, we can't unregister tables easily. Do you have any ideas to do this ? 
+                Thanks for reporting. Can you provide a patch for this?
               </div></li><li><div>
-                GitHub user twalthr opened a pull request:
-
-    https://github.com/apache/flink/pull/2511
-
-    [FLINK-4288] [table] Make it possible to unregister tables
-
-    Thanks for contributing to Apache Flink. Before you open your pull request, please take the following check list into consideration.
-    If your changes take all of the items into account, feel free to open your pull request. For more information and/or questions please refer to the [How To Contribute guide](http://flink.apache.org/how-to-contribute.html).
-    In addition to going through the list, please provide a meaningful description of your changes.
-    
-    - [x] General
-      - The pull request references the related JIRA issue ("[FLINK-XXX] Jira title text")
-      - The pull request addresses only one issue
-      - Each commit in the PR has a meaningful commit message (including the JIRA id)
-    
-    - [ ] Documentation
-      - Documentation has been added for new functionality
-      - Old documentation affected by the pull request has been updated
-      - JavaDoc for public methods has been added
-    
-    - [x] Tests &amp; Build
-      - Functionality added by the pull request is covered by tests
-      - `mvn clean verify` has been executed successfully locally or a Travis build has passed
-    
-    This PR adds the possibility to unregister tables. Although Calcite supports mutable schemas, deleting a table instead of replacing it was not easy to implement. I will add some documentation if you are fine with this PR.
-    
-
-
-You can merge this pull request into a Git repository by running:
-
-    $ git pull https://github.com/twalthr/flink FLINK-4288
-
-Alternatively you can review and apply these changes as the patch at:
-
-    https://github.com/apache/flink/pull/2511.patch
-
-To close this pull request, make a commit to your master/trunk branch
-with (at least) the following in the commit message:
-
-    This closes #2511
-    
-----
-commit 0ecb6138680498bdacb134eff1609b21cbb07cd9
-Author: twalthr &lt;twalthr@apache.org&gt;
-Date:   2016-09-19T12:09:14Z
-
-    [FLINK-4288] [table] Make it possible to unregister tables
-
-----
-
+                Posted v0 patch.
               </div></li><li><div>
-                Github user fhueske commented on a diff in the pull request:
-
-    https://github.com/apache/flink/pull/2511#discussion_r88737982
-  
-    --- Diff: flink-libraries/flink-table/src/main/scala/org/apache/flink/api/table/TableEnvironment.scala ---
-    @@ -133,12 +134,24 @@ abstract class TableEnvironment(val config: TableConfig) {
-             registerTableInternal(name, tableTable)
-           case e: StreamTableEnvironment =&gt;
-             val sTableTable = new TransStreamTable(table.getRelNode, true)
-    -        tables.add(name, sTableTable)
-    +        schema.addTable(name, sTableTable)
-         }
-     
-       }
-     
-       /**
-    +    * Unregisters a [[Table]] in the TableEnvironment's catalog.
-    +    * Unregistered tables cannot be referenced in SQL queries anymore.
-    +    *
-    +    * @param name The name under which the table is registered.
-    +    */
-    +  def unregisterTable(name: String): Unit = {
-    --- End diff --
-    
-    Do we want to return a boolean success value or throw an exception if the table does not exist?
-
+                I don't think {{joinThread()}} should simply throw InterruptedException immediately. We have to observe the thread t dies. Before returning, we can self interrupt.
               </div></li><li><div>
-                Github user fhueske commented on a diff in the pull request:
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 19s{color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 13m 26s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 22m 11s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 40s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  1m 23s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 18s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 25s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 52s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 47s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 18m  8s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 18m  8s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 36s{color} | {color:green} hadoop-common-project/hadoop-common: The patch generated 0 new + 40 unchanged - 1 fixed = 40 total (was 41) {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  1m  7s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 18s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 39s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 49s{color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red} 16m 33s{color} | {color:red} hadoop-common in the patch failed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 35s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 83m  2s{color} | {color:black} {color} |
+\\
+\\
+|| Reason || Tests ||
+| Failed junit tests | hadoop.fs.TestSymlinkLocalFSFileContext |
+|   | hadoop.fs.TestSymlinkLocalFSFileSystem |
+| Timed out junit tests | org.apache.hadoop.fs.TestLocalFileSystem |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker |  Image:yetus/hadoop:a9ad5d6 |
+| JIRA Issue | HADOOP-14084 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12860040/HADOOP-14084.000.patch |
+| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
+| uname | Linux 2103b8bb7c78 3.13.0-106-generic #153-Ubuntu SMP Tue Dec 6 15:44:32 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
+| git revision | trunk / f462e1f |
+| Default Java | 1.8.0_121 |
+| findbugs | v3.0.0 |
+| unit | https://builds.apache.org/job/PreCommit-HADOOP-Build/11886/artifact/patchprocess/patch-unit-hadoop-common-project_hadoop-common.txt |
+|  Test Results | https://builds.apache.org/job/PreCommit-HADOOP-Build/11886/testReport/ |
+| modules | C: hadoop-common-project/hadoop-common U: hadoop-common-project/hadoop-common |
+| Console output | https://builds.apache.org/job/PreCommit-HADOOP-Build/11886/console |
+| Powered by | Apache Yetus 0.5.0-SNAPSHOT   http://yetus.apache.org |
 
-    https://github.com/apache/flink/pull/2511#discussion_r88737674
-  
-    --- Diff: flink-libraries/flink-table/src/main/scala/org/apache/flink/api/table/FlinkSchema.scala ---
-    @@ -0,0 +1,57 @@
-    +/*
-    + * Licensed to the Apache Software Foundation (ASF) under one
-    + * or more contributor license agreements.  See the NOTICE file
-    + * distributed with this work for additional information
-    + * regarding copyright ownership.  The ASF licenses this file
-    + * to you under the Apache License, Version 2.0 (the
-    + * "License"); you may not use this file except in compliance
-    + * with the License.  You may obtain a copy of the License at
-    + *
-    + *     http://www.apache.org/licenses/LICENSE-2.0
-    + *
-    + * Unless required by applicable law or agreed to in writing, software
-    + * distributed under the License is distributed on an "AS IS" BASIS,
-    + * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    + * See the License for the specific language governing permissions and
-    + * limitations under the License.
-    + */
-    +
-    +package org.apache.flink.api.table
-    +
-    +import java.util
-    +
-    +import org.apache.calcite.jdbc.CalciteSchema
-    +import org.apache.calcite.jdbc.CalciteSchema.TableEntry
-    +import org.apache.calcite.schema
-    +import org.apache.calcite.schema.SchemaPlus
-    +
-    +/**
-    +  * Wraps [[CalciteSchema]] and allows for deleting tables.
-    +  */
-    +class FlinkSchema {
-    --- End diff --
-    
-    I think the benefit of this wrapper is rather limited.
-    Couldn't we just call `schema.tableMap.remove()` in `TableEnvironment`?
 
-              </div></li><li><div>
-                Github user fhueske commented on a diff in the pull request:
-
-    https://github.com/apache/flink/pull/2511#discussion_r88737974
-  
-    --- Diff: flink-libraries/flink-table/src/main/scala/org/apache/flink/api/table/TableEnvironment.scala ---
-    @@ -133,12 +134,24 @@ abstract class TableEnvironment(val config: TableConfig) {
-             registerTableInternal(name, tableTable)
-           case e: StreamTableEnvironment =&gt;
-             val sTableTable = new TransStreamTable(table.getRelNode, true)
-    -        tables.add(name, sTableTable)
-    +        schema.addTable(name, sTableTable)
-         }
-     
-       }
-     
-       /**
-    +    * Unregisters a [[Table]] in the TableEnvironment's catalog.
-    +    * Unregistered tables cannot be referenced in SQL queries anymore.
-    +    *
-    +    * @param name The name under which the table is registered.
-    +    */
-    +  def unregisterTable(name: String): Unit = {
-    +
-    +    checkValidTableName(name)
-    --- End diff --
-    
-    Do we need to check if the name is valid? Couldn't we just try to delete it?
+This message was automatically generated.
 
 
               </div></li><li><div>
-                Github user twalthr closed the pull request at:
-
-    https://github.com/apache/flink/pull/2511
-
+                Posted v1. Thanks [~liuml07]
               </div></li><li><div>
-                Github user twalthr commented on the issue:
-
-    https://github.com/apache/flink/pull/2511
-  
-    I updated this PR. I will create a followup issue to refactor all TableEnvironment registration tests to unit tests.
-
+                I think if the {{joinThread()}} is used only in {{runCommand()}} method which does not propagate the InterruptedException, perhaps we don't have to make {{joinThread()}} re-throw the exception. Self interrupt before returning seems simpler. [~szetszwo] do you find time to comment? Thanks,
               </div></li><li><div>
-                GitHub user twalthr reopened a pull request:
+                | (x) *{color:red}-1 overall{color}* |
+\\
+\\
+|| Vote || Subsystem || Runtime || Comment ||
+| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 20s{color} | {color:blue} Docker mode activated. {color} |
+| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
+| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 14m 33s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 17m 11s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 39s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  1m 11s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 16s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 41s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 49s{color} | {color:green} trunk passed {color} |
+| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 47s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} compile {color} | {color:green} 15m 47s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javac {color} | {color:green} 15m 47s{color} | {color:green} the patch passed {color} |
+| {color:orange}-0{color} | {color:orange} checkstyle {color} | {color:orange}  0m 36s{color} | {color:orange} hadoop-common-project/hadoop-common: The patch generated 1 new + 41 unchanged - 0 fixed = 42 total (was 41) {color} |
+| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  1m  9s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 17s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
+| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 49s{color} | {color:green} the patch passed {color} |
+| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 48s{color} | {color:green} the patch passed {color} |
+| {color:red}-1{color} | {color:red} unit {color} | {color:red}  8m 24s{color} | {color:red} hadoop-common in the patch failed. {color} |
+| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 35s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
+| {color:black}{color} | {color:black} {color} | {color:black} 68m 36s{color} | {color:black} {color} |
+\\
+\\
+|| Reason || Tests ||
+| Failed junit tests | hadoop.security.TestRaceWhenRelogin |
+|   | hadoop.security.TestKDiag |
+\\
+\\
+|| Subsystem || Report/Notes ||
+| Docker |  Image:yetus/hadoop:a9ad5d6 |
+| JIRA Issue | HADOOP-14084 |
+| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12860942/HADOOP-14084.001.patch |
+| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
+| uname | Linux 99d30318aa09 3.13.0-106-generic #153-Ubuntu SMP Tue Dec 6 15:44:32 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
+| Build tool | maven |
+| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
+| git revision | trunk / 01aca54 |
+| Default Java | 1.8.0_121 |
+| findbugs | v3.0.0 |
+| checkstyle | https://builds.apache.org/job/PreCommit-HADOOP-Build/11956/artifact/patchprocess/diff-checkstyle-hadoop-common-project_hadoop-common.txt |
+| unit | https://builds.apache.org/job/PreCommit-HADOOP-Build/11956/artifact/patchprocess/patch-unit-hadoop-common-project_hadoop-common.txt |
+|  Test Results | https://builds.apache.org/job/PreCommit-HADOOP-Build/11956/testReport/ |
+| modules | C: hadoop-common-project/hadoop-common U: hadoop-common-project/hadoop-common |
+| Console output | https://builds.apache.org/job/PreCommit-HADOOP-Build/11956/console |
+| Powered by | Apache Yetus 0.5.0-SNAPSHOT   http://yetus.apache.org |
 
-    https://github.com/apache/flink/pull/2511
 
-    [FLINK-4288] [table] Make it possible to unregister tables
-
-    Thanks for contributing to Apache Flink. Before you open your pull request, please take the following check list into consideration.
-    If your changes take all of the items into account, feel free to open your pull request. For more information and/or questions please refer to the [How To Contribute guide](http://flink.apache.org/how-to-contribute.html).
-    In addition to going through the list, please provide a meaningful description of your changes.
-    - [x] General
-      - The pull request references the related JIRA issue ("[FLINK-XXX] Jira title text")
-      - The pull request addresses only one issue
-      - Each commit in the PR has a meaningful commit message (including the JIRA id)
-    - [ ] Documentation
-      - Documentation has been added for new functionality
-      - Old documentation affected by the pull request has been updated
-      - JavaDoc for public methods has been added
-    - [x] Tests &amp; Build
-      - Functionality added by the pull request is covered by tests
-      - `mvn clean verify` has been executed successfully locally or a Travis build has passed
-    
-    This PR adds the possibility to unregister tables. Although Calcite supports mutable schemas, deleting a table instead of replacing it was not easy to implement. I will add some documentation if you are fine with this PR.
+This message was automatically generated.
 
 
-You can merge this pull request into a Git repository by running:
+              </div></li><li><div><div><b>body:</b> We need to decide what is the expected behavior of joinThread(..) when it is interrupted.  The behavior probably depends on which thread it is joining.  In our case, it is joining the errThread.  Then, I think re-throwing the InterruptedException is fine, i.e. something similar to HADOOP-14084.000.patch.
 
-    $ git pull https://github.com/twalthr/flink FLINK-4288
-
-Alternatively you can review and apply these changes as the patch at:
-
-    https://github.com/apache/flink/pull/2511.patch
-
-To close this pull request, make a commit to your master/trunk branch
-with (at least) the following in the commit message:
-
-    This closes #2511
-    
-----
-commit 4b710ce5eee8629de691bb4cc2c7f9f7c3f76dcc
-Author: twalthr &lt;twalthr@apache.org&gt;
-Date:   2017-01-05T14:13:13Z
-
-    [FLINK-4288] [table] Make it possible to unregister tables
-
-----
-
-              </div></li><li><div>
-                Github user twalthr commented on the issue:
-
-    https://github.com/apache/flink/pull/2511
-  
-    Thanks @fhueske. I will add some sentences to the documentation and merge this.
-
-              </div></li><li><div>
-                Github user asfgit closed the pull request at:
-
-    https://github.com/apache/flink/pull/2511
-
-              </div></li><li><div>
-                Fixed in 1.3.0: 33b8570e962e5bf6790c528f862b4c5af8322613.
-              </div></li></ol></div></div></html>
+BTW, please see if you could add a test.
+                </div><div><b>label:</b> test
+                </div></div></li></ol></div></div></html>

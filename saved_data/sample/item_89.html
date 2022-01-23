@@ -1,14 +1,747 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 89
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> NO-JIRA Fix usage of self.assertTrue in policy tests (#896)
-                </div><div><b>message:</b> NO-JIRA Fix usage of self.assertTrue in policy tests (#896)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div><div><b>comment:</b> *
+* This package implements a memory manager for off-heap data based on pools and arenas.
+* It is derived from the netty memory manager with the following changes:
+*    - Classes have been redefined to store data little-endian.  (Append "L" to class names)
+*    - A "trim" method has been added to reduce a buffer's maxCapacity and free the extra memory.
+*    - allocate(min, max) 
+*    
+* This manager is based on the following memory abstractions:
+*     - a "chunk" is a piece of memory allocated from the operating system,
+*     - a "page" is is a piece of memory allocated from a chunk, and
+*     - an "element" is a piece of memory allocated from a page.
+*    
+* This memory manager classifies the memory request according to the size of requested memory.
+*    - "subpage" memory manager which breaks a page into equal sized elements.
+*      It uses a bitmap to indicate which ones are free.  (why not linked list?)
+*    - "normal" memory manager which breaks a chunk into runs of pages.
+*       Management is done using the "buddy system", so each run is a power-of-2 pages.
+*    - "huge" memory manager which allocates memory larger than a chunk.
+*       It goes straight to the operating system.
+*    
+*  The PoolArena utilizes these three memory managers, trying to minimize fragmentation 
+*  in the big buffers while keeping good performance for the small buffers.
+*  
+*  The three submanagers are:
+*    subpage allocations.  A page is divided into equal sized elements with a bitmask indicating
+*                        which elements are free. The page is placed into a pool (linked list)
+*                        according to the size of the elements.
+*    Normal allocations. A chunk is divided into multiple pages according to the buddy system.
+*                        Chunks are kept in a list partially ordered to minimize fragmentation.
+*    Huge allocations.   Memory larger than a chunk is allocated directly from the OS.
+*    
+*    To avoid contention, there are multiple "arenas" rather than a single monolithic memory manager.
+*    Threads are assigned to an arena on a round-robin basis, and a buffer is always returned 
+*    to the arena of its origin.
+*                                           
+*    
+*        Note for "normal" allocations: Rather than keeping one fully ordered list of chunks, 
+*        it keeps several lists, and always
+*        searches the first list, followed by the next list. Thus it achieves an approximate ordering without
+*        having to do a full sort.
+*             
+*    
+* This PoolArena allocator is configured according to Java environment variables.
+*    io.netty.allocator.numDirectArenas - the number of arenas to divide among threads.
+*    io.netty.allocator.pageSize - The size of each page, must be power of 2.
+*    io.netty.allocator.maxOrder - Specifies chunkSize as pageSize * 2^maxOrder.
+* 
+* It may not make sense to use this allocator for small allocations.
+*     Each buffer which is allocated uses a Java class which must also be allocated.
+*     Thus we may not save on Java memory management for small buffers.
 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 Trim the single page to a tiny size.
+              </div></li><li><div>
+                * Trim a large block to a smaller block. 
+              </div></li><li><div>
+                * Allocate and free the largest small allocation 
+              </div></li><li><div>
+                * Test the allocation and free of a "normal" allocation 
+              </div></li><li><div>
+                 Release the buffer. Verify the element is returned to pool and page still allocated.
+              </div></li><li><div>
+                 Allocate a large block and trim to a single page
+              </div></li><li><div>
+                 default
+              </div></li><li><div>
+                 Allocate a single page
+              </div></li><li><div>
+                 Allocate the buffer and verify we have the expected number of pages
+              </div></li><li><div><div><b>comment:</b> * Grow a tiny buffer to a normal one 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 if the line contains pattern, then success.
+              </div></li><li><div>
+                * Trim a page down to a tiny buffer. 
+              </div></li><li><div>
+                * Allocate and free the largest tiny allocation 
+              </div></li><li><div>
+                * Allocate and free the tiniest tiny allocation 
+              </div></li><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 Get our current state as a string
+              </div></li><li><div>
+                 Do for each line in the string
+              </div></li><li><div><div><b>comment:</b> *
+	 * Unit test the memory allocator and trim() function.
+	 * The results are confirmed by examining the state of the memory allocator.
+	 * In this test, we are working with a single chunk and a 
+	 * small set of subpage allocations.
+	 * 
+	 * Chunk status can be verified by matching with 
+	 *      "Chunk ... &lt;bytes consumed&gt;/".
+	 * The subpage allocators are verified by matching with
+	 *      "&lt;nr allocated&gt;/ ... elemSize: &lt;size&gt;"
+	 *      	 *   
+	 *   A cleaner approach would create new methods to query
+	 *      - how many pages (total) have been allocated, and
+	 *      - how many elements of a particular size have been allocated.   
+	 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 We didn't find a matching line, so fail the test
+              </div></li><li><div>
+                * Allocate and free the smallest small allocation 
+              </div></li><li><div>
+                * Allocate and free a larger run of pages 
+              </div></li><li><div>
+                * Test the allocation and free of a "subpage" allocation 
+              </div></li><li><div>
+                * Allocate and free a single page 
+              </div></li><li><div>
+                 Resize the tiny block to two pages
+              </div></li><li><div>
+                * An allocator with some stuff added to aid testing 
+              </div></li><li><div>
+                 Allocate a tiny buffer
+              </div></li><li><div>
+                * 
+    	 * Verify our current state matches the pattern. 
+    	 * 
+    	 * Note: Uses the existing "toString()" method and extracts information
+    	 *   by matching a pattern to one of the output lines.
+    	 *
+    	 
+              </div></li><li><div>
+                * A convenience method to do all the tests. 
+              </div></li><li><div>
+                *
+     * Allocate memory to a buffer container.
+     * @param cache TODO: not sure
+     * @param buf - A buffer which will contain the allocated memory
+     * @param minRequested - The smallest amount of memory.
+     * @param maxRequested - The maximum memory to allocate if convenient.
+     
+              </div></li><li><div>
+                 OTHERWISE: Normal allocation of pages from a chunk.
+              </div></li><li><div>
+                * Create an arbitrary size chunk of memory which is not part of the pool. 
+              </div></li><li><div>
+                * Create a chunkSize chunk of memory which will be part of the pool 
+              </div></li><li><div>
+                * HeapArena is an arena which allocates memory from the Java Heap 
+              </div></li><li><div>
+                * Copy memory from one allocation to another. 
+              </div></li><li><div>
+                 If the list was empty, allocate a new page, allocate an item, and add page to the list.
+   This is awkward. "allocateNormal" does subpage allocation internally,
+   and it really shouldn't know anything at all about subpages.
+   Instead, we should allocate a complete page and 
+   add it to the desired list ourselves.
+              </div></li><li><div>
+                 If the buffer can be allocated from the skip list, then allocate it.
+              </div></li><li><div>
+                 CASE: minCapacity is a subpage
+              </div></li><li><div>
+                 minCapacity &lt;= pageSize/2
+              </div></li><li><div>
+                *
+ * A PoolArenaL is a single arena for managing memory. 
+ * It represents a composite memory manager which consists of other 
+ * memory allocators, where each of the allocators
+ * works best for different allocation sizes.
+ * 
+ * More specifically, a PoolArenaL includes the following allocators:
+ *   tiny: (16-256) - multiple lists of pages of items, where each list has items of a fixed size 16*N.
+ *   small: (512-pageSize/2)  - multiple lists of pages of items, where each list has items of a fixed size 2^N.
+ *   normal: (pageSize-chunkSize) - a skiplist of chunks ordered to minimize fragmentation, where
+ *                                  each chunk is divided into pages using the buddy system.
+ *   huge: (&gt;chunkSize)  - memory is allocated directly from the operating system.
+ *   
+ * Note: In a multi-threaded environment, the "parent" creates multiple "arenas",
+ * distributing threads among them to minimize contention.
+ *  
+ * @param &lt;T&gt;
+ 
+              </div></li><li><div>
+                 Create a buffer header, limiting growth to minimize copying
+              </div></li><li><div>
+                 Create the tiny pools, ranging in size from 16 to 256 in steps of 16.
+ Create the small pools, ranging in size from 512 to pagesize/2 as powers of 2.
+ Create a skip list of chunks consisting of separate lists connected together.
+   Chunks migrate between the lists depending on how much free space they have.
+              </div></li><li><div>
+                *
+     * Find which list holds subpage buffers of the given size.
+     * @param elemSize
+     * @return
+     
+              </div></li><li><div>
+                 CASE:  HUGE allocation.     
+              </div></li><li><div>
+                 CASE: buffer has grown. Copy data from old buffer to new.
+              </div></li><li><div>
+                *
+     * Bump the requested size up to the size which will actually be allocated
+     * @param reqCapacity - the requested size
+     * @return the large, normalized size
+     
+              </div></li><li><div>
+                *
+     * Allocate a huge (&gt;chunksize) buffer.
+     * @param buf
+     * @param reqCapacity
+     
+              </div></li><li><div>
+                *
+     * Allocate a "normal" (page .. chunk) sized buffer from a chunk in the skiplist.
+     * @param buf - the buffer header which will receive the memory.
+     * @param minRequested - the minimum requested capacity in bytes.
+     * @param maxRequested - the maximum requested capacity.
+     
+              </div></li><li><div>
+                * Create an array (uninitialized) of subpage lists.
+              </div></li><li><div>
+                *
+     * Create a new arena.
+     * @param parent - The global memory manager (where we go to allocate a completely new buffer).
+     * @param pageSize - The minimum size of memory for using the "normal" allocation (buddy system).
+     * @param maxOrder - The size of a "chunk", where chunkSize = pageSize * 2^maxOrder.
+     * @param pageShifts - pageSize expressed as a power of 2.  (redundant?)
+     * @param chunkSize - chunkSize in bytes. (redundant?)
+     
+              </div></li><li><div>
+                *
+     * Allocate a buffer from the current arena.
+     * Unlike netty.io buffers, this buffer can grow without bounds,
+     * but it will throw an exception if growth involves copying a page 
+     * or more of data. Instead of being an upper bounds sanity check,
+     * the "max" capacity is used to opportunistically allocate extra memory.
+     * Later, the capacity can be reduced very efficiently.
+     * To avoid excessive copying, a buffer cannot grow if it must copy
+     * more than a single page of data.
+     * @param cache   TODO: not sure
+     * @param minRequested  The smallest capacity buffer we want
+     * @param maxRequested  If convenient, allocate up to this capacity
+     * @return A buffer with capacity between min and max capacity
+     
+              </div></li><li><div>
+                * DirectArena is an arena which allocates memory from off-heap (direct allocation).
+              </div></li><li><div><div><b>comment:</b>  CASE: HUGE allocation, don't change it.
+ CASE: normal or small allocation, then round up to 2^n
+ OTHERWISE: tiny allocations. Round up to the next multiple of 16
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 CASE: buffer has shrunk. Copy data, but also reset the reader/writer positions.    
+ move to buffer has shrunk case?
+ If requested, release the old memory.
+              </div></li><li><div>
+                 else "small", pick list based on power of 2.    
+ Whether tiny or small, allocate an item from the first page in the corresponding list
+              </div></li><li><div>
+                 Add the new chunk to the skip list at the "newly initialized" location.
+              </div></li><li><div>
+                 if "tiny", pick list based on multiple of 16
+ minCapacity &lt; 512
+              </div></li><li><div><div><b>comment:</b>  Sanity check to not grow beyond the maxCapacity.
+   This check may not be relevant any more since we have reinterpreted maxCapacity.
+ Do nothing if capacity doesn't actually change.
+ Cache some local values to make them more accessible.
+ Allocate new memory for the buffer
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                * Create a new buffer, but don't allocate memory yet. 
+              </div></li><li><div>
+                * Display the contents of a PoolArena 
+              </div></li><li><div>
+                * Release or recycle a chunk of memory 
+              </div></li><li><div>
+                 Allocate a buffer from the chunk.
+              </div></li><li><div>
+                *
+     * Change the size of a buffer by allocating new memory and copying the old data to it.
+     * @param buf  - the buffer containing the memory
+     * @param newCapacity - the desired capacity
+     * @param freeOldMemory - whether to release the old memory or not.
+     
+              </div></li><li><div>
+                 Create a new chunk.
+              </div></li><li><div>
+                * Initialize a subpage list 
+              </div></li><li><div><div><b>comment:</b>    This code should be reorganized.
+        case: &lt;= maxTiny:   allocateTiny{select which tiny list, allocate subpage from list.}
+        case: &lt;= maxSmall:  allocateSmall{select which small list, allocate subpage from list.}
+        case: &lt;= maxNormal: allocateNormal
+        otherwise:          allocateHuge
+   where maxTiny=256, maxSmall=pageSize/2, maxNormal=chunkSize.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+     * Free a piece of memory.
+     * @param chunk
+     * @param handle
+     
+              </div></li><li><div>
+                *
+     * Allocate a page to be used for subpage buffers, knowing the subtree is UNUSED
+     * @param normCapacity
+     * @param curIdx
+     * @param val
+     * @return
+     
+              </div></li><li><div>
+                 Starting at current node, follow left hand children, until reaching node of desired size.
+   Note that runLength and memoryMapIdx move in unison. 
+              </div></li><li><div>
+                 We can't trim if the result will become a subpage
+              </div></li><li><div>
+                 Initialize buffer with as large as possible capacity within the requested range
+  (assert: we know the buffer is &gt;= minCapacity)
+              </div></li><li><div>
+                *
+     * Allocates a buffer with size between minRequested and maxRequested
+     * @param minRequested
+     * @param maxRequested
+     * @return
+     
+              </div></li><li><div>
+                * 
+     * Allocates a buffer of the given size from current chunk
+     * @param capacity - requested capacity of the buffer
+     * @return - handle to the buffer, -1 if failed
+     
+              </div></li><li><div><div><b>comment:</b>  Search through the subtrees until finding an unused node s.t. runlength &gt;= min
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 We are about to allocate from one of our children, so we become BRANCH
+              </div></li><li><div>
+                 If the buffer was a HUGE allocation, then we leave it alone
+              </div></li><li><div>
+                 If the buffer is growing, then we aren't really trimming.
+              </div></li><li><div>
+                 Current node is a parent of the desired node. It now becomes a "BRANCH".
+              </div></li><li><div>
+                 If buffer was allocated from a subpage, then free it.
+              </div></li><li><div><div><b>comment:</b>  Mark the node as "unused"
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>comment:</b>  If at top of tree, done
+ If the buddy is allocated, we can stop since no more merging can occur
+ move to current node's parent, effectively merging with UNUSED buddy
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>comment:</b>  OTHERWISE: allocating subpage buffer. Special case: maxCapacity is normCapacity.
+   Note: this case should be moved to PoolArena.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+     * Allocate a run of pages where the run size is within minCapacity thru maxCapacity.
+     * @param minRequested - the minimum size of the buffer
+     * @param maxRequested - the maximum size of the buffer to be allocated if convenient
+     * @param node - the subtree of this chunk to search
+     * @return handle to the allocated memory
+     * 
+     * More specifically, this routine finds an unused node in the binary tree,
+     *   s.t.  the node is big enough to contain minCapacity, and is not
+     *         bigger than the size to contain maxCapacity.
+     *         
+     * A node is the correct size to contain x bytes, if
+     *      runlength(node) == roundup-power-of-2(x)
+     *  equivalently, runlength(node) &gt;= x  and   runlength(node.child) &lt; x
+     *  equivalently, runlength(node) &gt;= x  and   runlength(node)/2 &lt; x  
+     *  
+     * Similarly, a node is the correct size to contain min...max bytes, if
+     *    runlength(node) &gt;= roundup-power-of-2(min)  &amp;&amp;  runlength(node) &lt;= roundup-power-of-2(max)
+     *    or equivalently,    runlength(node) &gt;= min  &amp;&amp;  runlength(node)/2 &lt; max   
+     
+              </div></li><li><div>
+                *
+     * Allocate a new page for splitting into subpage items.
+     *   Note: this routine doesn't belong here. Instead, we should have a "subpage" allocator 
+     *   which is invoked instead of us and is responsible for the entire subpage allocation sizes.
+     * @param normCapacity - the actual size of the buffer we will allocate
+     * @param curIdxn - the node where our search stargs
+     * @param val - contents of the current node
+     * @return a handle to the allocated buffer.
+     
+              </div></li><li><div><div><b>comment:</b>  At this point, we have an unused node s.t.  runlength &gt;= min.
+   In other words, it is larger than the minimum, but it may also be larger
+   than the maximum. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>comment:</b>  if we failed to find an unused node which is big enough, then failure.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>comment:</b>  We are at an unused node which satisfies both conditions. Allocate it.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Continue descending subtree looking for a node s.t. runlength/2 &lt; max
+              </div></li><li><div><div><b>comment:</b> * 
+ * A Chunk is a large, fixed size piece of memory allocated from the operating system. 
+ * This PoolChunk allocator divides a chunk into a run of pages using the buddy system.
+ * The actual allocation will be the size requested, rounded up to the next 
+ * power-of-2.
+ * 
+ * This allocator does "normal" allocations, where the requested size varies
+ *    from page size to chunk size.
+ * 
+ * The allocator is based on buddy system. It views a chunk as a binary tree with
+ *     1 run of chunksize, or
+ *     2 runs of chunksize/2, or
+ *     4 runs of chunksize/4, or
+ *     ...
+ *     2^maxOrder runs of pagesize
+ *     
+ * Each node in the binary tree is labeled:
+ *     - unused.  The node and all its children are unallocated
+ *     - allocated. The node (and all its children) are allocated
+ *                  as a single request. The children remain marked "unused".
+ *     - branch. At least one descendent is allocated.
+ *     
+ * The binary tree is represented in the "memoryMap",
+ *   which saves the node status in a simple array without using links.
+ *   The array indices indicate the position within the tree as follows:
+ *     0 - unused
+ *     1 - root
+ *     2,3 - children of 1
+ *     4,5  6,7  - children of 2 and 3
+ *     8,9 10,11   12,13 14,15     - next level of children.
+ *     
+ * Thus, i/2 points to the parent of i,  
+ *       i*2 points to left child, i*2+1 points to right child.    
+ *
+ * Note the current code also deals with smaller subpage allocations.
+ *    The overall memory manager only comes here when it wants a new page,
+ *    not every time it allocates a subpage piece of memory.
+ 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                * Creates an uninitialized array of subpage lists 
+              </div></li><li><div>
+                 If not found, search the other subtree (tail recursion) 
+              </div></li><li><div>
+                 Otherwise initialize buffer as a subpage allocation.  
+              </div></li><li><div>
+                 return new handle to the reduced size buffer.
+              </div></li><li><div>
+                 If this is a normal allocation
+              </div></li><li><div>
+                 Verify the memory is allocated
+              </div></li><li><div>
+                 Search one random subtree (recursively)
+              </div></li><li><div>
+                * returns the percentage of the chunk which has been allocated 
+              </div></li><li><div>
+                * Create a new "chunk" of memory to be used in the given arena.
+     *
+     * @param arena - the arena this chunk belongs to
+     * @param memory
+     * @param pageSize - the size of a page (known to arena, why here?)
+     * @param maxOrder - how many pages to a chunk  (2^^maxOrder pages)
+     * @param pageShifts - page size as number of shifts  (2^^pageShifts)
+     * @param chunkSize - the size of a chunk   (pagesize*2^^maxOrder(known to arena)
+     
+              </div></li><li><div>
+                 Pick one of the children and continue descending its subtree.
+              </div></li><li><div>
+                 We are now at the desired node. Mark it allocated.
+              </div></li><li><div>
+                *
+     * Initialize a buffer given a handle that was allocated from this chunk.
+     * @param buf       The buffer to be initialized.
+     * @param handle    The handle representing memory allocated from this chunk.
+     * @param minRequested  The minimum requested capacity.
+     * @param maxRequested   The maximum requested capacity.
+     
+              </div></li><li><div>
+                 If the buffer was a subpage, then we also leave it alone.
+              </div></li><li><div>
+                 CASE: allocating runs of pages, make use of maxCapacity since we can trim it later
+              </div></li><li><div>
+                *
+     * Free up memory to reduce the size of a run of pages.
+     *     The resulting run starts on the same page, and
+     *     the trailing pages are returned to the memory manager.
+     *     Trim is intended to be an efficient way to reduce the size of a buffer.
+     *     No new memory is allocated, nor is any data copied.
+     * @param handle - which run of pages was allocated from the current chunk
+     * @param smallerSize - the new desired size the new run of pages
+     * @return a new handle to the smaller run of pages, or -1 if can't trim.
+     
+              </div></li><li><div>
+                *
+     * Return a buffer back to the memory pool.
+     * @param handle
+     
+              </div></li><li><div><div><b>comment:</b>  Right hand child is now an unused buddy. Mark it "UNUSED".
+  (done - should already be marked "UNUSED")
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Otherwise, it should have been allocated from the chunk    
+ Update the nr of bytes free
+ start at current node and work up the tree
+              </div></li><li><div>
+                 ... then add the memory to the buffer container
+              </div></li><li><div>
+                *
+     * Create a new, empty pool of chunks.
+     * @param arena - the bigger arena this pool belongs to
+     * @param nextList - the next list to consider (in the same pool)
+     * @param minUsage - contains chunks with the specified usage (min ... max)
+     * @param maxUsage
+     
+              </div></li><li><div>
+                 Release buffer back to the original chunk
+              </div></li><li><div>
+                 If usage changed, then move to different list
+              </div></li><li><div>
+                 If usage has change, then add to the neighboring list instead
+              </div></li><li><div>
+                 return new handle for the smaller buffer
+              </div></li><li><div>
+                 Trim the buffer, possibly getting a new handle.
+              </div></li><li><div>
+                 If usage changed, then move to next list
+              </div></li><li><div>
+                *
+     * Allocate a buffer with the requested size
+     * @param buf - the container to hold the buffer
+     * @param minRequested - the minumum requested capacity
+     * @param maxRequested - the maximum capacity
+     * @return
+     
+              </div></li><li><div>
+                *
+     * Shrink the buffer down to the specified size, freeing up unused memory.
+     * @param chunk - chunk the buffer resides in
+     * @param handle - the handle to the buffer
+     * @param size - the new desired "size"
+     * @return a new handle to the smaller buffer
+     
+              </div></li><li><div>
+                *
+     * Remove a chunk from the current linked list of chunks
+     * @param cur
+     
+              </div></li><li><div>
+                 Move the chunk to a different list if usage changed significantly
+              </div></li><li><div>
+                *
+     * Release a buffer back to the original chunk.
+     * @param chunk
+     * @param handle
+     
+              </div></li><li><div>
+                 If list is empty, then allocation fails
+ Do for each chunk in the list
+              </div></li><li><div>
+                *
+     * Add a chunk to the current chunklist
+     * @param chunk
+     
+              </div></li><li><div>
+                 If we successfully allocated from the chunk ...
+              </div></li><li><div><div><b>comment:</b> } else if (usage &lt; minUsage) {   // TODO: Could this result in a recursive loop?
+	prevList.add(chunk);
+	return;
+ Add chunk to linked list.
+                </div><div><b>label:</b> requirement
+                </div></div></li><li><div>
+                *
+ * A list of chunks with similar "usage".  If a chunk is added to the wrong list,
+ *    it will migrate to the next list which hopefully will be the correct one.
+ *
+ * @param &lt;T&gt;
+ 
+              </div></li><li><div>
+                 if our page is now empty (numAvail == maxNumElems), ...
+ Do not remove if this page is the only one left in the pool.
+              </div></li><li><div>
+                *
+     * Search a bitmap to find the next available bit.
+     * @return index to a free bit
+     
+              </div></li><li><div>
+                 mark the corresponding bit as "free"
+ If we were full, add our page to the pool of subpages
+ If we are not empty, then keep us among the pool of subpages
+              </div></li><li><div><div><b>comment:</b> *
+     * Override the abstract allocator. Normally, the abstract allocator
+     * defaults the second parameter to MAXINT as a "sanity check", but we
+     * have reinterpreted the second parameter as "max requested".
+     
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+     * Allocate a buffer from the current thread's direct arena.
+     
+              </div></li><li><div><div><b>comment:</b> *
+ * Exception thrown after resizing a buffer results in excessive copying.
+ *   The buffer has been properly resized, so It is possible to ignore the exception and continue.
+ 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Check for the easy resizing cases, and return if successfully resized.
+              </div></li><li><div>
+                *
+     * Initialize a new buffer for "normal" allocations.
+     * @param chunk - which chunk the buffer came from
+     * @param handle - which pages within the chunk
+     * @param offset - byte offset to the first page
+     * @param length - the requested length
+     * @param maxLength - the max limit for resizing.
+     
+              </div></li><li><div>
+                *
+ * A ByteBuf optimized to work with little endian direct buffers
+ * and the netty pool allocator. 
+ * The buffer can be of any size - tiny, small, normal, or huge.
+ * The class contains all information needed to free the memory
+ *   (which chunk, which pages, which elements).
+ *
+ * @param &lt;T&gt;
+ 
+              </div></li><li><div>
+                 Trim down the size of the current buffer, if able to.
+              </div></li><li><div><div><b>comment:</b>  TODO:  Is this correct?
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Reallocate the data.
+              </div></li><li><div>
+                *
+     * Free the memory and recycle the header.
+     
+              </div></li><li><div>
+                *
+     * Change the size of an allocated buffer, reallocating if appropriate.
+     * @param newCapacity
+     * @return
+     
+              </div></li><li><div><div><b>comment:</b> *
+* A buffer allocated from the netty pool allocator, optimized for little endian access.
+*
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> NO-JIRA fix usage of self.assertTrue in policy tests
-                </div><div><b>body:</b> &gt; Expression "(self.assertTrue(success), 'Expected router to generate close with condition: message size exceeded')" is assigned to nothing
-&gt;&gt; https://www.deepcode.ai/app/gh/jiridanek/qpid-dispatch/5371dfbedc60fd6c429c237d7053c3e15f0d25fe/_/%2Ftests%2Fsystem_tests_policy_oversize_compound.py/python%2Fpylint%2FW0106/811/code
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                That's easy. Tox only runs flake8, which mostly checks formatting, it does not look into semantics too much; and most flake8 checks are currently marked as ignored in dispatch tox.ini anyways. The only situation when anything behaves out of place is if the assertion fails, and the exception is then missing the custom message; which is hard to spot at that time, anyways.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+   * Allocate a new or reused buffer within provided range. Note that the buffer may technically be larger than the
+   * requested size for rounding purposes. However, the buffers capacity will be set to the configured size.
+   * 
+   * @param minSize The minimum size in bytes.
+   * @param maxSize The maximum size in bytes.
+   * @return A new ByteBuf.
+   
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> DRILL-336: Modified the netty direct memory manager to:
+                </div><div><b>message:</b> DRILL-336: Modified the netty direct memory manager to:
+   1) Efficiently reduce ("trim") the size of a memory buffer, releasing the extra memory back to the memory manager.
+   2) Opportunistically allocate larger buffers if it can be done efficiently.
+   3) Raise a warning exception if resizing a buffer copies more than 1 page of data.
+   4) Added Javadocs and some in-code comments.
+   5) Created a Junit test to verify basic functionality.
 
-There's probably more code like that, also in the web console, but its going to be all low impact, most likely.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+The "trim" and allocation changes are primarily in PoolChunkL,
+which breaks a "chunk" into runs of pages using a buddy system.
+
+Take advantage of memory interface changes.
+Memory fixes
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Extend off heap memory manager to support growing vectors
+                </div><div><b>description:</b> Add the following interfaces to the bufferl memory manager:
+  ptr = alloc(size, min, max) - allocate a block with given size, but
+                                               with a total capacity between min+max.
+  trim(ptr) - free up extra capacity, so current size is the capacity
+
+Rationale: It isn't always possible to anticipate the size of a vector. When creating a new vector, one strategy is to over-allocate the vector and then trim the size once the vector is complete. These routines allow us to implement this strategy.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Extend off heap memory manager to support growing vectors
+                </div><div><b>description:</b> Add the following interfaces to the bufferl memory manager:
+  ptr = alloc(size, min, max) - allocate a block with given size, but
+                                               with a total capacity between min+max.
+  trim(ptr) - free up extra capacity, so current size is the capacity
+
+Rationale: It isn't always possible to anticipate the size of a vector. When creating a new vector, one strategy is to over-allocate the vector and then trim the size once the vector is complete. These routines allow us to implement this strategy.
+
+                </div></div></li><li><div><div><b>summary:</b> Extend off heap memory manager to support growing vectors
+                </div><div><b>description:</b> Add the following interfaces to the bufferl memory manager:
+  ptr = alloc(size, min, max) - allocate a block with given size, but
+                                               with a total capacity between min+max.
+  trim(ptr) - free up extra capacity, so current size is the capacity
+
+Rationale: It isn't always possible to anticipate the size of a vector. When creating a new vector, one strategy is to over-allocate the vector and then trim the size once the vector is complete. These routines allow us to implement this strategy.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Extend off heap memory manager to support growing vectors
+                </div><div><b>description:</b> Add the following interfaces to the bufferl memory manager:
+  ptr = alloc(size, min, max) - allocate a block with given size, but
+                                               with a total capacity between min+max.
+  trim(ptr) - free up extra capacity, so current size is the capacity
+
+Rationale: It isn't always possible to anticipate the size of a vector. When creating a new vector, one strategy is to over-allocate the vector and then trim the size once the vector is complete. These routines allow us to implement this strategy.
+
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Here is a revised API for extending the memory manager. The new API makes use of the existing interfaces, although with a slightly different interpretation. 
+
+  ByteBuffer buf = allocator.newDirectBuffer(min, max);
+        Allocate a direct buffer with capacity between min and max.
+        Formerly, max was an upper bound on resizing the buffer.
+        Now, max is an opportunistic value - give us that much if convenient.
+
+  buf.capacity(newSize);
+        As before, resize the buffer to the new size and preserve the old data.
+        The new version will 
+             - efficiently "trim" a buffer to a smaller size for "normal" allocations.
+             - throw a "TooMuchCopying" exception when resizing requires
+               copying more than a page of data.
+             - Correctly resize the buffer, even if the exception is thrown.
+
+The "TooMuchCopying" exception is more a warning than an error. It signals an inefficient use of the capacity(newSize) method. Whether the exception is thrown or not, the buffer will be resized correctly.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                merged in e80c32e
+              </div></li></ol></div></div></html>

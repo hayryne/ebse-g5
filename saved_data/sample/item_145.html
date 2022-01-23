@@ -1,1011 +1,573 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 145
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 Ignore, and break.
-              </div></li><li><div>
-                 Ignore, and break.
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [SPARK-32034][SQL] Port HIVE-14817: Shutdown the SessionManager timeoutChecker thread properly upon shutdown
-                </div><div><b>message:</b> [SPARK-32034][SQL] Port HIVE-14817: Shutdown the SessionManager timeoutChecker thread properly upon shutdown
-
-### What changes were proposed in this pull request?
-
-This PR port https://issues.apache.org/jira/browse/HIVE-14817 for spark thrift server.
-
-### Why are the changes needed?
-
-When stopping the HiveServer2, the non-daemon thread stops the server from terminating
-
-```sql
-"HiveServer2-Background-Pool: Thread-79" #79 prio=5 os_prio=31 tid=0x00007fde26138800 nid=0x13713 waiting on condition [0x0000700010c32000]
-   java.lang.Thread.State: TIMED_WAITING (sleeping)
-	at java.lang.Thread.sleep(Native Method)
-	at org.apache.hive.service.cli.session.SessionManager$1.sleepInterval(SessionManager.java:178)
-	at org.apache.hive.service.cli.session.SessionManager$1.run(SessionManager.java:156)
-	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149)
-	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
-	at java.lang.Thread.run(Thread.java:748)
-```
-
-Here is an example to reproduce:
-https://github.com/yaooqinn/kyuubi/blob/master/kyuubi-spark-sql-engine/src/main/scala/org/apache/kyuubi/spark/SparkSQLEngineApp.scala
-
-Also, it causes issues as HIVE-14817 described which
-
-### Does this PR introduce _any_ user-facing change?
-NO
-
-### How was this patch tested?
-
-Passing Jenkins
-
-Closes #28870 from yaooqinn/SPARK-32034.
-
-Authored-by: Kent Yao &lt;yaooqinn@hotmail.com&gt;
-Signed-off-by: Dongjoon Hyun &lt;dongjoon@apache.org&gt;
-(cherry picked from commit 9f8e15bb2e2189812ee34e3e64baede0d799ba76)
-Signed-off-by: Dongjoon Hyun &lt;dongjoon@apache.org&gt;
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> MLI-1 Decision Trees
-                </div><div><b>body:</b> Joint work with @hirakendu, @etrain, @atalwalkar and @harsha2010.
-
-Key features:
-- Supports binary classification and regression
-- Supports gini, entropy and variance for information gain calculation
-- Supports both continuous and categorical features
-
-The algorithm has gone through several development iterations over the last few months leading to a highly optimized implementation. Optimizations include:
-1. Level-wise training to reduce passes over the entire dataset.
-2. Bin-wise split calculation to reduce computation overhead.
-3. Aggregation over partitions before combining to reduce communication overhead.
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Can one of the admins verify this patch?
-
-              </div></li><li><div>
-                I'm looking forward to this. I have one question just based on the description and not reading the code. Why only binary classification? RDF is inherently amenable to multi-class; you're just storing a distribution over N classes and computing entropy over N classes rather than 2. 
-
-Also does this support evaluating feature importance? even the simplistic way done by the likes of scikit-learn where you just evaluate which features touch the most examples as the pass through trees.
-
-Those are to me two key features for RDF. (And actual classification of new examples, but I take that for granted)
-
-              </div></li><li><div>
-                Thanks Sean.
-
-Multi-class classification and feature importances are important features that will be added soon. We implemented a minimal feature set since we wanted to focus on functional accuracy and (weak and strong) scaling. Now that we are satisfied on that front, I am sure these features will be added soon. It's a fairly big PR in terms of code size so I prefer to avoid adding any more features to the basic implementation.
-
-Also, we have plans to add ensemble trees (random decision forests, boosting, etc.) soon to mllib.
-
-Finally, even though mllib lacks this functionality just yet, one could always implement a bank of one-versus-all classifiers as a workaround to handle the multi-class classification problem. At the same time, I agree its important to add this functionality to the classification algorithm itself and will be added soon.
-
-              </div></li><li><div>
-                This PR is the result of several iterations on the idea of wanting to build fast decision trees for Spark. 
-
-To offer a little more color on the design here, the key ideas are:
-1. Histograms to compute best split statistics. We quantize input attributes and compute best splits via relatively cheap operations on histograms. This is a precision/speed tradeoff in that we give up the ability to find "perfect" split points (by the C4.5 algorithm), but still find very close ones.
-2. Minimize total passes over the data by training models "level-wise". At each level of the tree, we evaluate which node a point belongs in, and allow the point to contribute to the statistics (histogram bins) for that node only. While the number of histograms is thus exponential with tree depth, these data structures are relatively small and we expect that very deep trees are relatively uncommon (especially in the ensemble case). This also means that we need only cache the working set once, instead of partitioning the data and caching the partitions.
-3. Want to support arbitrary split statistics (e.g. Gini, Entropy, Variance), and both categorical and continuous input and response values - I believe that the current design allows for this efficiently.
-
-I tested the code in this PR for scalability on clusters with 2 slaves (m2.xlarge nodes) to a cluster with 16 slaves of the same variety. Master was also an m2.xlarge. Data that was thrown at this PR was generated from the LinearDataGenerator class. Ranging in size from 10m points to 50m points, and dimensions d=10 to d=50 - this equates to 700mb of training data up to 18gb of training data, all models were trained to a maximum depth of 10. Total runtime on 16 machines ranged from under 5 minutes for the 10m_10 experiment to 36 minutes for the 50m_50 experiment.
-
-Scalability results are shown here:
-![screen shot 2014-03-05 at 5 49 07 pm](https://f.cloud.github.com/assets/1326181/2341114/92d71ce6-a4d1-11e3-8efd-82d57dc68c27.png)
-
-On the x-axis we have number of machines (2..16) and the y-axis is speedup. Each box in the grid represents a different dataset. Ideal scaling would be 8x. 
-
-There are several things worth pointing out on this chart:
-1. There are some cases where the 2-machine experiments didn't finish (the last 2 30m experiments and all of the 40m and 50m experiments), and in those cases ideal speedup is 4x. 
-2. There are also a couple of cases where we appear to be doing better than ideal, but those are cases where GC overhead was substantial in the 2 machine case, so I don't consider those apples-to-apples.
-3. Overall, through this strategy of parallelization, we see an average of a 6.6x speedup for 16 nodes vs. 2 (17% deterioration from ideal) with a standard deviation in speedup of 0.7 across these experiments for those observations that I'm calling "fair". 
-
-              </div></li><li><div>
-                @manishamde Do you mind updating the code style first to make it easy for people who want to review the code? I will mark a few examples. We also need a Spark JIRA ticket for this PR.
-
-@etrain It would be great if the optimization you mentioned is documented somewhere in the code or in the guide. It helps understand the code and the comments here will be ignored after this PR gets merged.
-
-              </div></li><li><div>
-                Jenkins, add to whitelist and test this please
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13028/
-
-              </div></li><li><div>
-                That is Jenkins complaining about the style BTW, hopefully should be easy to fix. You can run sbt/sbt scalastyle to run the same tests locally.
-
-              </div></li><li><div>
-                @mengxr @hsaputra Thanks for the code style comments. I have made a lot of effort to document the code. I guess I still need to make the code consistent with the Spark style guidelines.
-
-I will also note down the optimizations in the code for future reference.
-
-              </div></li><li><div>
-                @manishamde thank you for decision tree contribution and the detail comments/ documentation in the PR :) 
-Looking forward to review and seeing this as part of Spark MLlib.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13041/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13043/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13091/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13094/
-
-              </div></li><li><div>
-                Thanks for another round of reviews @mengxr. I will fix these style issues, answer your comments and add more documentation around the optimizations later today.
-
-In general, I wonder whether we could add these checks to scalastyle to be cognizant of the style rules during development. May be we could also update the scala code style guide to reflect these requirements. For somebody, who likes consistency but codes in multiple languages/codebases in a day, it's good to have these forced guidelines for easier development. Also, it reduces the style-checking during the review which would reduce the burden on the reviewers as well.
-
-Thanks again for the detailed reviews.
-
-              </div></li><li><div>
-                @manishamde Thanks for updating the code style and adding more docs! I made a first pass over the code.
-
-For the code style, we do not have a good style checker for Scala. @rxin can tell more about style checking. However, it is easy to learn Spark's code style through the code review and make your code style consistent in the next update. Please see my comments for some examples and update similar code in other places.
-
-For the implementation, I have the following suggestions:
-1. Regression or Classification is checked in many places. It would be nice to create a DecisionTree base class and make RegressionTree and ClassificationTree two subclasses of it.
-2. For loops are used in some performance critical code. This should be replaced by "while", which is much faster than "for" in Scala.
-3. Several nested methods are used in findBestSplits. It feels safe to see some unit tests for them.
-4. The threshold for classification is set at 0.5. This should be configurable.
-
-I will try to make a second pass focusing on the algorithm later today. In the meanwhile, would you please update the remaining code style problems and the for loops? Thanks!
-
-              </div></li><li><div>
-                @mengxr Thanks for such a detailed review. The code is already in a much better shape after incorporating your suggested changes. I have fixed the straightforward code style issues and will commit shortly. I still need to make more code style changes and document the findBestSplit method in detail.
-
-I need some more time to think about your implementation suggestions. I also need to seriously consider @srowen's suggestion about adding multi-class classification in this version of the PR. I will get back to you on this tomorrow. 
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13105/
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13106/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13148/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13149/
-
-              </div></li><li><div>
-                Jenkins, retest this please.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13172/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13207/
-
-              </div></li><li><div>
-                Jenkins, retest this please.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                @manishamde Please let me know if this is read for another pass. Thanks!
-
-              </div></li><li><div>
-                @mengxr Almost there! Needs some more documentation. I hope to finish soon.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13210/
-
-              </div></li><li><div>
-                @mengxr It's ready for another pass. :-)
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13350/
-
-              </div></li><li><div>
-                @manishamde I sent you a PR containing mostly code style updates at
-
-https://github.com/manishamde/spark/pull/1
-
-Please take a look and merge it to this PR if it looks good to you.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                @mengxr Thanks a lot! LGTM. Merged.
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13358/
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13361/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13363/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                One or more automated tests failed
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13378/
-
-              </div></li><li><div>
-                 Merged build triggered.
-
-              </div></li><li><div>
-                Merged build started.
-
-              </div></li><li><div>
-                Merged build finished.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13419/
-
-              </div></li><li><div>
-                Can one of the admins verify this patch?
-
-              </div></li><li><div>
-                Jenkins, this is okay to test. Jenkins, test this please.
-
-              </div></li><li><div>
-                 Merged build triggered. One or more automated tests failed.
-
-              </div></li><li><div>
-                Merged build started. One or more automated tests failed.
-
-              </div></li><li><div>
-                Merged build finished. One or more automated tests failed.
-
-              </div></li><li><div>
-                One or more automated tests failed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/Spark-prb/2/
-
-              </div></li><li><div>
-                 Merged build triggered. One or more automated tests failed.
-
-              </div></li><li><div>
-                Merged build started. One or more automated tests failed.
-
-              </div></li><li><div>
-                Merged build finished. Some tests failed or tests have not started running yet.
-
-              </div></li><li><div>
-                Some tests failed or tests have not started running yet.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13536/
-
-              </div></li><li><div>
-                Jenkins, retest this please.
-
-              </div></li><li><div>
-                 Merged build triggered. Build is starting -or- tests failed to complete.
-
-              </div></li><li><div>
-                Merged build started. Build is starting -or- tests failed to complete.
-
-              </div></li><li><div>
-                @manishamde I sent some minor code style updates to your repo. Please take a look and merge it into this PR. Thanks!
-
-              </div></li><li><div>
-                Merged build finished. All automated tests passed.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13609/
-
-              </div></li><li><div>
-                @mengxr I am not sure the merge of your PR on my repo went through. I might have closed the PR accidentally and I can't find a way to undo it. Could you please re-send your latest PR?
-
-              </div></li><li><div>
-                @manishamde  Please merge the changes at https://github.com/manishamde/spark/pull/4
-
-              </div></li><li><div>
-                 Merged build triggered. Build is starting -or- tests failed to complete.
-
-              </div></li><li><div>
-                Merged build started. Build is starting -or- tests failed to complete.
-
-              </div></li><li><div>
-                Merged build finished. All automated tests passed.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13614/
-
-              </div></li><li><div>
-                 Merged build triggered. 
-
-              </div></li><li><div>
-                Merged build started. 
-
-              </div></li><li><div>
-                Merged build finished. All automated tests passed.
-
-              </div></li><li><div>
-                All automated tests passed.
-Refer to this link for build results: https://amplab.cs.berkeley.edu/jenkins/job/SparkPullRequestBuilder/13623/
-
-              </div></li><li><div>
-                @mateiz This looks good to me and I will mark some APIs developer/experimental after it gets merged. Please help merge it.
-
-Thanks @manishamde , @hirakendu , @etrain , @atalwalkar , and @harsha2010 for the work!
-
-              </div></li><li><div>
-                Excellent, thanks a lot Manish, Ram and others! I've merged this in.
-
-              </div></li><li><div>
-                Thanks Manish, Evan, Ameet, Ram, and thanks Xiangrui, Matei. It's great to have this PR merged, but I think there is room for a lot of improvement, and I hope this thread is still open for comments. I have some detailed notes from my side, we can track them in a separate place if required.
-
-Some design notes to start with:
-
-The current design of classes and relationships is good, but I think it would be great if it can be modified slightly to make it similar to the design of other existing algorithms in MLLib and extend the existing interfaces. For example, we can have a `DecisionTreeModel` or that extends the existing `RegressionModel` interface, similar to the existing `RidgeRegressionModel` and `LinearRegressionModel`. Alternatively, we can have separate `ClassificationTreeModel` and `RegressionTreeModel` that extend the existing interfaces `ClassificationModel` and `RegressionModel` respectively.
-
-Note that it is important to keep the `Model` as a class, so that we can later compose ensemble and other composite models consisting of multiple `Model` instances. Currently the decision tree `Node` is essentially the `Model`, although I would prefer a wrapper around it and explicitly called `DecisionTreeModel` that implements methods like `predict`, `save`, `explain`, `load` like I remember coming across in MLI.
-
-In the file `DecisionTree.scala`, the actual class can be renamed to `DecisionTreeAlgorithm` that extends `Algorithm` interface that implements `train(samples)` and outputs a `RegressionModel`. Note that there is no `Algorithm` interface currently in MLLib, although there may be one in MLI and the closest is `abstract class GeneralizedLinearAlgorithm[M &lt;: GeneralizedLinearModel]`.
-
-Modeling `Strategy` should be renamed to `Parameters`. I would prefer a separation between model parameters like depth, minimum gain and algorithm parameters like level-by-level training or caching. The line is blurred for some aspects like quantile strategy, but I am inclined to put those into modeling parameters, so it can be referred to later on. Rule of thumb being that different algorithm parameters should lead to same model (up to randomization effects) for the same model parameters.
-
-`Impurity` should be renamed to `Error` or something more technical. Also see my later comments on the need for a generic `Error` Interface that allow easy adaptation of algorithms for specific loss functions.
-
-In general, MLLib and MLI should define proper interfaces for `Model`, `Algorithm`, `Parameters` and importantly `Loss` entities, at least for supervised machine learning algorithms and all implementations should adhere to it. Surprisingly, MLLIb or MLI currently doesn't have a `Loss` or `Error` interface, the closest being the `Optimizer` interface. There is also a need for portable model output formats, e.g., JSON, that can be used by other programs, possibly written in other languages outside Scala and Java. Can also use an existing format like PMML (not sure if it's widely used). Lastly, there is a need to support standard data formats with optional delimiter parameters - I am sure this a general need for Spark. I understand there has been significant effort before for standardization, would be good to know about the current status.
-
-              </div></li><li><div>
-                In terms of running time performance, here are some scalability results for a large scale dataset. Results look satisfactory :).
-
-The code was tested on a dataset for a binary classification problem. A regression tree with `Variance` (square loss) was trained because it's computationally more intensive. The dataset consists of about `500,000,000` training instances. There are 20 features, all numeric. Although there are categorical features in the dataset and the algorithm implementation supports it, they were not used since the main program doesn't have options.
-
-The dataset is of size about 90 GB in plain text format. It consists of 100 part files, each about 900 MB. To _optimize_ number of tasks to align with number of workers, the task split size was chosen to be 160 MB to have 300 tasks.
-
-The model training experiements were done on a Yahoo internal Hadoop cluster. The CPUs are of type Intel Xeon 2.4 GHz. The Spark YARN adaptation was used to run on Hadoop cluster. Both master-memory and worker-memory were set to `7500m` and the cluster was under light to moderate load at the time of experiments. The fraction of memory used for caching was `0.3`,
-leading to about `2 GB` of memory per worker for caching.  The number of workers used for various experiments were `20, 30, 60, 100, 150, 300, 600` to evenly align with 600 tasks. Note that with 20 and 30 workers, only `48%` and `78%` of the 90 GB data could be cached in memory. The decision tree of depth 10 was trained and minor code changes were made to record the individual level training times. The training command (with additional JVM settings) used is
-
-```
-time \
-SPARK_JAVA_OPTS="${SPARK_JAVA_OPTS} \
--Dspark.hadoop.mapred.min.split.size=167772160 \
--Dspark.hadoop.mapred.max.split.size=167772160" \
--Dspark.storage.memoryFraction=0.3 \
-spark-class org.apache.spark.deploy.yarn.Client \
---queue ${QUEUE} \
---num-workers ${NUM_WORKERS} \
---worker-memory 7500m \
---worker-cores 1 \
---master-memory 7500m \
---jar ${JARS}/spark_mllib_tree.jar \
---class org.apache.spark.mllib.tree.DecisionTree \
---args yarn-standalone \
---args --algo --args Regression \
---args --trainDataDir --args ${DIST_WORK}/train_data_lp.txt \
---args --testDataDir --args ${DIST_WORK}/test_data_0p1pc_lp.txt \
---args --maxDepth --args 10 \
---args --impurity --args Variance \
---args --maxBins --args 100
-```
-
-The training times for training each depth and for each choice of number of workers is in the attachments [workers_times.txt](https://raw.githubusercontent.com/hirakendu/temp/master/spark_mllib_tree_pr79_review/workers_times.txt). The attached graphs  demonstrate the scalability in terms of
-cumulative training times for various depths and various number of workers.
-
-![](https://raw.githubusercontent.com/hirakendu/temp/master/spark_mllib_tree_pr79_review/workers_times.png)
-
-![](https://raw.githubusercontent.com/hirakendu/temp/master/spark_mllib_tree_pr79_review/workers_speedups.png)
-
-For obtaining the speed-ups, the training times are compared to those for 60 workers, since the data could not be cached completely for 20 and 30 workers. For all experiments, the resources requested
-were fully allocated by the cluster and all experiments ran to completion in their first and only run.
-As we can see, the scaling is nearly linear for higher depths 9 and 10, across the range of 60 workers to 600 workers, although the slope is less than 1 as expected. For such loads, 60 to 100 workers are a reasonable computing resource and the total training times are about 160 minutes and 100 minutes respectively. Overall, the performance is satisfactory, in particular when trees
-of depth 4 or 5 are trained for boosting models. But clearly, there is room for improvement in the following sense. The dataset when fully cached takes about 10s for a count operation, whereas the training time for first level that involves simple histogram calculation of three error statistics takes roughly 30 seconds.
-
-The error performance in terms of RMSE was verified to be close to that of alternate implementations.
-
-              </div></li><li><div>
-                Since it's a long review, I have put things together in one place [spark_mllib_tree_pr79_review.md](https://github.com/hirakendu/temp/blob/master/spark_mllib_tree_pr79_review/spark_mllib_tree_pr79_review.md) so that it's easy to track later.
-
-              </div></li><li><div>
-                Hi Hirakendu - thanks for all the detailed suggestions and information. I will reply to that separately.
-
-One question - you say there are 500,000 examples and this equates to 90GB of raw data. If that's the case, this works out to ~200KB per example - is that right or are you off by an order of magnitude in either the number of features or the number of data points? Or are we throwing a bunch of data out before fitting?
-
-              </div></li><li><div>
-                Thanks for noticing the typo, it's 500 million examples. Corrected it.
-
-Coincidentally, the in-memory storage size is also around 90 GB when cached.
-
-              </div></li><li><div>
-                @hirakendu Thanks a lot for the detailed comments and feedback. Yes, we have a responsibility to keep improving the trees going forward so getting additional feedback is awesome.
-
-The feedback around the current implementation in the 'Miscellaneous' section is around renaming and minor refactoring of code. I agree with most of the feedback and some choices are personal preferences which should discuss and resolve. We should address it soon when we implement the better `Impurity` interface that we promised to implement ASAP. 
-
-I think the "Error" interface you described is very similar to what @mengxr proposed as well. We should discuss the naming convention. Even though I don't feel strongly about "Impurity" but "Error" might not be the best name for the classification scenario. I am open to better names and ready to be convinced otherwise. :-)
-
-For 'General Design Notes', I have similar thoughts but I will wait for @etrain's comments since he has thought about it carefully. In general, I like @etrain 's MLI design for Model and Algorithm. I did not tie the current implementation to the existing traits yet since I wanted to have a broader conversation about it after the tree PR. It's straightforward to implement once we agree on the interfaces for mllib algorithms.
-
-Finally, and most importantly, thanks a ton for performing such extensive tests on a massive dataset! The results are not too shabby. ;-)
-
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Organize imports and remove unused ones.
-
-              </div></li><li><div>
-                Use JavaDoc style.
-
-              </div></li><li><div>
-                Remove extra blank line.
-
-              </div></li><li><div>
-                No more than 100 chars per line.
-
-              </div></li><li><div>
-                Use 2-space indentation.
-
-              </div></li><li><div>
-                no space between "input" and ":"
-
-              </div></li><li><div>
-                put a space between arguments
-
-              </div></li><li><div>
-                new line at the end
-
-              </div></li><li><div>
-                put an empty line after header
-
-              </div></li><li><div>
-                JavaDoc for public methods.
-
-              </div></li><li><div>
-                Style nit, could add the method header comment using the JavaDoc style like:
-
-```
-/**
- * Method to train …
- * 
-```
-
-              </div></li><li><div>
-                scala imports should be in a separate group, before spark imports
-
-              </div></li><li><div>
-                Put an extra space after "//".
-
-              </div></li><li><div>
-                In the current implementation of other algorithms in MLlib, we let users to choose whether the data should be cached or not. How many passes does your algorithm need?
-
-              </div></li><li><div>
-                use RDD.first() here
-
-              </div></li><li><div>
-                Why fixing the seed here? It means certain item won't get selected. 
-
-              </div></li><li><div>
-                extra spaces around "/"
-
-              </div></li><li><div>
-                remove the extra space after "="
-
-              </div></li><li><div>
-                put an extra space after ","
-
-              </div></li><li><div>
-                put an extra space between ")" and "{"
-
-              </div></li><li><div>
-                no infix
-
-              </div></li><li><div>
-                extra space between "key" and "::"
-
-              </div></li><li><div>
-                remote extra empty line
-
-              </div></li><li><div>
-                What does "DecisionTreeRunner&lt;master&gt;[slices]" mean exactly?
-
-              </div></li><li><div>
-                isSwitch is not used.
-
-              </div></li><li><div>
-                using named argument doesn't help improve readability here
-
-              </div></li><li><div>
-                Does accuracy only apply to classification? If so, we should not output accuracy score for regression.
-
-              </div></li><li><div>
-                Same question here.
-
-              </div></li><li><div>
-                Doesn't need to define this var because you calculate the value in one line and the method name tells what it is.
-
-              </div></li><li><div>
-                Same question was asked by @srowen : It is easy to support multi-class?
-
-Also, why 0.5 is used here as the threshold?
-
-              </div></li><li><div>
-                use "/*\* ... */"
-
-              </div></li><li><div>
-                Because this is called for many times, we should use binary search or at least a while loop instead of for. 
-
-              </div></li><li><div>
-                This comment is not clear to me.
-
-              </div></li><li><div>
-                need an extra space for indentation
-
-              </div></li><li><div>
-                extra empty line
-
-              </div></li><li><div>
-                why do you create a for loop and break at the first iteration?
-
-              </div></li><li><div>
-                replace the for loop by a while loop
-
-              </div></li><li><div>
-                remove this comment
-
-              </div></li><li><div>
-                Use JavaDoc style.
-
-              </div></li><li><div>
-                There are several nested methods defined inside findBestSplits. Some of them are complex enough to have unit tests of their own.
-
-              </div></li><li><div>
-                Define a constant for "-1" for better readability.
-
-              </div></li><li><div>
-                "arr(validSignalIndex) != -1" should be sufficient here
-
-              </div></li><li><div>
-                remove "if .. else"
-
-              </div></li><li><div>
-                use "nodeIndex" or simply "i" instead of "node"
-
-              </div></li><li><div>
-                Is it necessary to fill in the rest with dummy splits? Consider the case when we have one feature with 1000 categories and all other features are binary.
-
-              </div></li><li><div>
-                Agree. Was planning to add it but forgot about it while trying to write a working version. I will update this when I add tests for this method.
-
-              </div></li><li><div>
-                I will add more details to this. This is the key component to understanding the optimizations and is not simple to understand (and hence requires more docs).
-
-              </div></li><li><div>
-                0.5 was just a threshold used for verification. I will make it configurable and for now return a double value between 0 and 1 similar to other classification algorithms in mllib. This will make it easier for performing ROC/AUC calculations.
-
-              </div></li><li><div>
-                That's a great observation. It will also need a corresponding change in the findBin calculation. 
-
-              </div></li><li><div>
-                should this be private?
-
-              </div></li><li><div>
-                private?
-
-              </div></li><li><div>
-                might make sense to make this private as well
-
-              </div></li><li><div>
-                remove unused import
-
-              </div></li><li><div>
-                @pwendell I think you are pointing to the findSplitsBins method. Yes, it can be private. I will make the change.
-
-              </div></li><li><div>
-                Sure.
-
-              </div></li><li><div>
-                @pwendell This train method could be called externally especially if you have categorical features. I think keeping this method public is fine.
-
-              </div></li><li><div>
-                Need doc for public members.
-
-              </div></li><li><div>
-                @mengxr Sorry, it's not clear to me what you meant. Could you please elaborate?
-
-              </div></li><li><div>
-                If you want to leave it public, then you need to add JavaDoc for it.
-
-              </div></li><li><div>
-                This method already has a javadoc.
-
-              </div></li><li><div>
-                Sorry for the confusion. Both @pwendell and I were talking about
-
-```
-val InvalidBinIndex = -1
-```
-
-instead of `train`.
-
-              </div></li><li><div>
-                This is the wiki page for `Gini coefficient`, which is different from `Gini impurity`. Should change to
-
-http://en.wikipedia.org/wiki/Decision_tree_learning#Gini_impurity 
-
-              </div></li><li><div>
-                Should use `java.lang.UnsupportedOperationException`.
-
-              </div></li><li><div>
-                Should use `java.lang.UnsupportedOperationException` and organize imports.
-
-              </div></li><li><div>
-                It is easy to loss precision or run into overflow in the computation of `sumSquares`. Is it only for computing the sample variance? If true, we can simplify this interface to accept variance directly. We have a more stable implementation of variance computation in `DoubleRDDFunctions`.
-
-              </div></li><li><div>
-                That's a nice observation.  However, using the `variance` calculation in `StatCounter` might be slow since the merge method recomputes `n, mu, m2` for each value. Also, it won't fit well with the `binCombOp` operation in the `aggregate` function. One can probably optimize the `def merge(values: TraversableOnce[Double]): StatCounter` method in the `Variance` class by doing a batch or mini-batch update for both speed and precision but that's a separate discussion.
-
-I see your concern with computing `sumSquares` for a large fraction of the instances and I think it's best to leverage the `def merge(other: StatCounter): StatCounter` method. 
-
-We can calculate StatCounter per partition using `count, sum, sumSquares`  and then merge during `binCombOp` for numerical stability. I won't be hard to implement. Let me know what you think.
-
-              </div></li><li><div>
-                I agree with Manish.
-
-Numerical stability is the first thing that comes to mind on seeing a large `avg = sum/count` calculation. In practice, I haven't seen any significant difference in results or overflows with even billion sample datasets. Also, features in machine learning are typically normalized and dynamic range is small (bounded away from 0 and infinity).
-
-We definitely cannot use the methods in DoubleRDDFunctions because we want to calculate the variance of various splits, which requires the stats to be "aggregable". But we may be able to modify the api's to use (count, avg, avgSquares) as the stats and make the calculations more stable. E.g., to merge (count, avg) of two parts `(c1, a1)`, `(c2, a2)`, we would have `(c1 + c2, a1 * (c1/(c1+c2)) + a2 * (c2/(c1+c2)))`. Not too keen on that change, but let me know if that works.
-
-              </div></li><li><div>
-                I agree that overflow is an issue here (particularly in the case of sumSquares), but also agree with Manish/Hirakendu that this algorithm maintains its ability to generate a tree in a reasonable amount of time based on this property that we compute statistics for splits and then merge them together.
-
-I actually do think it makes sense to maintain "(count, average, averageSumSq)" for each partition in a way that's overflow friendly and compute the combination as count-weighted average of both as Hirakendu suggests. This will complicate the code but should solve the overflow problem and keep things pretty efficient. 
-
-That said - maybe this could be taken care of in a future PR as a bugfix, rather than in this one?
-
-              </div></li><li><div>
-                The major loss of precision is from `sumSquares - sum*sum/count`, where a large number subtracts another. Changing the interface to `(count, avg, avgSquare)` would help avoid overflow but has nothing to do with precision. I agree with @etrain that we can improve it in a future PR.
-
-The question is whether we should make `calculate(c0, c1)` and `calculate(count, sum, square)` a public method of `Impurity`. In either classification or regression, `Impurity` works like an accumulator. What we need is to describe how to process a label of type Double, how to merge two `Impurity` instances, and how to get impurity from an instance, which is very similar to `StatCounter`. It is strange to see Gini only implements the first but not the second, while Variance only implements the second but not the first. We probably need to reconsider the design here. For example, if we want to handle three classes in the future, we will run into a signature collision with `calculate(count, sum, squareSum)`.
-
-              </div></li><li><div>
-                I agree with @mengxr that the design needs to be made more generic for extensibility -- the signature collision is an issue we will encounter soon. As @mengxr mentioned, the impurity class should specify three methods: a) a method to calculate impurity (or an intermediate value) for a single label, b) the `binSeqOp` method and c) the `binCombOp` method.
-
-We will encounter a loss in performance if we calculate the stats per instance and then "merge" them and a loss in precision (as @mengxr pointed out) if we calculate stats after accumulating large numbers. I wonder whether the sweet spot is to calculating the stats (impurity) per partition without encountering a significant loss in performance and precision.
-
-The important question is that whether this issue "blocks" this PR or belongs to a separate PR. I vote for the postponing it to a future PR. We will soon encounter more loss functions during ensemble implementations (GBT for example) so it might be good to handle it then.
-
-              </div></li><li><div>
-                @manishamde As you mentioned, we can do partition-wise accumulation and then merge them without performance loss. It is okay to internally accumulate `sum` and `sumSquare` in `Variance` and use them to compute variance in this PR. But I think it is necessary to update the `Impurity` interface in this PR to make it more general, because it is a public trait.
-
-              </div></li><li><div>
-                @mengxr How about a simple temporary fix where we just have one `calculate` method in the `Impurity` trait that takes a list of Double as a single parameter?
-
-I plan to write a generic implementation (as discussed) soon but it might take me a few more days and will delay the PR.
-
-              </div></li><li><div>
-                @manishamde Do you need to merge two `Impurity` instances (from two partitions) then?
-
-              </div></li><li><div>
-                @mengxr Currently, the `calculate` method is used on bin aggregated data after the `aggregate` operation. So this change won't require doing partition-wise merge of impurities. It's just code restructuring without modifying the implementation.
-
-              </div></li><li><div>
-                @mengxr Are we in agreement here for the immediate fix for the PR? I think we all agree on the final version but wanted to make sure we have consensus for this PR before I implement your suggestion.
-
-              </div></li><li><div>
-                @manishamde I prefer `accumulate(Double)` and `get(): Double`. But if a single `calculate(Seq[Double])` won't run into memory issues, I'm okay with the change. Sorry for my late response!
-
-              </div></li><li><div>
-                @mengxr I am not clear what you meant by the `accumulate` and `get` methods. 
-
-There is no problem in encountering memory issues with `calculate(Seq[Double])`. The length of the input sequence will be 2 for classification implementations (Gini, Entropy) and 3 for regression implementation (Variance). The `calculate` method is only used after the bin aggregation and subsequent bin aggregate to split aggregate conversions.  It's just a minor code change to have a single method signature in the `Impurity` trait.
-
-              </div></li><li><div>
-                @manishamde Sorry I misunderstood your proposal. I thought `Seq[Double]` contains the raw labels,  like
-
-```
-0 1 1 0 1 0 0 1
-```
-
-for classification and 
-
-```
-1.0 2.0 -3.0 5.0
-```
-
-for regression. You meant that `Seq[Double]` is `Seq(c0, c1)` for classification and `Seq(n, sum, sumSq)` for regression. I can see this would be a minor code change but it makes the interface more confusing, IMHO. If my understanding is correct, Impurity is applied to a sequence of labels. The code will have better separation if we use the following:
-
-```
-labels.foreach(impurityAccumulator.accumulate)
-impurityAccumulator += anotherImpurityAccumulator
-val impurity = impurityAccumulator.get
-```
-
-I think this is also a minor code change and it gives a cleaner public interface of `Impurity`. Maybe we can get some suggestions from others. @mateiz ? 
-
-              </div></li><li><div>
-                I'm just catching up on this, but is the problem that there will be other types of Impurity later that calculate different stats (not just variance)? In that case, maybe we can have Impurity be parameterized (Impurity[T]) where T is a type it accumulates over. However I'd also be okay with leaving this as is initially and marking the API unstable if this is an internal API. The question is how many users will call this directly.
-
-              </div></li><li><div>
-                BTW I'd also be okay updating this API in a later pull request before we release 1.0. It's fair game to change new APIs in that time window.
-
-              </div></li><li><div>
-                @mateiz A user needs an `Impurity` instance to construct `Strategy`, but very unlikely they need to call `calculate` directly or implement their own `Impurity`. I'm okay if we mark the `calculate` method unstable in another PR later.
-
-              </div></li><li><div>
-                @mengxr The generic interface you noted is correct. However, I think implementing this generic interface and the corresponding implementations is not a minor code change. There are some assumptions in the bin aggregation code that may need to be updated and it also requires adding partition-wise impurity calculation and aggregation.
-
-@mateiz As @mengxr noted, it's highly unlikely that a user will write their own `Impurity` implementation. It's mostly an internal API and could be addressed soon in a different PR.
-
-I think we all agree (please correct me if I am wrong) the `Impurity` update belongs to a different PR. I can spend time on it immediately after this PR is accepted.
-
-Is this the correct method of marking a method as unstable using the javadoc?
-`&lt;span class="badge" style="float: right; background-color: darkblue;"&gt;ALPHA COMPONENT&lt;/span&gt;`
-
-              </div></li><li><div>
-                Need docs on `numBins` and explain what it means if it is set manually as in the test suite.
-
-              </div></li><li><div>
-                Need comments either here or in the JavaDoc (preferred) on what this line does.
-
-              </div></li><li><div>
-                Will do. Thanks!
-
-              </div></li><li><div>
-                Will do. Thanks!
-
-              </div></li><li><div>
-                Adding to the discussion on the need for a generic interface for `Impurity`, or more precisely `Error`, I believe we all see that it's good to have. Ideally I would have preferred a single `Error` trait and that all types of Error like Square or KL divergence extend it, but the consensus is
-that it negatively impacts performance.
-
-In addition to performance-oriented implementations for specific loss functions, I would still recommend a generic `Error` interface and a generic implementation of decision-tree based on this interface. One possibility is to add a third `calculate(stats)`, or more precisely `error(errorStats: ErrorStats)` to the `Error` interface. I am not sure it will help the signature collision problem though, unless we just keep the one signature for generic error statistics.
-
-For reference and example of one such interface and implementations, see `trait LossStats[S &lt;: LossStats[S]]` and `abstract class Loss[S &lt;: LossStats[S]:Manifest]` in my previous PR,
-[https://github.com/apache/incubator-spark/pull/161/files](https://github.com/apache/incubator-spark/pull/161/files), that exactly do that and provide interfaces for aggregable error statistics and calculating error from these statistics. (On second thought, I feel `ErrorStats` and `Error` are better names.) Also see the generic implementation `class DecisionTreeAlgorithm[S &lt;: LossStats[S]:Manifest]` and implementations of specific error functions, `SquareLoss` and `EntropyLoss`.
-
-              </div></li><li><div>
-                `DecisionTree` class and object should be reorganized and separated into `DecisionTreeModel` and `DecisionTreeAlgorithm`, with a `Strategy` and root `Node` as part of `Model` and `train` as part of the `Algorithm`.
-
-              </div></li><li><div>
-                `Filter` class is a nice abstraction of branching conditions leading to current node. There are already references to left and right child nodes, so I think this is redundant. If need be, a reference to a parent node as an `Option[Node]` suffices and is more useful. The functionality should be covered across `Node` and `Split` classes.
-
-              </div></li><li><div>
-                The functionality of `Split` can be simplified by a modification. If I understand correctly, `Split` represents the left or right (low or high) branch of the parent node. Instead, it suffices to store the branching condition for each node as a splitting condition. This can be appropriately named as `SplitPredicate` or `SplittingCondition` or branching condition and consist of feature id, feature type (continuous or categorical), threshold, left branch categories and right branch categories.
-
-I think depending on the choice here, we require `Filter`, but nonetheless I think it's redundant and we should exploit the recursive/linked structure of tree, which we are doing anyway.
-
-              </div></li><li><div>
-                `Node` should be a recursive/linked structure with references to child nodes and parent node (the latter allows for easy traversal), so I don't see the need for `nodes: Array[Node]` as the model and the `build` method in `Node`. The `DecisionTreeModel` should essentially be the root `Node` with methods like `predict` etc. involving a recursive traversal on child nodes.
-
-The method `predictIfleaf` in `Node` should be renamed to simply `predict`. It predicts regardless of whether it's a leaf and does recursive traversal until it hits a leaf child. The prediction value should be renamed to `prediction` instead of `predict`, which would clean up the ambiguity with this `predict` method.
-
-Putting things together: `Node` should be simple with a `prediction` and should be a recursive structure. `DecisionTreeModel` should be a wrapper around a root `Node` member and contain methods like `predict`, `save`, `explain`, `load` etc. based on recursive traversal.
-
-              </div></li><li><div>
-                `Strategy` should be renamed to `Parameters`. Modeling and algorithm parameters can be separate, the latter being part of the model.
-
-              </div></li><li><div>
-                `Bin` class can be simplified and some members renamed. The `lowSplit`, `highSplit` can be simplified to the single threshold corresponding to the left end of the bin range. This can be named to `leftEnd` or `lowEnd`.
-
-It's not clear this class is needed at first place. For categorical variables, the value itself is the bin index, and for continuous variables, bins are simply defined by candidate thresholds, in turn defined by quanties. For every feature id, one can maintain a list of categories and thresholds and be done. In that case, for continuous features, the position of the threshold is the bin index.
-
-              </div></li><li><div>
-                `InformationGainStats` and `Split` nicely separate the members of `Node`, but can also be flattened and put at top level. Would make storage and explanation slightly easier, albeit less unstructured.
-
-              </div></li><li><div>
-                `Impurity` should be renamed to `Error` or something more technical and familiar. Also see the comments earlier for the necessity and example design of a generic `Error` interface.
-
-The `calculate` method can be renamed to something verbose like `error`.
-
-For a generic interface, an additional `ErrorStats` trait and `error(errorStats: ErrorStats)` method can be added. For example, `Variance` or more aptly, `SquareError`, would implement `case class SquareErrorStats(count: Long, mean: Double, meanSquare: Double)` and `error(errorStats) = errorStats.meanSquare - errorStats.mean * errorStats.mean / count`. Note that `ErrorStats` should have aggregation methods, e.g., it's easy to see the implementation for `SquareErrorStats`.
-
-The `Variance` class should be renamed to `SquareError`, `Entropy` to `EntropyError` or `KLDivergence`, `Gini` to `GiniError`.
-
-              </div></li><li><div>
-                The `Algorithm` Enumeration seems redundant given `Impurity` which implies the `Algorithm` anyway.
-
-              </div></li><li><div>
-                The various `Enumeration` classes in `mllib.tree.configuration` package are neat. A uniform _design pattern_ for parameters and options should be used for MLLib and Spark, and this could be a start. Alternatively, if there is an existing pattern in use, it should be followed for decision tree as well.
-
-              </div></li><li><div>
-                Input data formats for main program should be made consistent with programs for other algorithms. Currently, it's CSV for decision-tree, but I believe it is `&lt;label&gt;,&lt;feature1&gt;\t&lt;feature2&gt;...` etc for other algorithms. I prefer a more _standard_ TSV format as used in Hadoop text format. Alternatively, if the label has to be separated, current _labeled point_ format used in other programs is fine.
-
-              </div></li><li><div>
-                A plan should be made to have a consistent hierarchy and organization of various algorithms in the MLLib package. A separate `tree` subpackage seems unnecessary.
-
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Shutdown the SessionManager timeoutChecker thread properly upon shutdown
-                </div><div><b>description:</b> Shutdown for SessionManager waits 10seconds for all threads on the threadpoolExecutor to shutdown correctly.
-The cleaner thread - with default settings - will take 6 hours to shutdown, so essentially any shutdown of HS2 is always delayed by 10s.
-
-The cleaner thread should be shutdown properly.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+                </div><div><b>message:</b> MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/branches/branch-0.23@1227052 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
+                </div></div></li><li><div><div><b>summary:</b> Job submission failing in JUnit tests
+                </div><div><b>description:</b> When I run JUnit tests (e.g. TestDistCacheEmulation, TestSleepJob and TestCompressionEmulationUtils), I see job submission failing with the following error:
+{noformat}
+java.lang.IllegalStateException: Variable substitution depth too large: 20 ${fs.default.name}
+        at org.apache.hadoop.conf.Configuration.substituteVars(Configuration.java:551)
+        at org.apache.hadoop.conf.Configuration.get(Configuration.java:569)
+        at org.apache.hadoop.conf.Configuration.getStrings(Configuration.java:1020)
+        at org.apache.hadoop.mapreduce.JobSubmitter.populateTokenCache(JobSubmitter.java:564)
+        at org.apache.hadoop.mapreduce.JobSubmitter.submitJobInternal(JobSubmitter.java:353)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1159)
+        at org.apache.hadoop.mapreduce.Job$2.run(Job.java:1156)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapreduce.Job.submit(Job.java:1156)
+        at org.apache.hadoop.mapreduce.Job.waitForCompletion(Job.java:1176)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.launchGridmixJob(Gridmix.java:190)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.writeInputData(Gridmix.java:150)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.start(Gridmix.java:425)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.runJob(Gridmix.java:380)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.access$000(Gridmix.java:56)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:313)
+        at org.apache.hadoop.mapred.gridmix.Gridmix$1.run(Gridmix.java:311)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:396)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1152)
+        at org.apache.hadoop.mapred.gridmix.Gridmix.run(Gridmix.java:311)
+{noformat}
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                [~thejas], [~prasanth_j] - please review. This cuts the test runtime of TestXSRFDFilter by 40 seconds, and likely other tests as well.
+                Inside of Configuration.getStrings(), getProps().getProperty("mapreduce.job.hdfs-servers") returns "$fs.default.name". 
+System.getProperty(fs.default.name) is returning the string "${fs.default.name}" which continually is tried to be expanded causing the maximum depth exception.
+
+This patch simply sets mapreduce.job.hdfs-servers to an empty string so that it doesn't return $fs.default.name (as defined in yarn-default.xml)
               </div></li><li><div>
-                
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12508428/MAPREDUCE-3462.branch-0.23.patch
+  against trunk revision .
 
-Here are the results of testing the latest attachment:
-https://issues.apache.org/jira/secure/attachment/12829914/HIVE-14817.01.patch
+    +1 @author.  The patch does not contain any @author tags.
 
-{color:red}ERROR:{color} -1 due to no test(s) being added or modified.
+    +1 tests included.  The patch appears to include 9 new or modified tests.
 
-{color:red}ERROR:{color} -1 due to 6 failed/errored test(s), 10555 tests executed
-*Failed tests:*
-{noformat}
-org.apache.hadoop.hive.cli.TestCliDriver.testCliDriver[acid_mapjoin]
-org.apache.hadoop.hive.cli.TestCliDriver.testCliDriver[ctas]
-org.apache.hadoop.hive.cli.TestCliDriver.testCliDriver[vector_join_part_col_char]
-org.apache.hadoop.hive.cli.TestMiniTezCliDriver.testCliDriver[explainuser_3]
-org.apache.hadoop.hive.metastore.TestMetaStoreMetrics.testMetaDataCounts
-org.apache.hive.jdbc.TestJdbcWithMiniHS2.testAddJarConstructorUnCaching
-{noformat}
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
 
-Test results: https://builds.apache.org/job/PreCommit-HIVE-Build/1278/testReport
-Console output: https://builds.apache.org/job/PreCommit-HIVE-Build/1278/console
-Test logs: http://ec2-204-236-174-241.us-west-1.compute.amazonaws.com/logs/PreCommit-HIVE-Build-1278/
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
 
-Messages:
-{noformat}
-Executing org.apache.hive.ptest.execution.TestCheckPhase
-Executing org.apache.hive.ptest.execution.PrepPhase
-Executing org.apache.hive.ptest.execution.ExecutionPhase
-Executing org.apache.hive.ptest.execution.ReportingPhase
-Tests exited with: TestsFailedException: 6 tests failed
-{noformat}
+    +1 eclipse:eclipse.  The patch built with eclipse:eclipse.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed unit tests in .
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/1498//testReport/
+Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/1498//console
 
 This message is automatically generated.
+              </div></li><li><div>
+                Tested the fix on {{TestCompressionEmulationUtils}} and the test passed. I was wondering if it makes sense to add this to mapred-site.xml either at the top level (i.e {{conf/mapred-site.xml}}) or just for tests (i.e {{src/test/mapred-site.xml}}). I tired setting this property in {{src/test/mapred-site.xml}} but the test still failed. Somehow, we should make sure that the contrib tests load the {{src/test/mapred-site.xml}}.
+              </div></li><li><div>
+                I think setting {{mapreduce.job.hdfs-servers}} to an empty string in {{src/java/mapred-default.xml}} should take care of the failures. Thoughts?
+              </div></li><li><div>
+                Patch for trunk with all gridmix testcases updated with this config setting.
 
-ATTACHMENT ID: 12829914 - PreCommit-HIVE-Build
+I guess it would be better to set it somewhere in tests-config.
               </div></li><li><div>
-                +1
+                +1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12508507/3462.trunk.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 12 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 eclipse:eclipse.  The patch built with eclipse:eclipse.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed unit tests in .
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/1503//testReport/
+Console output: https://builds.apache.org/job/PreCommit-MAPREDUCE-Build/1503//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> I'd be wary of adding it in src/main/..mapred-default.xml . I'd think src/test/../mapred-test.xml is where it should be added if at all. If that doesn't work currently, we should make it work. Just out of curiosity, do you know of any other tests which are failing due to this exception?
+                </div><div><b>label:</b> test
+                </div></div></li><li><div><div><b>body:</b> Also, I'm still ignorant of the change which made the tests start to fail. I should probably understand better the reasons for that change before proposing a more generalized fix. For now, couldn't these tests passing unblock you?
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Fixing contrib tests to respect {{src/test/mapred-site.xml}} can be addressed later. I will commit this patch for now.
               </div></li><li><div>
-                Committed. Thanks for the review.
+                I just committed this to trunk and branch-0.23. Thanks Ravi Prakash and Ravi Gummadi!
+              </div></li><li><div>
+                Integrated in Hadoop-Common-trunk-Commit #1488 (See [https://builds.apache.org/job/Hadoop-Common-trunk-Commit/1488/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227051
+Files : 
+* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Common-0.23-Commit #333 (See [https://builds.apache.org/job/Hadoop-Common-0.23-Commit/333/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227052
+Files : 
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-0.23-Commit #322 (See [https://builds.apache.org/job/Hadoop-Hdfs-0.23-Commit/322/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227052
+Files : 
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-trunk-Commit #1560 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk-Commit/1560/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227051
+Files : 
+* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Mapreduce-trunk-Commit #1509 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk-Commit/1509/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227051
+Files : 
+* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Mapreduce-0.23-Commit #344 (See [https://builds.apache.org/job/Hadoop-Mapreduce-0.23-Commit/344/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227052
+Files : 
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-trunk #915 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/915/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227051
+Files : 
+* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Hdfs-0.23-Build #128 (See [https://builds.apache.org/job/Hadoop-Hdfs-0.23-Build/128/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227052
+Files : 
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Mapreduce-0.23-Build #150 (See [https://builds.apache.org/job/Hadoop-Mapreduce-0.23-Build/150/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227052
+Files : 
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/branches/branch-0.23/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                Integrated in Hadoop-Mapreduce-trunk #948 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/948/])
+    MAPREDUCE-3462. Fix Gridmix JUnit testcase failures. (Ravi Prakash and Ravi Gummadi via amarrk)
+
+amarrk : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1227051
+Files : 
+* /hadoop/common/trunk/hadoop-mapreduce-project/CHANGES.txt
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestCompressionEmulationUtils.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestDistCacheEmulation.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestGridmixSubmission.java
+* /hadoop/common/trunk/hadoop-mapreduce-project/src/contrib/gridmix/src/test/org/apache/hadoop/mapred/gridmix/TestSleepJob.java
+
+              </div></li><li><div>
+                bq. Also, I'm still ignorant of the change which made the tests start to fail. I should probably understand better the reasons for that change before proposing a more generalized fix.
+
+I filed MAPREDUCE-3736 for the general fix. Ravi, if you figured anything out please chime in there.
               </div></li></ol></div></div></html>

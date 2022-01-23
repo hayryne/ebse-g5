@@ -1,136 +1,366 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 296
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 we need this otherwise ./artemis data imp wouldn't work 
-              </div></li><li><div>
-                 with -1 only the global-max-size is in use for limiting 
- &lt;max-size-bytes&gt;-1&lt;/max-size-bytes&gt; 
-              </div></li><li><div>
-                 this could be ASYNCIO, MAPPED, NIO
-           ASYNCIO: Linux Libaio
-           MAPPED: mmap files
-           NIO: Plain Java Files
-       
-              </div></li><li><div>
-                 once the disk hits this limit the system will block, or close the connection in certain protocols
-           that won't support flow control. 
-              </div></li><li><div>
-                 useEpoll means: it will use Netty epoll if you are on a system (Linux) that supports it 
- amqpCredits: The number of credits sent to AMQP producers 
- amqpLowCredits: The server will send the # credits specified at amqpCredits at this low mark 
-              </div></li><li><div>
-                 Acceptor for every supported protocol 
-              </div></li><li><div>
-                 MQTT Acceptor 
-              </div></li><li><div>
-                
-        You can specify the NIC you want to use to verify if the network
-         &lt;network-check-NIC&gt;theNickName&lt;/network-check-NIC&gt;
-        
-              </div></li><li><div>
-                 if you define auto-create on certain queues, management has to be auto-create 
-              </div></li><li><div>
-                
-       This value was determined through a calculation.
-       Your system could perform 0.15 writes per millisecond
-       on the current journal configuration.
-       That translates as a sync write every 6488000 nanoseconds
-      
-              </div></li><li><div>
-                 this is a comma separated list, no spaces, just DNS or IPs
-           it should accept IPV6
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ARTEMIS-908: Hold connection lock when issuing credits
+                </div><div><b>message:</b> ARTEMIS-908: Hold connection lock when issuing credits
 
-           Warning: Make sure you understand your network topology as this is meant to validate if your network is valid.
-                    Using IPs that could eventually disappear or be partially visible may defeat the purpose.
-                    You can use a list of multiple IPs, and if any successful ping will make the server OK to continue running 
-              </div></li><li><div>
-                 use this to customize the ping used for ipv6 addresses 
- &lt;network-check-ping6-command&gt;ping6 -c 1 %2$s&lt;/network-check-ping6-command&gt; 
-              </div></li><li><div>
-                 AMQP Acceptor.  Listens on default AMQP port for AMQP traffic.
-              </div></li><li><div>
-                default for catch all
-              </div></li><li><div>
-                 HornetQ Compatibility Acceptor.  Enables HornetQ Core and STOMP for legacy HornetQ clients. 
-              </div></li><li><div>
-                 use this to customize the ping used for ipv4 addresses 
- &lt;network-check-ping-command&gt;ping -c 1 -t %d %s&lt;/network-check-ping-command&gt; 
-              </div></li><li><div>
-                 &lt;network-check-list&gt;10.0.0.1&lt;/network-check-list&gt; 
-              </div></li><li><div>
-                 &lt;network-check-period&gt;10000&lt;/network-check-period&gt; 
- &lt;network-check-timeout&gt;1000&lt;/network-check-timeout&gt; 
-              </div></li><li><div>
-                 how often we are looking for how many bytes are being used on the disk in ms 
-              </div></li><li><div>
-                
-        Use this to use an HTTP server to validate the network
-         &lt;network-check-URL-list&gt;http://www.apache.org&lt;/network-check-URL-list&gt; 
-              </div></li><li><div>
-                 STOMP Acceptor. 
-              </div></li><li><div>
-                
-Licensed to the Apache Software Foundation (ASF) under one
-or more contributor license agreements.  See the NOTICE file
-distributed with this work for additional information
-regarding copyright ownership.  The ASF licenses this file
-to you under the Apache License, Version 2.0 (the
-"License"); you may not use this file except in compliance
-with the License.  You may obtain a copy of the License at
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
 
-  http://www.apache.org/licenses/LICENSE-2.0
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
 
-Unless required by applicable law or agreed to in writing,
-software distributed under the License is distributed on an
-"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-KIND, either express or implied.  See the License for the
-specific language governing permissions and limitations
-under the License.
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li><li><div><div><b>summary:</b> AMQP flow control misses unblock during heavy load
+                </div><div><b>description:</b> I have a benchmarking setup with 1 sender and 1 receiver attached to a broker. The broker is configured with BLOCK policy when queue is full, and I've deliberately set a low global-max-size to trigger this bug.
+
+While sending messages, I get tons of these in the Artemis log, due to the flow control kicking in:
+
+10:46:53,673 WARN  [org.apache.activemq.artemis.core.server] AMQ222183: Blocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+10:46:53,674 INFO  [org.apache.activemq.artemis.core.server] AMQ221046: Unblocking message production on address 'myqueue'; size is currently: 105,456 bytes; max-size-bytes: -1
+
+However, usually after running the test for 10-30 seconds, the sender is suddenly never unblocked and I have to restart the sender to send more messages. Every time I attach the sender, I am able to send messages for 10~30 seconds until it stops. 
+
+This happens with different clients, and triggers only if it can send messages really fast.
+
+After inspecting the flow control logic in the AMQP implementation, I noticed that there is a missing synchronized block when issuing credits in AMQPSessionCallback#offerProducerCredit, which is present in ProtonServerReceiverContext#flow (if sessionSPI is null).
+
+Adding a synchronized block with the connection lock to the function passed to store.checkMemory() in AMQPSessionCallback#offerProducerCredit (in the same way as in ProtonServerReceiverContext#flow), the sender seems to be unblocked correctly. I've been able to run the sender and receiver for 5 minutes without issues so far. 
+
+I'll submit the patch as a github PR.
+
+
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                GitHub user lulf opened a pull request:
+
+    https://github.com/apache/activemq-artemis/pull/947
+
+    ARTEMIS-908: Hold connection lock when issuing credits
+
+    
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/EnMasseProject/activemq-artemis ARTEMIS-908
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/activemq-artemis/pull/947.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #947
+    
+----
+commit cf7040f219f316e7c2222b2a6c7b770e3cf5f7b1
+Author: Ulf Lilleengen &lt;lulf@redhat.com&gt;
+Date:   2017-01-03T10:03:38Z
+
+    ARTEMIS-908: Hold connection lock when issuing credits
+
+----
 
               </div></li><li><div>
-                 the system will enter into page mode once you hit this limit.
-           This is an estimate in bytes of how much the messages are using in memory
+                Commit f2f355206740b6efb2359ad7296409fbfd62c5b3 in activemq-artemis's branch refs/heads/master from [~lulf]
+[ https://git-wip-us.apache.org/repos/asf?p=activemq-artemis.git;h=f2f3552 ]
 
-            The system will use half of the available memory (-Xmx) by default for the global-max-size.
-            You may specify a different value here if you need to customize it to your needs.
+ARTEMIS-908: Hold connection lock when issuing credits
 
-            &lt;global-max-size&gt;100Mb&lt;/global-max-size&gt;
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
 
-      
-              </div></li><li><div>
-                 establish the client ID for the life of this DPI publisherClient
-              </div></li><li><div>
-                 Create a set of connection options
-              </div></li><li><div>
-                 subscribe
-              </div></li><li><div>
-                
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li><li><div>
-                schemas.xmlsoap.org/soap/envelope/\"&gt;&lt;SOAP-ENV:Header/&gt;&lt;SOAP-ENV:Body&gt;&lt;ns5:ExchangeMessage xmlns:ns5=\"urn:dpcl:wsdl:2011-09-02\" xmlns:ns3=\"http://www.w3.org/2004/08/xop/include\" xmlns:ns6=\"urn:dpcl:wsdl:2010-01-19\" xmlns:xmime=\"http://www.w3.org/2005/05/xmlmime\" xmlns=\"\"&gt;&lt;ExchangeMessageInput&gt;&lt;data xmime:contentType=\"application/vnd.dpcl.update_transfer+xml\"&gt;&lt;base64&gt;";
-              </div></li><li><div>
-                 pause a moment to get connected (prevents the race condition)
-              </div></li><li><div>
-                 create a new Paho MqttClient
-              </div></li><li><div>
-                 this makes it easier in certain envs 
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> This closes #1953
-                </div><div><b>message:</b> This closes #1953
+    https://github.com/apache/activemq-artemis/pull/947
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fixing MQTT Leak
-                </div><div><b>body:</b> 
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+              </div></li><li><div><div><b>body:</b> I see that some new code was added to the same method, but it is missing the synchronization block as well.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                GitHub user lulf opened a pull request:
+
+    https://github.com/apache/activemq-artemis/pull/1016
+
+    ARTEMIS-908: Ensure that connection lock is held when flushing
+
+    
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/EnMasseProject/activemq-artemis ARTEMIS-908-reopened
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/activemq-artemis/pull/1016.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #1016
+    
+----
+commit 5f6a390b6098dca1cfda09af4c0af096dfe736c0
+Author: Ulf Lilleengen &lt;lulf@redhat.com&gt;
+Date:   2017-02-15T13:09:27Z
+
+    ARTEMIS-908: Ensure that connection lock is held when flushing
+
+----
+
+              </div></li><li><div>
+                Commit 5f6a390b6098dca1cfda09af4c0af096dfe736c0 in activemq-artemis's branch refs/heads/master from [~lulf]
+[ https://git-wip-us.apache.org/repos/asf?p=activemq-artemis.git;h=5f6a390 ]
+
+ARTEMIS-908: Ensure that connection lock is held when flushing
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/activemq-artemis/pull/1016
+
+              </div></li><li><div>
+                Github user clebertsuconic commented on the issue:
+
+    https://github.com/apache/activemq-artemis/pull/1016
+  
+    I have merged this. although I remember having to open a lock like this in order to avoid dead locks.
+
+              </div></li><li><div>
+                After some more testing, I'm still seeing the block/unblock issue even with this patch, so seems to be some flow control issues left.. The broker says there is 1 consumer attached and 0 messages in the queue. And even if I reattach the receiver, the sender is still blocked. If I reattach the sender, it is working again until the next time the issue occurs. 
+              </div></li><li><div>
+                Ok, I think I found the issue. Two threads deadlocked. Thread 37 acquires the OversizedRunnable lock and then the connection lock, while Thread 3 acquires them in opposite order.
+
+"Thread-37 (ActiveMQ-server-org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl$3@52e677af-27
+4722023)" #116 prio=5 os_prio=0 tid=0x00007f386c004800 nid=0xb70a waiting for monitor entry [0x00007f389c
+df9000]
+   java.lang.Thread.State: BLOCKED (on object monitor)
+        at org.apache.activemq.artemis.protocol.amqp.broker.AMQPSessionCallback$4.run(AMQPSessionCallback
+.java:456)
+        - waiting to lock &lt;0x00000000cb54f820&gt; (a java.lang.Object)
+        at org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl$OverSizedRunnable.run(PagingStoreImpl.java:651)
+        - locked &lt;0x00000000cb6ed650&gt; (a org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl$OverSizedRunnable)
+        at org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl$MemoryFreedRunnablesExecutor.run(PagingStoreImpl.java:630)
+        at org.apache.activemq.artemis.utils.OrderedExecutorFactory$OrderedExecutor$ExecutorTask.run(OrderedExecutorFactory.java:101)
+        at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+        at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+        at java.lang.Thread.run(Thread.java:745)
+
+
+"Thread-3 (ActiveMQ-server-org.apache.activemq.artemis.core.server.impl.ActiveMQServerImpl$3@52e677af-274
+722023)" #62 prio=5 os_prio=0 tid=0x00007f38b8002000 nid=0xb6d1 waiting for monitor entry [0x00007f399c6e
+7000]
+   java.lang.Thread.State: BLOCKED (on object monitor)
+        at org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl$OverSizedRunnable.run(PagingStoreImpl.java:650)
+        - waiting to lock &lt;0x00000000cb6ed650&gt; (a org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl$OverSizedRunnable)
+        at org.apache.activemq.artemis.core.paging.impl.PagingStoreImpl.checkMemory(PagingStoreImpl.java:677)
+        at org.apache.activemq.artemis.protocol.amqp.broker.AMQPSessionCallback.offerProducerCredit(AMQPSessionCallback.java:453)
+        at org.apache.activemq.artemis.protocol.amqp.proton.ProtonServerReceiverContext.flow(ProtonServerReceiverContext.java:202)
+        at org.apache.activemq.artemis.protocol.amqp.proton.ProtonServerReceiverContext.onMessage(ProtonServerReceiverContext.java:163)
+        - locked &lt;0x00000000cb54f820&gt; (a java.lang.Object)
+        at org.apache.activemq.artemis.protocol.amqp.proton.AMQPConnectionContext$LocalListener.onDelivery(AMQPConnectionContext.java:421)
+        at org.apache.activemq.artemis.protocol.amqp.proton.handler.Events.dispatch(Events.java:97)
+        at org.apache.activemq.artemis.protocol.amqp.proton.handler.ProtonHandler.dispatch(ProtonHandler.java:345)
+        at org.apache.activemq.artemis.protocol.amqp.proton.handler.ProtonHandler.access$000(ProtonHandler.java:43)
+        at org.apache.activemq.artemis.protocol.amqp.proton.handler.ProtonHandler$1.run(ProtonHandler.java:62)
+        at org.apache.activemq.artemis.utils.OrderedExecutorFactory$OrderedExecutor$ExecutorTask.run(OrderedExecutorFactory.java:101)
+        at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+        at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+        at java.lang.Thread.run(Thread.java:745)
+
+
+
+
+              </div></li><li><div>
+                GitHub user lulf opened a pull request:
+
+    https://github.com/apache/activemq-artemis/pull/1018
+
+    ARTEMIS-908: Replace lock by CAS to avoid potential deadlock
+
+    The deadlock can happen if the Runnable acquires a lock.
+
+You can merge this pull request into a Git repository by running:
+
+    $ git pull https://github.com/lulf/activemq-artemis ARTEMIS-908-cas
+
+Alternatively you can review and apply these changes as the patch at:
+
+    https://github.com/apache/activemq-artemis/pull/1018.patch
+
+To close this pull request, make a commit to your master/trunk branch
+with (at least) the following in the commit message:
+
+    This closes #1018
+    
+----
+commit 1b1e8dded9b062461a074b0e41dcc71e719c7a87
+Author: Ulf Lilleengen &lt;lulf@redhat.com&gt;
+Date:   2017-02-15T14:49:11Z
+
+    ARTEMIS-908: Replace lock by CAS to avoid deadlock
+
+----
+
+              </div></li><li><div>
+                Commit 4622066323e9ba5af0777d0c7315389ee8f647f5 in activemq-artemis's branch refs/heads/master from [~lulf]
+[ https://git-wip-us.apache.org/repos/asf?p=activemq-artemis.git;h=4622066 ]
+
+ARTEMIS-908: Replace lock by CAS to avoid deadlock
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/activemq-artemis/pull/1018
+
+              </div></li><li><div>
+                Commit b0585329b41fc074aea80fe952dde565dcef491d in activemq-artemis's branch refs/heads/1.x from [~lulf]
+[ https://git-wip-us.apache.org/repos/asf?p=activemq-artemis.git;h=b058532 ]
+
+ARTEMIS-908: Replace lock by CAS to avoid deadlock
+
+(cherry picked from commit 4622066323e9ba5af0777d0c7315389ee8f647f5)
+
+              </div></li></ol></div></div></html>

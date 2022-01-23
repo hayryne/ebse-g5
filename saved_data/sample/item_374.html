@@ -1,190 +1,417 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 374
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                *
-     * Start function instance
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param function
-     *            Function name
-     *
-     * @param instanceId
-     *            Function instanceId
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                *
-     * Start all function instances
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param function
-     *            Function name
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                *
-     * Start sink instance
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param sink
-     *            Sink name
-     *
-     * @param instanceId
-     *            Sink instanceId
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                *
-     * Start all sink instances
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param sink
-     *            Sink name
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                *
-     * Start source instance
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param source
-     *            Source name
-     *
-     * @param instanceId
-     *            Source instanceId
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                *
-     * Start all source instances
-     *
-     * @param tenant
-     *            Tenant name
-     * @param namespace
-     *            Namespace name
-     * @param source
-     *            Source name
-     *
-     * @throws PulsarAdminException
-     *             Unexpected error
-     
-              </div></li><li><div>
-                 This means that all instances of the functions are running
-              </div></li><li><div>
-                *
-     * Sends a start/stop function request to the FMT (Function Metadata Topic) for a function
-     * @param tenant the tenant the function that needs to be deregistered belongs to
-     * @param namespace the namespace the function that needs to be deregistered belongs to
-     * @param functionName the name of the function
-     * @param instanceId the instanceId of the function, -1 if for all instances
-     * @param start do we need to start or stop
-     * @return a completable future of when the start/stop has been applied
-     
-              </div></li><li><div>
-                 want to change state for all instances
-              </div></li><li><div>
-                 for externally managed functions, insert the start only if there is atleast one
- instance that needs to be started
-              </div></li><li><div>
-                 validate parameters
-              </div></li><li><div>
-                 add a stop
-              </div></li><li><div>
-                 make sure terminate is not called since this is a update operation
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fixed the behavior of Function start/stop (#3477)
-                </div><div><b>message:</b> Fixed the behavior of Function start/stop (#3477)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Cleanup transitive dependencies for zookeeper (#3154)
+                </div><div><b>message:</b> Cleanup transitive dependencies for zookeeper (#3154)
 
-* Added a state in the function metadata about what the state of the instances should be
+-- exclude log4j and slf4j
+-- exclude jline as thats only required for cli
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
 
-* Have start api for sources/sinks
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
 
-* Add missing pieces
+This causes following warning logs in invoker logs and test runs
 
-* more checks while handling request
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
 
-* Fixed bugs
+With this PR we exclude following transitive dependencies
 
-* Added unittests
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
 
-* Added unittest
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
 
-* Fix the all instances side logic
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fixed the behavior of Function start/stop
-                </div><div><b>body:</b> ### Motivation
-The current behavior of function/source/sink start/stop functionality is really confusing. We just change the state of the function temporarily, i.e. we don't record the change of the functionstate anywhere. Thus if function workers die and come back up, they will restart stopped function instances. This pr fixes this behaviour. We record the state of each function instance in the function metadata, thus if function worker dies and comes back up, the function will still remain in the state that it was in before the death.
-### Modifications
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
 
-Add a field in the FunctionMetaData proto to reflect the current state of the function instances.
-### Verifying this change
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
 
-- [ ] Make sure that the change passes the CI checks.
+This causes following warning logs in invoker logs and test runs
 
-*(Please pick either of the following options)*
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
 
-This change is a trivial rework / code cleanup without any test coverage.
+With this PR we exclude following transitive dependencies
 
-*(or)*
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
 
-This change is already covered by existing tests, such as *(please describe tests)*.
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
 
-*(or)*
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
 
-This change added tests and can be verified as follows:
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
 
-*(example:)*
-  - *Added integration tests for end-to-end deployment with large payloads (10MB)*
-  - *Extended integration test for recovery after broker failure*
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
 
-### Does this pull request potentially affect one of the following parts:
+This causes following warning logs in invoker logs and test runs
 
-*If `yes` was chosen, please highlight the changes*
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
 
-  - Dependencies (does it add or upgrade a dependency): (yes / no)
-  - The public API: (yes / no)
-  - The schema: (yes / no / don't know)
-  - The default values of configurations: (yes / no)
-  - The wire protocol: (yes / no)
-  - The rest endpoints: (yes / no)
-  - The admin cli options: (yes / no)
-  - Anything that affects deployment: (yes / no / don't know)
+With this PR we exclude following transitive dependencies
 
-### Documentation
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
 
-  - Does this pull request introduce a new feature? (yes / no)
-  - If yes, how is the feature documented? (not applicable / docs / JavaDocs / not documented)
-  - If a feature is not applicable for documentation, explain why?
-  - If a feature is not documented yet in this PR, please create a followup issue for adding the documentation
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
 
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
+
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
+
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
+
+This causes following warning logs in invoker logs and test runs
+
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
+
+With this PR we exclude following transitive dependencies
+
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
+
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
+
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
+
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
+
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
+
+This causes following warning logs in invoker logs and test runs
+
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
+
+With this PR we exclude following transitive dependencies
+
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
+
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
+
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
+
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
+
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
+
+This causes following warning logs in invoker logs and test runs
+
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
+
+With this PR we exclude following transitive dependencies
+
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
+
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
+
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
+
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
+                </div></div></li><li><div><div><b>title:</b> Avoid packaging log4j dependencies in invoker
+                </div><div><b>body:</b> Currently invoker module pulls in log4j jars via transitive dependency on zookeeper
+
+```
+$./gradlew :core:invoker:dependencies
++--- org.apache.zookeeper:zookeeper:3.4.11
+|    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    +--- org.slf4j:slf4j-log4j12:1.6.1
+|    |    +--- org.slf4j:slf4j-api:1.6.1 -&gt; 1.7.25
+|    |    \--- log4j:log4j:1.2.16
+|    +--- log4j:log4j:1.2.16
+|    +--- jline:jline:0.9.94
+|    |    \--- junit:junit:3.8.1
+|    +--- org.apache.yetus:audience-annotations:0.5.0
+|    \--- io.netty:netty:3.10.5.Final
+```
+
+This causes following warning logs in invoker logs and test runs
+
+```
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/invoker/lib/logback-classic-1.2.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/invoker/lib/slf4j-log4j12-1.6.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+```
+
+With this PR we exclude following transitive dependencies
+
+* log4j and slf4j - Prevents pulling of log4j related jars in invoker distribution
+* jline - This is required only for CLI which also pull in junit!. For 3.5.0 version these have been made optional ([ZOOKEEPER-1655][1])
+
+With these exclusion invoker.tar size reduces from 46.4M to 45.7M and also the slf4j warnings are not seen. This would also ensure that logging backend is deterministic and not [dependent on runtime][1]
+
+&gt; The way SLF4J picks a binding is determined by the JVM and for all practical purposes should be considered random. As of version 1.6.6, SLF4J will name the framework/implementation class it is actually bound to.
+
+[1]: https://issues.apache.org/jira/browse/ZOOKEEPER-1655
+[2]: https://www.slf4j.org/codes.html#multiple_bindings
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Mostly looks good.  I think we can also modify the following logic to check the function instance state so that we don't have that race condition:
-
-https://github.com/apache/pulsar/blob/master/pulsar-functions/worker/src/main/java/org/apache/pulsar/functions/worker/FunctionRuntimeManager.java#L647
+                @mhenke1 Can you please review?
+  
               </div></li><li><div>
-                @jerrypeng I think that change can be done in a subsequent change since its kind of not related to this. I will merge this and work on that later.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                @chetanmeh, can you fix the conflicting build.gradle file?
+              </div></li><li><div>
+                Fixed the conflict
+              </div></li><li><div>
+                Thanks @chetanmeh! 
+
+Any idea how to avoid the `[INFO] Slf4jLogger started` messages that appear in the logs?
+              </div></li><li><div>
+                &gt; Any idea how to avoid the [INFO] Slf4jLogger started messages that appear in the logs?
+
+@dubeejw  This log comes from [akka SLF4JLogging][1] which is probably to confirm that slf4j is setup properly. We can disable this by setting log level for `akka.event.slf4j.Slf4jLogger` to WARN
+
+[1]: https://github.com/akka/akka/blob/009214ae07708e8144a279e71d06c4a504907e31/akka-slf4j/src/main/scala/akka/event/slf4j/Slf4jLogger.scala#L89
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li><li><div><div><b>summary:</b> Make jline dependency optional in maven pom
+                </div><div><b>description:</b> Old JLine version used in ZK CLI should not be pulled into downstream projects. 
+
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Dependency in POM now generated as:
+{code}
+    &lt;dependency&gt;
+      &lt;groupId&gt;jline&lt;/groupId&gt;
+      &lt;artifactId&gt;jline&lt;/artifactId&gt;
+      &lt;version&gt;0.9.94&lt;/version&gt;
+      &lt;optional&gt;true&lt;/optional&gt;
+    &lt;/dependency&gt;
+{code}
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12571355/ZOOKEEPER-1655.patch
+  against trunk revision 1448007.
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1414//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1414//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1414//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                I'm trying to understand the implications of this patch. One of the concerns in HADOOP-9342 was the version of jline. Should we bump up the version here? Otherwise it sounds good to make it optional. 
+              </div></li><li><div>
+                Thanks for the feedback, Thomas. Could you update the patch to upgrade the jline version number, please? If you haven't done it, please make sure it applies to both trunk and 3.4 branch.
+              </div></li><li><div>
+                Cancelling patch to upgrade the jline version.
+              </div></li><li><div>
+                [~isnogood], Do you think you can update the patch to upgrade the jline version? 
+              </div></li><li><div><div><b>body:</b> I'm not sure it is a drop in replacement, need to try it. Would prefer to separate this from the leaking dependency though. Even if we manage to bump the version, we should still not export the dependency via the Maven pom. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I'm concerned about this change for 3.4. It's less of a bug fix and more of an improvement imo - a change which could destabilize existing downstream users. It's easy enough to specify an exclude if you don't want.
+
+I'm good for changing this in trunk, but I don't see this for a fix release on a stable branch. (just my opinion though, lmk if you feel strongly otw).
+
+If this is ok lmk and I'll commit to trunk.
+              </div></li><li><div>
+                If JLine gets upgraded in the 3.x line (ZOOKEEPER-1718), then I would suggest to also make the change to the pom to not export the dependency since downstream would be affected in any case. Commit to trunk would be great in any case.
+              </div></li><li><div>
+                Great. Let's shoot for trunk then (3.5.0).
+              </div></li><li><div>
+                Updated the patch for ZOOKEEPER-1718 (upgrade to jline2)
+              </div></li><li><div>
+                Committed to trunk. Thanks Thomas!
+              </div></li><li><div>
+                SUCCESS: Integrated in ZooKeeper-trunk #2076 (See [https://builds.apache.org/job/ZooKeeper-trunk/2076/])
+ZOOKEEPER-1655. Make jline dependency optional in maven pom (Thomas Weise via phunt) (phunt: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1528224)
+* /zookeeper/trunk/CHANGES.txt
+* /zookeeper/trunk/ivy.xml
+
+              </div></li><li><div>
+                Adding deleted comment:
+
+Thomas Weise (duplicate account) added a comment - 02/Sep/13 09:19
+
+I think leaking the jline dependency is not desirable because it is only
+needed to run the ZK command line tools while most projects would only use
+the client API. For example, jline made its way into the
+Hadoopdistribution until it was excluded explicitly.
+
+As for upgrading jlline, that's a good idea as it would make features such
+as reverse history search available in the ZK CLI.
+              </div></li></ol></div></div></html>
