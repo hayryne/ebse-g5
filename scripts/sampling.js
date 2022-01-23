@@ -31,10 +31,11 @@ async function main() {
     `, d => d.repo_id)
         
     const ids = []
+    const samples = 350
     
     await process("Collecting instances ids", repoIds.length, async update => {
         for (const repoId of repoIds) {        
-            const linkIds = await sampleLinksFromRepository(repoId)
+            const linkIds = await sampleLinksFromRepository(repoId, samples)
             ids.push(...linkIds)
             update()
         }

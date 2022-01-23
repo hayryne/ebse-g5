@@ -10,14 +10,18 @@ const { fetch } = require('../db')
         }
     Values have been rounded up to account for at least 1 sample in each case.
 */
-const sampleGoals = {
-    1: 294,
-    2: 12,
-    3: 1,
-    0: 77
+const sampleDistributions = {
+    1: 0.76,
+    2: 0.03,
+    3: 0.01,
+    4: 0.2
 }
 
-async function sampleLinksFromRepository(repoId) {
+async function sampleLinksFromRepository(repoId, samples=380) {
+
+    const sampleGoals = { }
+    for (const key of Object.keys(sampleDistributions))
+        sampleGoals[key] = Math.ceil(sampleDistributions[key] * samples)
 
     linkIds = []
 
