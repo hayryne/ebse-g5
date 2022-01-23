@@ -1,1930 +1,690 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 221
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-1334. Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed (Claus Ibsen via phunt)
-                </div><div><b>message:</b> ZOOKEEPER-1334. Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed (Claus Ibsen via phunt)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>message:</b> ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind issue.
 
-git-svn-id: https://svn.apache.org/repos/asf/zookeeper/trunk@1423778 13f79535-47bb-0310-9956-ffa450edef68
+Fixes the Java 11 build issue.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+**Issue**
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Reason**
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+**Resolution**
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+Author: Andor Molnar &lt;andor@apache.org&gt;
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+Reviewers: hanm@apache.org
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+Closes #700 from anmolnar/ZOOKEEPER-1441
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+(cherry picked from commit c3babb94275ad667dc71c10dcb08a383a3c154c2)
+Signed-off-by: Andor Molnar &lt;andor@apache.org&gt;
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Issue**
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+**Reason**
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Resolution**
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+**Issue**
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+**Reason**
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Issue**
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+**Reason**
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Resolution**
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+**Issue**
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+**Reason**
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+**Resolution**
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+**Issue**
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
 
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+**Reason**
 
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
 
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
 
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
+**Resolution**
 
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li><li><div><div><b>summary:</b> Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed
-                </div><div><b>description:</b> In Zookeeper 3.3.x you use log4j for logging, and the maven dep is
-
-eg from 3.3.4
-{code}
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-Now in 3.4.0 or better you changed to use slf4j also/instead. The maven pom.xml now includes:
-{code}
-  &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-api&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.slf4j&lt;/groupId&gt;
-      &lt;artifactId&gt;slf4j-log4j12&lt;/artifactId&gt;
-      &lt;version&gt;1.6.1&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j&lt;/artifactId&gt;
-      &lt;version&gt;1.2.15&lt;/version&gt;
-      &lt;scope&gt;compile&lt;/scope&gt;
-    &lt;/dependency&gt;
-{code}
-
-But the META-INF/MANIFEST.MF file in the distribution did not change to reflect this.
-
-The 3.3.4 MANIFEST.MF, import packages
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-And the 3.4.1 MANIFEST.MF, import packages:
-{code}
-Import-Package: javax.management,org.apache.log4j,org.osgi.framework;v
- ersion="[1.4,2.0)",org.osgi.util.tracker;version="[1.1,2.0)"
-{code}
-
-This makes using zookeeper 3.4.x in OSGi environments not possible, as we get NoClassDefFoundException for slf4j classes.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> thanx for reporting this. what would be a good way of testing this bug so that it doesn't happen in the future?
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-1441 - JAVA 11 - Some test cases are failing because Port bind issue.
+                </div><div><b>body:</b> Fixes the Java 11 build issue.
+
+**Issue**
+
+`NIOServerCnxnFactory` doesn't properly close the socket when the shutdown() is called before the factory has even started. This is mostly the case in tests which use `QuorumUtil` that creates multiple QuorumPeers when instantiated without starting them and when `startAll()` gets called it shuts down the previous ones.
+
+**Reason**
+
+`Selectors` which have been registered with the socket must be closed in order to properly release the socket. `NIOServerCnxnFactory` registers selectors on instantiation, but only releases them in the thread run() method. So, if factory doesn't get started, it won't release the registered selectors.
+
+This wasn't the issue before Java 11 and probably caused by:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+
+Also this is not an issue when ZooKeeper is used as a separate process (not embedded), because on shutdown the entire JVM stops anyway.
+
+**Resolution**
+
+I decided to try fixing the issue in the connection factory instead of fixing the tests only, because originally it's a bug in the way factory works. Resolution is to open selectors in lazy way: only when accept and selector thread starts, so they don't need to be released if the thread was not even started.
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @hanm @lvfangmin @phunt 
+Please review this, looks like a quite easy win to get Java11 builds green. Thanks!
+              </div></li><li><div>
+                @eolivelli @hanm Now, an entirely different approach. Solving 2 issues at the same time:
+1) Close selector in shutdown() when Accept and Select threads haven't been started yet. This will keep the original behaviour of eagerly registering the selector in the constructor and addresses your concerns.
+2) Turned out that we have a similar issue with Reconfig: `ReconfigTest.testPortChangeToBlockedPort` failed, becuase it expects the original port to be released even if the new port cannot be bound. Sounds like a reasonable expectation and the exception handler in the `reconfigure()` method confirms this. Hence I fixed the code, not the test.
+              </div></li><li><div>
+                &gt;&gt; This will keep the original behaviour of eagerly registering the selector in the constructor and addresses your concerns.
+
+LGTM, thanks for doing this!
+
+&gt;&gt; ReconfigTest.testPortChangeToBlockedPort failed, becuase it expects the original port to be released even if the new port cannot be bound. 
+
+The proposed change looks reasonable. Though I am wondering why the current logic would fail this test: if new port fails to bind, the old port will be closed as part of `tryClose(oldSS);` in the `catch` block. Mind to elaborate a little bit regarding which cases the current code fails to close the old socket?
+
+
+
+              </div></li><li><div>
+                @hanm The issue with Java 11 builds is the refactoring that was made in NIO from Java 11: 
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
+The key part is:
+&gt; Closing a connected SocketChannel that is registered with a Selector will now consistently delay closing the underlying connection until the closed channel is flushed from all selectors that it is registered with. 
+
+In other words, we have to close all registered Selectors to properly close the socket. Therefore `tryClose(oldSS)` on its own is not enough.
+              </div></li><li><div>
+                @anmolnar So if I understand this correctly, this test `ReconfigTest.testPortChangeToBlockedPort` will consistently failing under Java 11, because `this.ss = ServerSocketChannel.open();` will prevent the socket close in first `tryClose(oldSS)`, which is why you moved the code block of `this.ss = ServerSocketChannel.open();` after `tryClose(oldSS)`, right? 
+
+              </div></li><li><div>
+                retest this please
+              </div></li><li><div>
+                @hanm Not exactly.
+The test case is about reconfig the server to a port which is unavailable (blocked). Steps:
+1) Bind the server to "oldClientPort"
+2) Bind "newClientPort" with custom socket
+3) Reconfig the server to bind "newClientPort" - fails
+4) Check if "oldClientPort" has become available
+...
+
+Step 4) fails, because of the aforementioned reason: reconfig fails to bind the port, throws exception, but exception handler doesn't close the selector, only the socket.
+I do things in swapped order: close the thread and socket first, then try to bind the new port.
+              </div></li><li><div>
+                retest this please
+              </div></li><li><div>
+                @anmolnar  gotcha. +1, will commit this when i have a chance.
+              </div></li><li><div>
+                Being the bad guy again: committed my own patch to master and 3.5 branches. Thanks @hanm and @eolivelli !
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Should we abort the server?
+              </div></li><li><div><div><b>body:</b> Now this variable is nullable.
+Shouldn't we add some null check at every access?
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Makes sense. Any suggestion how to make it properly?
+              </div></li><li><div>
+                You're right. However the only access in this class is called from the `select()` method which is called only when the registration was successful, so I think we're fine.
+              </div></li><li><div><div><b>body:</b> @anmolnar sorry for late reply.
+I think it will be tricky. I will spend some time and try to find a suggestion
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Sorry for delay. I did not have time to find a good solution, I don't want to block this change
+              </div></li><li><div>
+                If we are binding a port that's already in use here then I think we'll have a problem because the expectation here is the acceptor thread will always be available unless explicitly being shut down by caller (for this reason we caught but ignored all checked and unchecked exception.). The problem is the control flow does not reach higher level from within this acceptor thread - thus if we have an instantiated but stopped `NIOServerCnxnFactory` due to acceptor thread exceptions, the entire zk process could end up in a weird state. Previous code does not have this issue because it tries to bind port early and complain if it can't such that caller would catch the issue earlier before the acceptor threads started. This should be easily testable if we spin up a ZK server with an unavailable port with this fix and see what happens.
+              </div></li><li><div>
+                I am also curious why 3.4 does not have this test issue. Technically 3.4 works similar with master and 3.5 w.r.t. the selector registration - both register selector before the server factory is 'started' (though in 3.5 and trunk, we made `NIOServerCnxn` multi-threaded`).
+              </div></li><li><div>
+                3.4 doesn't have this issue, because the selector is explicitly closed in the shutdown method. In 3.5 and master only the owning thread (accept) is able to close it, but it won't, if it doesn't even started.
+
+I'll do the test that you suggested, however I'm not sure how port binding is related to selector registration. 
+              </div></li><li><div>
+                ```
+2018-11-20 15:12:15,758 [myid:] - INFO  [main:NIOServerCnxnFactory@685] - binding to port 0.0.0.0/0.0.0.0:2181
+2018-11-20 15:12:15,760 [myid:] - ERROR [main:ZooKeeperServerMain@87] - Unexpected exception, exiting abnormally
+java.net.BindException: Address already in use
+	at sun.nio.ch.Net.bind0(Native Method)
+	at sun.nio.ch.Net.bind(Net.java:433)
+	at sun.nio.ch.Net.bind(Net.java:425)
+	at sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:223)
+	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:74)
+	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:67)
+	at org.apache.zookeeper.server.NIOServerCnxnFactory.configure(NIOServerCnxnFactory.java:686)
+	at org.apache.zookeeper.server.ZooKeeperServerMain.runFromConfig(ZooKeeperServerMain.java:157)
+	at org.apache.zookeeper.server.ZooKeeperServerMain.initializeAndRun(ZooKeeperServerMain.java:110)
+	at org.apache.zookeeper.server.ZooKeeperServerMain.main(ZooKeeperServerMain.java:68)
+	at org.apache.zookeeper.server.quorum.QuorumPeerMain.initializeAndRun(QuorumPeerMain.java:133)
+	at org.apache.zookeeper.server.quorum.QuorumPeerMain.main(QuorumPeerMain.java:87)
+```
+              </div></li><li><div>
+                Yeah, please ignore the port binding part of my statement previously. I was actually referring to port selection. Before this fix, we have selector registration in constructor of `AcceptorThread`:
+`this.acceptKey =
+                acceptSocket.register(selector, SelectionKey.OP_ACCEPT);`
+If we get an exception here, we will bail out and zk server will not start.
+
+If we selector registration inside AcceptorThread and got an exception, then the acceptor thread will shutdown, but the caller will not be aware of this so the zk server could be in a weird state. That's my only concern of this patch. Does this sound a reasonable concern?
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Some test cases are failing because Port bind issue.
+                </div><div><b>description:</b> very frequently testcases are failing because of :
+
+java.net.BindException: Address already in use
+	at sun.nio.ch.Net.bind(Native Method)
+	at sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:126)
+	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:59)
+	at sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:52)
+	at org.apache.zookeeper.server.NIOServerCnxnFactory.configure(NIOServerCnxnFactory.java:111)
+	at org.apache.zookeeper.server.ServerCnxnFactory.createFactory(ServerCnxnFactory.java:112)
+	at org.apache.zookeeper.server.quorum.QuorumPeer.&lt;init&gt;(QuorumPeer.java:514)
+	at org.apache.zookeeper.test.QuorumBase.startServers(QuorumBase.java:156)
+	at org.apache.zookeeper.test.QuorumBase.setUp(QuorumBase.java:103)
+	at org.apache.zookeeper.test.QuorumBase.setUp(QuorumBase.java:67)
+
+may be because of Port Assignment so please give me some suggestions if someone is also facing same problem.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                We don't see this very often, typically if one of the tests fails it may not cleanup, then the subsequent tests (using the same jvm) will see this. I've also seen this in Jenkins environment where multiple slots are being used on a host (and either ZK itself or some other component which uses zk is being tested simultaneously)
+              </div></li><li><div>
+                Looks like this is showing up again repeatedly with Java11 when multiple test threads are used:
+
+https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/
+
+Jenkins job has:
+&gt; test.junit.threads=4
+
+              </div></li><li><div><div><b>body:</b> PortAssignment itself could also be more flaky under Java 11 because it can't guarantee atomicity between the time of allocation of a port and the time of actually binding the port inside a ZK server. I remember [~lvfangmin] mentioned that in FB they improved PortAssignment by using random ports rather than sequential port, which might help here. Alternatively we could also let ZK server to atomically allocate and bind a port inside it and then return the binded port number to caller, for testing purpose, rather than having to pass a port in, which will fix the root cause of the issue.
                 </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                The OSGI manifest is hardcoded in your build.xml
-https://svn.apache.org/repos/asf/zookeeper/trunk/build.xml
+                "it can't guarantee atomicity between the time of allocation of a port and the time of actually binding the port inside a ZK server"
 
-You would need to add
-{code}
-org.slf4j;version="[1.6,2.0)"
-{code}
+How is that possible? If all tests are using PortAssigment (which I believe is the case), they should get different numbers, because PortAssigment maintains that. I never actually got why PortAssigment tries to bind the port before returns, because technically other test should not get the same number. Though there could be other processes running on the same server which binds that port, so it does make sense actually.
+              </div></li><li><div><div><b>body:</b> PortAssignment itself is fine and if everyone is using it, they should not get conflicts because PortAssignment is the single source of truth of port allocation. However, the problem here is not every processes running on test machine using PortAssignment, despite most, if not all of ZK unit tests do use it. So if there are heavy workloads running on the test machine while ZK unit tests were running, potential port conflicts would occur.
 
-To include the slf4j dependency
-              </div></li><li><div>
-                Benjamin,
+&gt;&gt; I never actually got why PortAssigment tries to bind the port before returns
 
-Testing OSGi is not super easy, but there is a OSS project called Pax-Exam that has an OSGi based test kit.
-We use this for other Apache project such as: Camel, ActiveMQ, etc.
+What PortAssignment implemented is a "reserve and release" pattern for port allocation, and this is better than "choose a port but not reserver" approach, because it is very unlikely the OS, regardless of how it allocates actual ports to the processes, will yield two consecutive port for two socket bind calls. Thus, by creating the socket via bind, and the immediately close it, we buy us sometime during which OS will not reuse this same socket for a successive socket call. This time however varies, thus there could be race conditions that by the time we actually going to bind this port again, it's already grabbed by another process. For ZK server, it requires an unbinded port number pass to it (otherwise it can't bind the port), but due to the same race condition it's possible when the server tries to bind, the port was taken already. The only way to guarantee atomicity in this case is to have ZK server asking a port from OS and bind immediately.
 
-There is a pax exam 2.x release which is even better. We have not yet upgrade from 1.x to 2.x in Camel, as its a bit work to do.
-The 2.x should be much faster and allows to do in-jvm debugging etc. The 1.x is slow and it fork a jvm for testing. And it downloads a lot of JARs etc.
-http://team.ops4j.org/wiki/display/paxexam/Pax+Exam
-
-That was the reason we discovered this as we upgraded camel-zookeeper from 3.3.4 to 3.4.1 and our osgi based test failed.
-The regular junit test passed of course.
-
-At Apache Camel we have 2 kind of osgi tests
-- karaf feature test [1]
-- osgi unit tests [2]
-
-The former is just a test that the camel components can be installed in an osgi runtime such as Apache Karaf. This test will frankly bootup Apache Karaf and then do an osgi install of the bundles. That way we can often spot 3rd party JARs which is not OSGi compliant.
-
-The latter is real full blown osgi unit tests, where we use the components and do something.
-
-For a quick test, you may in Zookeeper, have the first kind of test, where you will install zookeeper as a bundle in an osgi runtime, such as apache karaf (it can test with using felix, equinox as osgi framework). 
-
-
-
-1) - https://svn.apache.org/repos/asf/camel/trunk/tests/camel-itest-karaf/
-2) - https://svn.apache.org/repos/asf/camel/trunk/tests/camel-itest-osgi/
-              </div></li><li><div><div><b>body:</b> And if you no longer uses log4j directly in zookeeper, then i suggest to mark its maven dependency as &lt;scope&gt;test&lt;/scope&gt;. Then end users of zookeeper who uses maven do not depend on log4j. They may use another logger such as logback or java util logging etc.
-
-Also if so then the import of org.apache.log4j should be removed from the MANIFEST.MF for OSGi end users.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Hi guys, I'm gonna work on this issue to "fix" ZooKeeper in an OSGi way.
-              </div></li><li><div>
-                Jean-Baptiste I'll assign to you then. Thanks. Also take a look at ZOOKEEPER-1078 where we're working on Maven support, I suspect that will impact any changes you make to the current ant based codebase?
-              </div></li><li><div>
-                Another issue I am seeing with the Manifest is that package org.apache.zookeeper.server.persistence is not exported.
+                I see in the most recent failures:
+https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/155/testReport/junit/org.apache.zookeeper.test/FollowerResyncConcurrencyTest/testResyncByDiffAfterFollowerCrashes/
 
-{code:xml}
-Export-Package: org.apache.zookeeper;version="3.4.3",org.apache.zookee
- per.data;version="3.4.3",org.apache.zookeeper.version;version="3.4.3"
- ,org.apache.zookeeper.server;version="3.4.3",org.apache.zookeeper.ser
- ver.quorum;version="3.4.3"
-{code}
-              </div></li><li><div><div><b>body:</b> Ah - my bad - I see that package org.apache.zookeeper.server.persistence should not be exported.  One of our libs is trying to import this package unnecessarily. 
+The following sequence (extracted from the larger log):
+{noformat}
+2018-11-09 23:33:57,175 [myid:] - INFO  [main:PortAssignment@85] - Assigned port 27380 from range 27379 - 32764.
+2018-11-09 23:33:57,221 [myid:] - INFO  [main:QuorumUtil@116] - Creating QuorumPeer 1; public port 27380
+2018-11-09 23:33:57,287 [myid:] - INFO  [main:NIOServerCnxnFactory@683] - binding to port /127.0.0.1:27380
+... some successful work....
+2018-11-09 23:33:57,339 [myid:] - INFO  [main:QuorumUtil@250] - Shutting down quorum peer QuorumPeer
+2018-11-09 23:33:57,343 [myid:] - INFO  [main:QuorumUtil@259] - Waiting for QuorumPeer to exit thread
+...
+2018-11-09 23:34:12,366 [myid:] - INFO  [main:QuorumUtil@203] - Creating QuorumPeer 1; public port 27380
+2018-11-09 23:34:12,366 [myid:] - INFO  [main:ServerCnxnFactory@161] - Using org.apache.zookeeper.server.NIOServerCnxnFactory as server connection factory
+2018-11-09 23:34:12,367 [myid:] - INFO  [main:NIOServerCnxnFactory@670] - Configuring NIO connection handler with 10s sessionless connection timeout, 2 selector thread(s), 32 worker threads, and 64 kB direct buffers.
+2018-11-09 23:34:12,368 [myid:] - INFO  [main:NIOServerCnxnFactory@683] - binding to port /127.0.0.1:27380
+2018-11-09 23:34:12,369 [myid:] - INFO  [main:JUnit4ZKTestRunner$LoggedInvokeMethod@98] - TEST METHOD FAILED testResyncByTxnlogThenDiffAfterFollowerCrashes
+java.net.BindException: Address already in use
+{noformat}
 
-Please disregard previous comment.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Any update on this?
-              </div></li><li><div>
-                Any update. Dont the Apache Zookeeper project want to be OSGi compliant? Seems like a fairly easy fix in your ANT build script. 
-              </div></li><li><div>
-                I gonna review and submit a patch if required. Thanks for the reminder Claus.
-              </div></li><li><div>
-                Just testing ZooKeeper 3.5.0 and it works in Karaf. In Karaf, I have:
+I updated that job to not use parallel test threads and the issue still happens:
+https://builds.apache.org/view/S-Z/view/ZooKeeper/job/ZooKeeper-trunk-java11/156/testReport/junit/org.apache.zookeeper.server/ZxidRolloverTest/testRolloverThenLeaderRestart/
+so it's not related to "test.junit.threads=1"
 
-Bundle-Vendor = The Apache Software Foundation
-Bundle-Name = ZooKeeper Bundle
-Bundle-DocURL = http://hadoop.apache.org/zookeeper
-Bundle-SymbolicName = org.apache.hadoop.zookeeper
-Bundle-Version = 3.5.0
-Bundle-License = http://www.apache.org/licenses/LICENSE-2.0.txt
-Bundle-ManifestVersion = 2
+It seems like it may be a real issue with some change in java11 semantics around sockets? 
 
-Import-Package =
-        javax.management,
-        org.apache.log4j,
-        org.osgi.framework;version="[1.4,2.0)",
-        org.osgi.util.tracker;version="[1.1,2.0)"
-Export-Package =
-        org.apache.zookeeper;version=3.5.0,
-        org.apache.zookeeper.data;version=3.5.0,
-        org.apache.zookeeper.version;version=3.5.0,
-        org.apache.zookeeper.server;version=3.5.0,
-        org.apache.zookeeper.server.quorum;version=3.5.0
+Has anything else been updated that could be related? java10 with the same code seems fine.
 
               </div></li><li><div>
-                However:
-- slf4j import should be present (and optional)
-- log4j import should be optional
+                It looks like that tests which use QuorumUtil to create quorum are failing, so my guess is that it's not related to PortAssigment.
+QuorumUtil works as follows:
+1) Creates QuorumPeer objects and starts them (bind port)
+2) Calls startAll() -&gt; call shutdownAll() -&gt; calls shutdown() on each QP -&gt; creates new QPs -&gt; starts each QP (bind port)
+
+Bind fails at NIOServerCnxnFactory:684 - ss.socket().bind(...)
+NIOServerCnxnFactory shutdown() method might not close the socket properly by calling ss.close() at line 875.
+
+That worked with previous Java versions.
               </div></li><li><div>
-                If you completely switched the code to use the slf4j-api. Then you should not have compile time deps to slf4j-log4j12 and log4j. These should be scope test. For compile scope you should only depend on slf4j-api. In the Manifest you should also only import the slf4j api packages not log4j. Then it will work great in apache karaf.
-              </div></li><li><div>
-                I found another problem with the Manifest. org.apache.zookeeper.server.ZooKeeperServer depends on org.apache.zookeeper.server.persistence.FileTxnSnapLog but the package is not exported.
-
-So I propose to also export the package:
-org.apache.zookeeper.server.persistence
-
-
-              </div></li><li><div>
-                Any update of this. Christian or Jean it seems the Zookeeper team is not keen on helping with this.
-Maybe if we provide a .patch file that they can just apply.
-
-It prevent us from using Zookepper 3.4.x or newer releases in OSGi.
-In fact if the Zookeeper team is *NOT* listening to the community, it would be better to remove all the OSGi bits from their MANIFEST.MF file.
-Then at least the release is NOT attempting to be OSGi bundles. 
-
-But of course its a fairly easy fix, and we can help test it works fine in OSGi, ... just that the Zookeeper team need to listen to the community.
-              </div></li><li><div>
-                To be clear, we are keen on seeing this fixed, however we don't have sufficient experience with osgi to drive this. If you want to see it fixed, something that is known to work in your environment, providing a patch that we can review and commit is the best way to get this addressed.
-              </div></li><li><div>
-                Is this patch ready for commit review, or still work needs to be done? (recent comments seem to indicate still some issues?
-              </div></li><li><div>
-                A patch to the build.xml which fixes the osgi manifest issues.
-              </div></li><li><div>
-                zookeeper-1334-osgi.patch is the file with the patch.
-              </div></li><li><div>
-                Installing zookeeper 3.5.0 JAR in Karaf 2.3.0 works fine now with that patch
-
-{code}
-[  58] [Active     ] [            ] [   80] ZooKeeper Bundle (3.5.0)
-[  59] [Active     ] [            ] [   80] The Netty Project (3.5.1.Final)
-karaf@root&gt; headers 58
-
-ZooKeeper Bundle (58)
----------------------
-Manifest-Version = 1.0
-Main-Class = org.apache.zookeeper.server.quorum.QuorumPeer
-Ant-Version = Apache Ant 1.8.2
-Built-By = davsclaus
-Built-At = 12/19/2012 05:44 GMT
-Built-On = davsclaus.lan
-Implementation-Version = 3.5.0--1
-Implementation-Vendor = The Apache Software Foundation
-Implementation-Title = org.apache.zookeeper
-Created-By = 1.6.0_37-b06-434-11M3909 (Apple Inc.)
-
-Bundle-Vendor = The Apache Software Foundation
-Bundle-Name = ZooKeeper Bundle
-Bundle-DocURL = http://hadoop.apache.org/zookeeper
-Bundle-SymbolicName = org.apache.hadoop.zookeeper
-Bundle-Version = 3.5.0
-Bundle-License = http://www.apache.org/licenses/LICENSE-2.0.txt
-Bundle-ManifestVersion = 2
-
-Import-Package = 
-	javax.management;resolution:=optional,
-	org.slf4j;version="[1.6,2)",
-	org.jboss.netty.buffer;resolution:=optional;version="[3.2,4)",
-	org.jboss.netty.channel;resolution:=optional;version="[3.2,4)",
-	org.jboss.netty.channel.group;resolution:=optional;version="[3.2,4)",
-	org.jboss.netty.channel.socket.nio;resolution:=optional;version="[3.2,4)",
-	org.osgi.framework;resolution:=optional;version="[1.5,2)",
-	org.osgi.util.tracker;resolution:=optional;version="[1.4,2)"
-Export-Package = 
-	org.apache.zookeeper;version=3.5.0,
-	org.apache.zookeeper.client;version=3.5.0,
-	org.apache.zookeeper.data;version=3.5.0,
-	org.apache.zookeeper.version;version=3.5.0,
-	org.apache.zookeeper.server;version=3.5.0,
-	org.apache.zookeeper.server.auth;version=3.5.0,
-	org.apache.zookeeper.server.persistence;version=3.5.0,
-	org.apache.zookeeper.server.quorum;version=3.5.0
-
-{code}
-              </div></li><li><div>
-                -1 overall.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12561647/zookeeper-1334-osgi.patch
-  against trunk revision 1422772.
-
-    +1 @author.  The patch does not contain any @author tags.
-
-    -1 tests included.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    -1 patch.  The patch command could not apply the patch.
-
-Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1308//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Updated patch - use --no-prefix with git to create patch.
-              </div></li><li><div>
-                -1 overall.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12561655/zookeeper-1334-osgi.patch
-  against trunk revision 1422772.
-
-    +1 @author.  The patch does not contain any @author tags.
-
-    -1 tests included.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    +1 javadoc.  The javadoc tool did not generate any warning messages.
-
-    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
-
-    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
-
-    +1 core tests.  The patch passed core unit tests.
-
-    +1 contrib tests.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1309//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1309//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
-Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1309//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Committed to 3.4.6 and trunk. Thanks Claus!
-              </div></li><li><div>
-                -1 overall.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12561655/zookeeper-1334-osgi.patch
-  against trunk revision 1422772.
-
-    +1 @author.  The patch does not contain any @author tags.
-
-    -1 tests included.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    +1 javadoc.  The javadoc tool did not generate any warning messages.
-
-    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
-
-    +1 findbugs.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
-
-    +1 core tests.  The patch passed core unit tests.
-
-    +1 contrib tests.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1310//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1310//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
-Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-Build/1310//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Integrated in ZooKeeper-trunk #1777 (See [https://builds.apache.org/job/ZooKeeper-trunk/1777/])
-    ZOOKEEPER-1334. Zookeeper 3.4.x is not OSGi compliant - MANIFEST.MF is flawed (Claus Ibsen via phunt) (Revision 1423778)
-
-     Result = SUCCESS
-phunt : http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1423778
-Files : 
-* /zookeeper/trunk/CHANGES.txt
-* /zookeeper/trunk/build.xml
+                Sounds to be related:
+https://www.oracle.com/technetwork/java/javase/11-relnote-issues-5012449.html#JDK-8198562
 
               </div></li><li><div>
-                I've tested this patch on a locally build zookeeper (3.4.5 + patch from ZOOKEEPER-1334) using Karaf 2.2.8 and 2.3.0 (both Equinox and Felix) with a simple test bundle that creates a ZooKeeper connection upon the bundle being started. 
-In my tests this patch only works for the combination Karaf 2.2.8 + Equinox. In the other scenario's I ran into some NoClassDefFoundErrors on classes located in the packages {{javax.security.auth.callback}} , {{javax.security.auth.login}} and {{javax.security.sasl}} . I resolved this by adding these packages to the Import-Package section of the ZooKeeper bundle.
+                I might have found the issue:
 
-@Claus: should these packages be added to the Import-Package section of the MANIFEST of the ZooKeeper bundle or are users expected to expose these packages to ZooKeeper bundle through OSGi framework configuration?
-              </div></li><li><div>
-                Hi [~arnoud]. Please create a new jira for this issue, the original one has already been resolved. Thanks!
-              </div></li><li><div>
-                [~arnoud.buitenhuis@sogeti.nl]
+QuorumUtil creates QuorumPeers in its constructor, but doesn't actually start them resulting it creates NIOServerCnxnFactory, but doesn't start its threads. It could be a bug in the factory that in the constructor of Accept/Select threads it opens and registers selectors on the socket, but if the thread is not running, closeSelector() method will not be called.
 
-No the MANIFEST.MF should contain all the packages that this bundle will or may use. So the 3 packages you found should be added as well.
+This is exactly what QuorumUtil is doing in tests: creates QuorumPeers without starting them and in startAll() (which is always the call after the constructor) shuts down them all and create new ones and starting them. In Java 11 we have to properly close (unregister) selectors in order to properly close the socket.
+
+I'm working on a patch to fix this.
               </div></li><li><div>
-                Okay, I've created a new issue for this: ZOOKEEPER-1645
+                Issue resolved by pull request 700
+[https://github.com/apache/zookeeper/pull/700]
               </div></li><li><div>
-                Closing issues after releasing 3.4.6.
+                SUCCESS: Integrated in Jenkins build Zookeeper-trunk-single-thread #119 (See [https://builds.apache.org/job/Zookeeper-trunk-single-thread/119/])
+ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind (andor: rev c3babb94275ad667dc71c10dcb08a383a3c154c2)
+* (add) zookeeper-server/src/test/java/org/apache/zookeeper/server/NIOServerCnxnFactoryTest.java
+* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/NIOServerCnxnFactory.java
+
+              </div></li><li><div>
+                SUCCESS: Integrated in Jenkins build ZooKeeper-trunk #280 (See [https://builds.apache.org/job/ZooKeeper-trunk/280/])
+ZOOKEEPER-1441: JAVA 11 - Some test cases are failing because Port bind (andor: rev c3babb94275ad667dc71c10dcb08a383a3c154c2)
+* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/NIOServerCnxnFactory.java
+* (add) zookeeper-server/src/test/java/org/apache/zookeeper/server/NIOServerCnxnFactoryTest.java
+
               </div></li></ol></div></div></html>

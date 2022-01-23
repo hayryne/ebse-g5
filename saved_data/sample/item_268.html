@@ -1,1588 +1,392 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 268
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [MINOR] fix get classname for hive sync (#2008)
-                </div><div><b>message:</b> [MINOR] fix get classname for hive sync (#2008)
-
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div><div><b>label:</b> test
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li><li><div><div><b>title:</b> [SUPPORT] hudi hive-sync in master branch (0.6.1) can not run by spark
-                </div><div><b>body:</b> **Describe the problem you faced**
-
-Hudi in master branch (0.6.1)  can not use `hive-sync` to sync to hive with error 
-```
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-```
-
-**Steps to reproduce the behavior:**
-
-1. run a `HoodieDeltaStreamer` task by master `local[2]` and sync hudi table to hive
-2. when sync to hive, it report error:
-```
-java.lang.NoClassDefFoundError: parquet/hadoop/ParquetInputFormat
-	at org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat.&lt;init&gt;(MapredParquetInputFormat.java:46) ~[hive-exec-1.2.1.spark2.jar:1.2.1.spark2]
-	at org.apache.hudi.hadoop.HoodieParquetInputFormat.&lt;init&gt;(HoodieParquetInputFormat.java:67) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormat(HoodieInputFormatUtils.java:82) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hadoop.utils.HoodieInputFormatUtils.getInputFormatClassName(HoodieInputFormatUtils.java:92) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncSchema(HiveSyncTool.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:130) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.hive.HiveSyncTool.syncHoodieTable(HiveSyncTool.java:98) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncMeta(DeltaSync.java:510) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.writeToSink(DeltaSync.java:425) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.DeltaSync.syncOnce(DeltaSync.java:244) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.lambda$sync$2(HoodieDeltaStreamer.java:161) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.common.util.Option.ifPresent(Option.java:96) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	at org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.sync(HoodieDeltaStreamer.java:159) ~[hudi-utilities-bundle_2.11-0.6.1-SNAPSHOT.jar:0.6.1-SNAPSHOT]
-	***
-        ***
-Caused by: java.lang.ClassNotFoundException: parquet.hadoop.ParquetInputFormat
-	at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:418) ~[na:1.8.0_251]
-	at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:355) ~[na:1.8.0_251]
-	at java.lang.ClassLoader.loadClass(ClassLoader.java:351) ~[na:1.8.0_251]
-	... 20 common frames omitted
-```
-
-**Environment Description**
-
-* Hudi version : 0.6.1
-
-* Spark version : 2.4.3
-
-* Hive version : 2.3.3
-
-* Hadoop version : 2.8.5
-
-* Storage (HDFS/S3/GCS..) : HDFS
-
-* Running on Docker? (yes/no) : no
-
-
-**Additional context**
-
-I checked the error code:
-```java
-  public static FileInputFormat getInputFormat(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    switch (baseFileFormat) {
-      case PARQUET:
-        if (realtime) {
-          HoodieParquetRealtimeInputFormat inputFormat = new HoodieParquetRealtimeInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        } else {
-          HoodieParquetInputFormat inputFormat = new HoodieParquetInputFormat();
-          inputFormat.setConf(conf);
-          return inputFormat;
-        }
-      default:
-        throw new HoodieIOException("Hoodie InputFormat not implemented for base file format " + baseFileFormat);
-    }
-  }
-
-  public static String getInputFormatClassName(HoodieFileFormat baseFileFormat, boolean realtime, Configuration conf) {
-    FileInputFormat inputFormat = getInputFormat(baseFileFormat, realtime, conf);
-    return inputFormat.getClass().getName();
-  }
-```
-I think new a `ParquetInputFormat` may not a good idea for hudi in spark. In `hive-sync` package hudi just need a `FileInputFormat` class name, there is no need to new an object and get this class name. Meanwhile, spark also doesn't have total hive jars to do some action like hive.
-
-
-
-
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                @cdmikechen : Curious, Are you not seeing this with older version of Hudi (0.5.x ) ?
-              </div></li><li><div><div><b>body:</b> @cdmikechen : Also, if you look at integration tests ITTestHoodieDemo, we cover the tests with hive syncing and this test has been passing for us. Can you take a look at the tests to see what the difference is ?
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Default implementation - do not filter anything
+              </div></li><li><div>
+                *
+ * Implementations of CompactionFilter allows prioritizing and filtering certain type of
+ * compactions over other compactions.
+ *
+ * e.g. Filter in-efficient compaction like compacting a very large old parquet file with a small avro file
+ 
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ 
+              </div></li><li><div>
+                Only for serialization/de-serialization
+              </div></li><li><div>
+                *
+ * Encapsulates all the needed information about a compaction
+ * and make a decision whether this compaction is effective or not
+ *
+ * @see CompactionFilter
+ 
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ 
+              </div></li><li><div>
+                *
+ * Place holder for the compaction specific meta-data, uses all the details used in a normal HoodieCommitMetadata
+ 
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ 
+              </div></li><li><div>
+                *
+ * A HoodieCompactor runs compaction on a hoodie table
+ 
+              </div></li><li><div>
+                *
+     * Compact the delta files with the data files
+     * @throws Exception
+     
+              </div></li><li><div>
+                 Helper methods
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ 
+              </div></li><li><div><div><b>comment:</b>  TODO - rollback any compactions in flight
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                *
+ * HoodieRealtimeTableCompactor compacts a hoodie table with merge on read storage.
+ * Computes all possible compactions, passes it through a CompactionFilter and executes
+ * all the compactions and writes a new version of base files and make a normal commit
+ *
+ * @see HoodieCompactor
+ 
+              </div></li><li><div>
+                 Filter the compactions with the passed in filter. This lets us choose most effective compactions only
+              </div></li><li><div>
+                 2. naively loads all the delta records in memory to merge it,
+ since we only need a iterator, we could implement a lazy iterator to load from one delta file at a time
+              </div></li><li><div><div><b>comment:</b> TODO figure out a success factor for a compaction
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                noinspection ConstantConditions
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ 
+              </div></li><li><div><div><b>comment:</b>  TODO - FIX THIS
+ 1. Reads the entire avro file. Always only specific blocks should be read from the avro file (failure recover).
+ Load all the delta commits since the last compaction commit and get all the blocks to be loaded and load it using CompositeAvroLogReader
+ Since a DeltaCommit is not defined yet, reading all the records. revisit this soon.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Do a compaction
+              </div></li><li><div>
+                 Verify that all data file has one log file
+              </div></li><li><div>
+                 Initialize a local spark env
+              </div></li><li><div><div><b>comment:</b>  TODO - after modifying HoodieReadClient to support realtime tables - add more tests to make sure the data read is the updated data (compaction correctness)
+ TODO - add more test cases for compactions after a failed commit/compaction
                 </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                @bvaradar Hudi 0.5.X or 0.6.0 when `HoodieInputFormatUtils` not exists don't happened this. 
-The old code looks like the following which is to get the classname directly instead of the need to new class.
-```java
-String inputFormatClassName = cfg.usePreApacheInputFormat ? com.uber.hoodie.hadoop.HoodieInputFormat.class.getName()
-            : HoodieParquetInputFormat.class.getName();
-```
+                 Update all the 100 records
               </div></li><li><div>
-                THanks @cdmikechen . Agree this is a new code change in 0.6.x but can you check why the integration tests which enables hive sync for delta-streamer passes. 
+                 insert 100 records
               </div></li><li><div>
-                cc @garyli1019 have you encountered this before? 
-              </div></li><li><div>
-                &gt; cc @garyli1019 have you encountered this before?
-
-@vinothchandar No, I don't use hive sync anywhere. This issue seems like a version mismatch for me. I do agree that we don't need to create a new class here to get the name. People using different versions of Hive might run into a similar issue.
-              </div></li><li><div>
-                @garyli1019 can you please submit a PR fixing this? 
-              </div></li><li><div>
-                &gt; @garyli1019 can you please submit a PR fixing this?
-
-yes sure
-EDIT: Before I do this, @cdmikechen are you interested to fix this? If so, please let me know. Happy to have you to drive this fix :) 
-              </div></li><li><div>
-                I verified by running deltastreamer using docker demo :
-
-The below command ran fine without any issue and I was able to check table registered successfully. 
-
-But, it is good to fix it. THis is not a blocker for release though. 
-
-root@adhoc-2:/opt# spark-submit --class org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer $HUDI_UTILITIES_BUNDLE --table-type COPY_ON_WRITE --source-class org.apache.hudi.utilities.sources.JsonKafkaSource --source-ordering-field ts  --target-base-path /user/hive/warehouse/stock_ticks_cow2 --target-table stock_ticks_cow --props /var/demo/config/kafka-source.properties --schemaprovider-class org.apache.hudi.utilities.schema.FilebasedSchemaProvider --enable-sync --hoodie-conf hoodie.datasource.hive_sync.table=dumm2 --hoodie-conf hoodie.datasource.hive_sync.use_jdbc=true --hoodie-conf hoodie.datasource.hive_sync.jdbcurl=jdbc:hive2://hiveserver:10000 --hoodie-conf hoodie.datasource.hive_sync.partition_extractor_class=org.apache.hudi.hive.MultiPartKeysValueExtractor --hoodie-conf hoodie.datasource.hive_sync.partition_fields=yr,month,day
-              </div></li><li><div>
-                Thanks for confirming balaji!
-              </div></li><li><div>
-                &gt; @cdmikechen : Also, if you look at integration tests ITTestHoodieDemo, we cover the tests with hive syncing and this test has been passing for us. Can you take a look at the tests to see what the difference is ?
-
-@bvaradar I checked `hudi-integ-test` package and found the reason:
-In `hudi-integ-test` pom.xml where contains `ITTestHoodieDemo`, hudi contains `hudi-exec-2.3.1` In pom dependencies. So that if we new a `MapredParquetInputFormat` class, hudi will use this class by `hudi-exec-2.3.1`.
-```java 
-package org.apache.hadoop.hive.ql.io.parquet;
-
-import java.io.IOException;
-import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
-import org.apache.hadoop.hive.ql.io.parquet.read.DataWritableReadSupport;
-import org.apache.hadoop.hive.ql.io.parquet.read.ParquetRecordReaderWrapper;
-import org.apache.hadoop.io.ArrayWritable;
-import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapred.InputSplit;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hadoop.mapred.Reporter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.apache.parquet.hadoop.ParquetInputFormat;
-
-public class MapredParquetInputFormat extends FileInputFormat&lt;NullWritable, ArrayWritable&gt; implements VectorizedInputFormatInterface {
-```
-But if we just use a standalone spark environmental without hive-2.3.1 dependencies (like starting a new project and only depend spark lib), hudi will use `hive-exec-1.2.1-spark2`.
-```java
-package org.apache.hadoop.hive.ql.io.parquet;
-
-import java.io.IOException;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
-import org.apache.hadoop.hive.ql.io.parquet.read.DataWritableReadSupport;
-import org.apache.hadoop.hive.ql.io.parquet.read.ParquetRecordReaderWrapper;
-import org.apache.hadoop.io.ArrayWritable;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapred.RecordReader;
-
-import parquet.hadoop.ParquetInputFormat;
-
-public class MapredParquetInputFormat extends FileInputFormat&lt;Void, ArrayWritable&gt; {
-```
-
-              </div></li><li><div>
-                @cdmikechen : The integration test actually brings up a dockerized environment and runs spark-submit command. So, the dependencies specified in hudi-integ-test/pom.xml should not be part of the deltastreamer run. As you can look from my spark-submit command in my previous comment, only HUDI_UTILITIES_BUNDLE is passed. otherwise, it is only spark runtime environment. 
-
-The ParquetInputFormatClass is part of parquer-hadoop-bundle.
-root@adhoc-2:/opt# grep -r 'parquet.hadoop.ParquetInputFormat' $SPARK_HOME/jars/*
-Binary file /opt/spark/jars/parquet-hadoop-1.10.1.jar matches
-Binary file /opt/spark/jars/parquet-hadoop-bundle-1.6.0.jar matches
-root@adhoc-2:/opt# 
-
-root@adhoc-2:/opt# jar tf /opt/spark/jars/parquet-hadoop-bundle-1.6.0.jar | grep ParquetInputFormat.class
-parquet/hadoop/mapred/DeprecatedParquetInputFormat.class
-parquet/hadoop/ParquetInputFormat.class
-
-Are you using the spark distribution prebuilt with hadoop ? 
-              </div></li><li><div>
-                @bvaradar 
-Thanks for your reminder, I finally found my mistake: 
-I use hudi in a maven project with spark dependencies. I noticed that hudi remove `com.twitter:parquet-hadoop-bundle`, so that I also removed this dependency in my project.
-```
-&lt;exclusions&gt;
-    &lt;exclusion&gt;
-        &lt;groupId&gt;com.twitter&lt;/groupId&gt;
-        &lt;artifactId&gt;parquet-hadoop-bundle&lt;/artifactId&gt;
-    &lt;/exclusion&gt;
-&lt;/exclusions&gt;
-```
-Therefore, when starting a spark task in this maven project, hudi can not find `parquet-hadoop-bundle-1.6.0.jar` and `parquet.hadoop.ParquetInputFormat` class. If I add this dependency, it should not report this error .
-
-Meanwhile, I think my another suggestion which we should avoid new `FileInputFormat` to just get class name should be fixed.
-              </div></li><li><div>
-                Thanks @cdmikechen  for clarifying. Agree on not having to instantiate the input format. @garyli1019  has a PR for this : https://github.com/apache/hudi/pull/2008
-
-Closing this ticket !!
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [MINOR] fix get classname for hive sync
-                </div><div><b>body:</b> ## What is the purpose of the pull request
-
-Fix #2005 
-
-## Brief change log
-
-  - *avoid creating a new class when getting the class name in HoodieInputFormatUtils*
-
-## Verify this pull request
-
-
-This pull request is already covered by existing tests, such as *(please describe tests)*.
-
-
-## Committer checklist
-
- - [ ] Has a corresponding JIRA in PR title &amp; commit
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  
- - [ ] Commit message is descriptive of the change
+              </div></li><li><div>
+                 Write them to corresponding avro logfiles
+              </div></li><li><div>
+                 Create a temp folder as the base path
+              </div></li><li><div>
+                 Verify that recently written compacted data file has no log file
+              </div></li><li><div>
+                *
+ * This is a payload to wrap a existing Hoodie Avro Record.
+ * Useful to create a HoodieRecord over existing GenericRecords in a hoodie datasets (useful in compactions)
  
- - [ ] CI is green
-
- - [ ] Necessary doc changes done or have another open PR
-       
- - [ ] For large changes, please consider breaking it into sub-tasks under an umbrella JIRA.
-                </div></div></li><li><div><div><b>title:</b> [MINOR] fix get classname for hive sync
-                </div><div><b>body:</b> ## What is the purpose of the pull request
-
-Fix #2005 
-
-## Brief change log
-
-  - *avoid creating a new class when getting the class name in HoodieInputFormatUtils*
-
-## Verify this pull request
-
-
-This pull request is already covered by existing tests, such as *(please describe tests)*.
-
-
-## Committer checklist
-
- - [ ] Has a corresponding JIRA in PR title &amp; commit
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  
- - [ ] Commit message is descriptive of the change
+              </div></li><li><div>
+                *
+ * Realtime Table View which includes both ROStorageformat files and RTStorageFormat files
  
- - [ ] CI is green
-
- - [ ] Necessary doc changes done or have another open PR
-       
- - [ ] For large changes, please consider breaking it into sub-tasks under an umbrella JIRA.
-                </div></div></li><li><div><div><b>title:</b> [MINOR] fix get classname for hive sync
-                </div><div><b>body:</b> ## What is the purpose of the pull request
-
-Fix #2005 
-
-## Brief change log
-
-  - *avoid creating a new class when getting the class name in HoodieInputFormatUtils*
-
-## Verify this pull request
-
-
-This pull request is already covered by existing tests, such as *(please describe tests)*.
-
-
-## Committer checklist
-
- - [ ] Has a corresponding JIRA in PR title &amp; commit
+              </div></li><li><div>
+                 All the log files filtered from the above list, sorted by version numbers
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  
- - [ ] Commit message is descriptive of the change
+              </div></li><li><div>
+                 All the files in the partition
+              </div></li><li><div>
+                 Filter the delta files by the commit time of the latest base fine and collect as a list
+              </div></li><li><div>
+                 For realtime table view, visibleActiveCommitTimeline is a merged timeline of all commits and compactions
+              </div></li><li><div>
+                 Set the expected schema to be the current schema to account for schema evolution
+              </div></li><li><div>
+                 also closes underlying FsInput
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  
- - [ ] CI is green
-
- - [ ] Necessary doc changes done or have another open PR
-       
- - [ ] For large changes, please consider breaking it into sub-tasks under an umbrella JIRA.
-                </div></div></li><li><div><div><b>title:</b> [MINOR] fix get classname for hive sync
-                </div><div><b>body:</b> ## What is the purpose of the pull request
-
-Fix #2005 
-
-## Brief change log
-
-  - *avoid creating a new class when getting the class name in HoodieInputFormatUtils*
-
-## Verify this pull request
-
-
-This pull request is already covered by existing tests, such as *(please describe tests)*.
-
-
-## Committer checklist
-
- - [ ] Has a corresponding JIRA in PR title &amp; commit
+              </div></li><li><div>
+                
+ *  Copyright (c) 2016 Uber Technologies, Inc. (hoodie-dev-group@uber.com)
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *           http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  
- - [ ] Commit message is descriptive of the change
- 
- - [ ] CI is green
+              </div></li><li><div>
+                *
+     * Get the Read Optimized Storage Format
+     *
+     * @return HoodieFileFormat for the Read Optimized Storage format
+     
+              </div></li><li><div>
+                *
+     * Get the FS implementation for this table
+     * @return
+     
+              </div></li><li><div>
+                 The base commit time for which the log files are accumulated
+              </div></li><li><div>
+                 reverse the order
+              </div></li><li><div>
+                *
+     * Get a timeline of a specific set of actions. useful to create a merged timeline of multiple actions
+     *
+     * @param actions actions allowed in the timeline
+     * @return
+     
+              </div></li><li><div>
+                *
+     * Get only the commits (inflight and completed) in the compaction timeline
+     *
+     * @return
+     
+              </div></li><li><div>
+                 This is the commits that will be visible for all views extending this view
+              </div></li><li><div>
+                *
+     * This method is only used when this object is deserialized in a spark executor.
+     *
+     * @deprecated
+     
+              </div></li><li><div>
+                *
+     * Get the first part of the file name in the log file. That will be the fileId.
+     * Log file do not have commitTime in the file name.
+     *
+     * @param path
+     * @return
+     
+              </div></li><li><div>
+                 Log files are of this pattern - b5068208-e1a4-11e6-bf01-fe55135034f3_20170101134598.avro.delta.1
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor (#73)
+                </div><div><b>message:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor (#73)
 
- - [ ] Necessary doc changes done or have another open PR
-       
- - [ ] For large changes, please consider breaking it into sub-tasks under an umbrella JIRA.
-                </div></div></li><li><div><div><b>title:</b> [MINOR] fix get classname for hive sync
-                </div><div><b>body:</b> ## What is the purpose of the pull request
 
-Fix #2005 
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Introduce HoodieRealtimeTableView and implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> 
+                </div></div></li><li><div><div><b>title:</b> Introduce HoodieRealtimeTableView and implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> 
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
-## Brief change log
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
-  - *avoid creating a new class when getting the class name in HoodieInputFormatUtils*
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
-## Verify this pull request
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
-This pull request is already covered by existing tests, such as *(please describe tests)*.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
-## Committer checklist
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
- - [ ] Has a corresponding JIRA in PR title &amp; commit
- 
- - [ ] Commit message is descriptive of the change
- 
- - [ ] CI is green
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
 
- - [ ] Necessary doc changes done or have another open PR
-       
- - [ ] For large changes, please consider breaking it into sub-tasks under an umbrella JIRA.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> Introduce RealtimeTableView and Implement HoodieRealtimeTableCompactor
+                </div><div><b>body:</b> this fixes #72
+
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                Hi @cdmikechen , would you please review this PR? If this looks good then we can merge.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                this is going to fail now, probably given we have a HFile base now. @garyli1019 can you please rebase and fix.  
+                Feel free to merge, after you look at the comments.. 
               </div></li><li><div>
-                thanks for letting me know
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                merge
+
+Hanjun
+
+On Wed, Feb 1, 2017 at 1:47 AM, vinoth chandar &lt;notifications@github.com&gt;
+wrote:
+
+&gt; Feel free to merge, after you look at the comments..
+&gt;
+&gt; —
+&gt; You are receiving this because you are subscribed to this thread.
+&gt; Reply to this email directly, view it on GitHub
+&gt; &lt;https://github.com/uber/hoodie/pull/73#issuecomment-276437329&gt;, or mute
+&gt; the thread
+&gt; &lt;https://github.com/notifications/unsubscribe-auth/ACW3yxCI1qvU5NeArBOskzIIAsEEJn-Sks5rX3OUgaJpZM4Ly05i&gt;
+&gt; .
+&gt;
+
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                HoodieCompactionCommitMetadata? 
+              </div></li><li><div><div><b>body:</b> CommitMetadata needs to be cleaned up carefully, to not affect the current production stuff/ 
+
+But some naming/organization like below 
+HoodieTimelineInstantMetadata 
+   -&gt;  CommitInstantMetadata (this is new name for HoodieCommitMetadata) 
+   -&gt;  CompactionInstantMetadata
+   -&gt; CleanerInstantMetadata 
+
+might be a better long term thing.. 
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Given this usage, CompactionTask is probably a better name than  CompactionOperation IMO 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                Would this always fit into memory? 
+              </div></li><li><div>
+                Good point
+              </div></li><li><div><div><b>body:</b> We should probably load the base files into memory and run the delta files through it? the other way around? 
+
+May be just add a TODO, its okay for now.. 
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

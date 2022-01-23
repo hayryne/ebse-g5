@@ -1,81 +1,164 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 341
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-2470 Clean up warnings introduced by previous commit
-                </div><div><b>message:</b> ACCUMULO-2470 Clean up warnings introduced by previous commit
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+   * Opens a Write-Ahead Log file and writes the necessary header information and OPEN entry to the file.
+   * The file is ready to be used for ingest if this method returns successfully. If an exception is thrown
+   * from this method, it is the callers responsibility to ensure that {@link #close()} is called to prevent
+   * leaking the file handle and/or syncing thread.
+   *
+   * @param address The address of the host using this WAL
+   
+              </div></li><li><div>
+                 Try to avoid leaving a bunch of empty WALs lying around
+              </div></li><li><div>
+                 It's possible that the sync of the header and OPEN record to the WAL failed
+ We want to make sure that clean up the resources/thread inside the DfsLogger
+ object before trying to create a new one.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-3775 always sync the OPEN record
+                </div><div><b>message:</b> ACCUMULO-3775 always sync the OPEN record
 
-(Unused fields and imports)
+Signed-off-by: Josh Elser &lt;elserj@apache.org&gt;
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Root tablet had 6,974 walogs
+                </div><div><b>description:</b> Before the deadlock described in ACCUMULO-3774, the root tablet recovered 6,974  walogs.   Almost all of theses were empty.  Before the tserver was killed there were thousands of messages like the following (I think this was caused by datanode agitation).  
+
+{noformat}
+2015-05-05 18:02:43,236 [log.TabletServerLogger] INFO : Using next log hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c
+2015-05-05 18:02:43,236 [log.TabletServerLogger] DEBUG: Creating next WAL
+2015-05-05 18:02:43,236 [tserver.TabletServer] INFO : Writing log marker for level ROOT hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c
+2015-05-05 18:02:43,236 [log.DfsLogger] DEBUG: Address is worker10:9997
+2015-05-05 18:02:43,236 [log.DfsLogger] DEBUG: DfsLogger.open() begin
+2015-05-05 18:02:43,236 [util.MetadataTableUtil] DEBUG: Adding log entry hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c
+2015-05-05 18:02:43,237 [fs.VolumeManagerImpl] DEBUG: creating hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1 with CreateFlag set: [CREATE, SYNC_BLOCK]
+2015-05-05 18:02:43,246 [tserver.TabletServer] INFO : Writing log marker for level NORMAL hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c
+2015-05-05 18:02:43,247 [util.MetadataTableUtil] DEBUG: Adding log entry hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c
+2015-05-05 18:02:43,247 [log.DfsLogger] DEBUG: No enciphering, using raw output stream
+2015-05-05 18:02:43,247 [log.DfsLogger] DEBUG: Got new write-ahead log: worker10:9997/hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1
+2015-05-05 18:02:43,250 [hdfs.DFSClient] WARN : DataStreamer Exception
+org.apache.hadoop.ipc.RemoteException(java.io.IOException): File /accumulo/wal/worker10+9997/a13aee79-c313-4298-b55a-8ec58ffb977c could only be replicated to 2 nodes instead of minReplication (=3).  There are 16 datanode(s) running and n
+o node(s) are excluded in this operation.
+        at org.apache.hadoop.hdfs.server.blockmanagement.BlockManager.chooseTarget4NewBlock(BlockManager.java:1550)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem.getAdditionalBlock(FSNamesystem.java:3067)
+        at org.apache.hadoop.hdfs.server.namenode.NameNodeRpcServer.addBlock(NameNodeRpcServer.java:722)
+        at org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolServerSideTranslatorPB.addBlock(ClientNamenodeProtocolServerSideTranslatorPB.java:492)
+        at org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos$ClientNamenodeProtocol$2.callBlockingMethod(ClientNamenodeProtocolProtos.java)
+        at org.apache.hadoop.ipc.ProtobufRpcEngine$Server$ProtoBufRpcInvoker.call(ProtobufRpcEngine.java:616)
+        at org.apache.hadoop.ipc.RPC$Server.call(RPC.java:969)
+        at org.apache.hadoop.ipc.Server$Handler$1.run(Server.java:2049)
+        at org.apache.hadoop.ipc.Server$Handler$1.run(Server.java:2045)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:415)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1657)
+        at org.apache.hadoop.ipc.Server$Handler.run(Server.java:2043)
+
+        at org.apache.hadoop.ipc.Client.call(Client.java:1476)
+        at org.apache.hadoop.ipc.Client.call(Client.java:1407)
+        at org.apache.hadoop.ipc.ProtobufRpcEngine$Invoker.invoke(ProtobufRpcEngine.java:229)
+        at com.sun.proxy.$Proxy15.addBlock(Unknown Source)
+        at org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolTranslatorPB.addBlock(ClientNamenodeProtocolTranslatorPB.java:418)
+        at sun.reflect.GeneratedMethodAccessor16.invoke(Unknown Source)
+        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.lang.reflect.Method.invoke(Method.java:606)
+        at org.apache.hadoop.io.retry.RetryInvocationHandler.invokeMethod(RetryInvocationHandler.java:187)
+        at org.apache.hadoop.io.retry.RetryInvocationHandler.invoke(RetryInvocationHandler.java:102)
+        at com.sun.proxy.$Proxy16.addBlock(Unknown Source)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.locateFollowingBlock(DFSOutputStream.java:1430)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.nextBlockOutputStream(DFSOutputStream.java:1226)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.run(DFSOutputStream.java:449)
+{noformat}
+
+{noformat}
+2015-05-05 18:02:43,352 [log.TabletServerLogger] INFO : Using next log hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1
+2015-05-05 18:02:43,352 [log.TabletServerLogger] DEBUG: Creating next WAL
+2015-05-05 18:02:43,352 [tserver.TabletServer] INFO : Writing log marker for level ROOT hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1
+2015-05-05 18:02:43,352 [log.DfsLogger] DEBUG: Address is worker10:9997
+2015-05-05 18:02:43,352 [log.DfsLogger] DEBUG: DfsLogger.open() begin
+2015-05-05 18:02:43,353 [util.MetadataTableUtil] DEBUG: Adding log entry hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1
+2015-05-05 18:02:43,353 [fs.VolumeManagerImpl] DEBUG: creating hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/1810b018-26e3-4728-bbab-e3d901e3edd3 with CreateFlag set: [CREATE, SYNC_BLOCK]
+2015-05-05 18:02:43,362 [log.DfsLogger] DEBUG: No enciphering, using raw output stream
+2015-05-05 18:02:43,362 [log.DfsLogger] DEBUG: Got new write-ahead log: worker10:9997/hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/1810b018-26e3-4728-bbab-e3d901e3edd3
+2015-05-05 18:02:43,366 [log.TabletServerLogger] DEBUG: Created next WAL hdfs://10.1.5.21:10000/accumulo/wal/worker10+9997/1810b018-26e3-4728-bbab-e3d901e3edd3
+2015-05-05 18:02:43,366 [hdfs.DFSClient] WARN : DataStreamer Exception
+org.apache.hadoop.ipc.RemoteException(java.io.IOException): File /accumulo/wal/worker10+9997/295244ee-c9e3-404f-a3d8-9569e41ba8e1 could only be replicated to 2 nodes instead of minReplication (=3).  There are 16 datanode(s) running and no node(s) are excluded in this operation.
+        at org.apache.hadoop.hdfs.server.blockmanagement.BlockManager.chooseTarget4NewBlock(BlockManager.java:1550)
+        at org.apache.hadoop.hdfs.server.namenode.FSNamesystem.getAdditionalBlock(FSNamesystem.java:3067)
+        at org.apache.hadoop.hdfs.server.namenode.NameNodeRpcServer.addBlock(NameNodeRpcServer.java:722)
+        at org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolServerSideTranslatorPB.addBlock(ClientNamenodeProtocolServerSideTranslatorPB.java:492)
+        at org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos$ClientNamenodeProtocol$2.callBlockingMethod(ClientNamenodeProtocolProtos.java)
+        at org.apache.hadoop.ipc.ProtobufRpcEngine$Server$ProtoBufRpcInvoker.call(ProtobufRpcEngine.java:616)
+        at org.apache.hadoop.ipc.RPC$Server.call(RPC.java:969)
+        at org.apache.hadoop.ipc.Server$Handler$1.run(Server.java:2049)
+        at org.apache.hadoop.ipc.Server$Handler$1.run(Server.java:2045)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at javax.security.auth.Subject.doAs(Subject.java:415)
+        at org.apache.hadoop.security.UserGroupInformation.doAs(UserGroupInformation.java:1657)
+        at org.apache.hadoop.ipc.Server$Handler.run(Server.java:2043)
+
+        at org.apache.hadoop.ipc.Client.call(Client.java:1476)
+        at org.apache.hadoop.ipc.Client.call(Client.java:1407)
+        at org.apache.hadoop.ipc.ProtobufRpcEngine$Invoker.invoke(ProtobufRpcEngine.java:229)
+        at com.sun.proxy.$Proxy15.addBlock(Unknown Source)
+        at org.apache.hadoop.hdfs.protocolPB.ClientNamenodeProtocolTranslatorPB.addBlock(ClientNamenodeProtocolTranslatorPB.java:418)
+        at sun.reflect.GeneratedMethodAccessor16.invoke(Unknown Source)
+        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.lang.reflect.Method.invoke(Method.java:606)
+        at org.apache.hadoop.io.retry.RetryInvocationHandler.invokeMethod(RetryInvocationHandler.java:187)
+        at org.apache.hadoop.io.retry.RetryInvocationHandler.invoke(RetryInvocationHandler.java:102)
+        at com.sun.proxy.$Proxy16.addBlock(Unknown Source)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.locateFollowingBlock(DFSOutputStream.java:1430)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.nextBlockOutputStream(DFSOutputStream.java:1226)
+        at org.apache.hadoop.hdfs.DFSOutputStream$DataStreamer.run(DFSOutputStream.java:449)
+{noformat}
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> I made this a blocker because it seems like there may be the potential to fill ZK up which could make a transient problem much worse than it needs to be.  I am wondering if we could make sure that one write+sync could be made to a walog before advertising its ready for use.
 
                 </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div></div></li><li><div><div><b>summary:</b> Improve unit test coverage for server base classes
-                </div><div><b>description:</b> Goals for server base project coverage:
-* branches 13% -&gt; 15%
-* methods 11% -&gt; 15%
-* classes 14% -&gt; 25%
-                </div><div><b>label:</b> test
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Patch available. This can go to either 1.6.0 or 1.6.1.
+                </div></div></li><li><div>
+                I think when a walog is opened the header is written, but its not synced.   We could possibly have the new background thread thats opening logs before they are needed try to sync the log (writing out the header).   If this sync fails it could delete the walog and retry until successful.  This should prevent tons of walogs that can not be written to from being added to zookeeper or metadata.  I can try making this change this afternoon, if no one has any issues with this concept.
               </div></li><li><div>
-                Commit d2089c898c64ce2ac6588b9052505dc4c49d971f in accumulo's branch refs/heads/1.6.0-SNAPSHOT from [~bhavanki]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=d2089c8 ]
-
-ACCUMULO-2470 Unit tests for server/base module
-
-This commit adds unit tests to code under the server/base module. It also includes changes
-to o.a.a.server.problems.ProblemReport to enable comprehensive testing.
-
+                Oh I just noticed the issue was assigned to [~ecn].  I will not be making any changes until speaking w/ him.
               </div></li><li><div>
-                Commit d2089c898c64ce2ac6588b9052505dc4c49d971f in accumulo's branch refs/heads/master from [~bhavanki]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=d2089c8 ]
+                Oh and there was already a patch that I did not notice.  @ecn looking at the patch, its not clear to me that anything will close the log (and maybe the thread would not be stopped?)  in the case where it fails at the following line 
 
-ACCUMULO-2470 Unit tests for server/base module
-
-This commit adds unit tests to code under the server/base module. It also includes changes
-to o.a.a.server.problems.ProblemReport to enable comprehensive testing.
-
+{noformat}
++    op.await();
++    log.debug("Got new write-ahead log: " + this);
+{noformat}
               </div></li><li><div>
-                Commit fff852fce6d971e7e76c91ae911fbfca2e26426b in accumulo's branch refs/heads/1.6.0-SNAPSHOT from [~ctubbsii]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=fff852f ]
-
-ACCUMULO-2470 Clean up warnings introduced by previous commit
-
-(Unused fields and imports)
-
+                maybe the thread the opens logs should always call close when there is a failure.
               </div></li><li><div>
-                Commit fff852fce6d971e7e76c91ae911fbfca2e26426b in accumulo's branch refs/heads/master from [~ctubbsii]
-[ https://git-wip-us.apache.org/repos/asf?p=accumulo.git;h=fff852f ]
+                Another question about the patch.  In the case of failure during open, thinking we could attempt to delete the walog (also likely to fail)
+              </div></li><li><div>
+                I was trying to think through if [~kturner]'s suggestion about doing more in the background thread would have a big impact. I think it would be a nice addition, but I couldn't come up with a reason why doing it as it is in {{open(String)}} wouldn't work.
 
-ACCUMULO-2470 Clean up warnings introduced by previous commit
+As such +1 after some extra try/catch logic to catch the rogue thread and close the file.
+              </div></li><li><div><div><b>body:</b>  I don't have a big preference over doing it in open() vs the background thread code.  Thats just where I thought of doing it initially.   A slight advantage to doing it outside open() is that the code may be more readable, but not having the code all in DfsLogger is a drawback IMO.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                v2 for Eric which ensures that DfsLogger is closed if we get an Exception opening it. This should make sure that the Sync thread and HDFS file handle are both reclaimed (stopped and closed, respectively).
+              </div></li><li><div>
+                [~ecn] and [~kturner], if you could give this a once over, that'd be great. I'll swing by and apply it tmrw it this is sufficient for now.
+              </div></li><li><div>
+                Two comments on patch v2
 
-(Unused fields and imports)
+ * Is an attempt to delete the file made when there is a failure?
+ * An exception could occur after offer() was successfully called.
+              </div></li><li><div>
+                bq. Is an attempt to delete the file made when there is a failure?
 
+I don't think so. I will add that.
+
+bq. An exception could occur after offer() was successfully called.
+
+Can you expand on this? The offer in the {{try}} or the {{catch}}? What do you think should be done?
+              </div></li><li><div>
+                bq. Can you expand on this? The offer in the try or the catch? What do you think should be done?
+
+I was thinking about the call to {{alog.close()}}.  Its possible that it could close() on a log that was offered, if for example the the log4j code threw an exception.
+              </div></li><li><div>
+                Updated patch. Remove the log immediately if we fail to open it. Try to reduce the likelihood for an exception to be thrown after a successful log opening.
+              </div></li><li><div>
+                I think patch #3 looks good
+              </div></li><li><div>
+                Thanks for the reviews, Keith and Eric!
               </div></li></ol></div></div></html>

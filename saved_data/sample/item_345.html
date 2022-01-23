@@ -1,1505 +1,423 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 345
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> #1631 - Tablet in memory compaction ID is updated before metadata write (#1670)
-                </div><div><b>message:</b> #1631 - Tablet in memory compaction ID is updated before metadata write (#1670)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Verify existing table's name argument is valid, and match any additional restrictions
+              </div></li><li><div>
+                 Verify namespace arguments are valid, and match any additional restrictions
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix #1430 Enforce table name limit for new tables (#1518)
+                </div><div><b>message:</b> Fix #1430 Enforce table name limit for new tables (#1518)
 
-Fixes #1631
-* Sets flag that calls setLastCompactionID if Metadata update successful.
-* Moved tablet.setLastCompactionID to be called after id is set in metadata table.
+* Add name length limit for new tables and namespaces (max length 1024 chars)
+* Add fast failure for client side
+* Warn for old names if beyond the max length
+* Add tests
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Tablet in memory compaction ID is updated before metadata write
-                </div><div><b>body:</b> While working on #1605 I noticed that the tablets in memory tracking of the compaction ID (via `Tablet.setLastCompactionID()`) was updated before updating the metadata table.  If the metadata table update fails then this could lead to tablet server/FATE disagreement about a compaction being completed causing the FATE op to hang.  This is similar to the more general issue described in [ACCUMULO-18](https://issues.apache.org/jira/browse/ACCUMULO-18).
-                </div></div></li><li><div><div><b>title:</b> Tablet in memory compaction ID is updated before metadata write
-                </div><div><b>body:</b> While working on #1605 I noticed that the tablets in memory tracking of the compaction ID (via `Tablet.setLastCompactionID()`) was updated before updating the metadata table.  If the metadata table update fails then this could lead to tablet server/FATE disagreement about a compaction being completed causing the FATE op to hang.  This is similar to the more general issue described in [ACCUMULO-18](https://issues.apache.org/jira/browse/ACCUMULO-18).
-                </div></div></li><li><div><div><b>title:</b> Tablet in memory compaction ID is updated before metadata write
-                </div><div><b>body:</b> While working on #1605 I noticed that the tablets in memory tracking of the compaction ID (via `Tablet.setLastCompactionID()`) was updated before updating the metadata table.  If the metadata table update fails then this could lead to tablet server/FATE disagreement about a compaction being completed causing the FATE op to hang.  This is similar to the more general issue described in [ACCUMULO-18](https://issues.apache.org/jira/browse/ACCUMULO-18).
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                I edited the original post to link to the JIRA issue.
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+Co-Authored-By: Laura Schanno &lt;lbschanno@gmail.com&gt;
+Co-Authored-By: Keith Turner &lt;kturner@apache.org&gt;
+Co-Authored-By: Christopher Tubbs &lt;ctubbsii@apache.org&gt;
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-The following link was added on 5/13 and goes over some use cases
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The following link was added on 5/13 and goes over some use cases
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-The following link was added on 5/13 and goes over some use cases
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The following link was added on 5/13 and goes over some use cases
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-The following link was added on 5/13 and goes over some use cases
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The following link was added on 5/13 and goes over some use cases
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-The following link was added on 5/13 and goes over some use cases
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 5/13 and goes over some use cases
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The following link was added on 5/13 and goes over some use cases
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
+                </div></div></li><li><div><div><b>title:</b> Limit the size of new table names
+                </div><div><b>body:</b> Giant table names can take down ZooKeeper and the master server. There should be a reasonable limit on table name sizes. This can be imposed on the server side for creating tables, renaming tables, and cloning tables. Existing tables need not be affected.
 
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
+Client code can be updated for fast-failure (and to limit the number of invalid requests sent to the server-side).
 
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
+For reference, the information I found while searching the web (not necessarily accurate, but good enough to give us an idea) gives the following limits to identifier sizes:
 
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
+| Item | Number of characters (or sometimes, bytes) |
+| ---- | ---- |
+| Oracle DB table names | 30 |
+| MySQL table names | 64 |
+| PostgreSQL table names | 63 |
+| DNS identifier | 63 |
+| Most filesystem file names (EXT/XFS/ZFS/exFAT/HFS+/Brtfs/NTFS | 255 |
+| EXT4 max path | 4096 |
+| Java identifiers | unlimited |
+| longest English word | 45 |
+| "supercalifragilisticexpialidocious" | 34 |
 
+My original opinion was 63, because this is what DNS uses, and because it is similar to what common relational databases use which, like us, have a very DNS-like naming convention of dot-separated components, as in `namespace.tablename` or `database.tablename`
 
-The following link was added on 5/13 and goes over some use cases
+However, I think that's probably going to be too limiting, so I think 255 is a more reasonable limit.
 
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
+The server-side code for validating table names is located in the `FateServiceHandler` class, in a method called `validateTableNameArgument`. However, that method is currently being used for existing tables, in order to validate the parameters sent over the wire to the server. A similar method would have to be created to specifically validate *new* destination table names from creating, renaming, or cloning a table. That way, we don't impose the name limit on existing tables, only on new ones. For existing tables, it may be worth adding a warning log message to the current validator method that the table name is longer than what Accumulo now supports, and it may cause unexpected behavior if not renamed to something shorter.
 
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li><li><div><div><b>title:</b> Fixes #564 adds support multiple compaction executors
-                </div><div><b>body:</b> This change adds support for multiple compaction executors and
-multuple concurrent compactions per tablet.
-
-The best way to understand these changes is to look at the documentation
-at core/src/main/java/org/apache/accumulo/core/spi/compaction/package-info.java
-
-The javadocs mentioned above are hard to read in source form and are rendered at the link below.
-
-https://keith-turner.github.io/apidocs-accumulo-564/org/apache/accumulo/core/spi/compaction/package-summary.html
-
-
-The following link was added on 5/13 and goes over some use cases
-
-https://gist.github.com/keith-turner/f6f7ca661d88b935b74f57dbdeeb07d3
-
-The following link was added on 6/1 and documents a test I ran on a cluster with this code.
-
-https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                &gt; Would there be value in marking the new properties/APIs as "experimental" until it bears out after a release or two?
-
-That would entail keeping all the old code and then jamming this new code into the old code.  I don't think that would help achieve stability or maintainability.  There are actually a lot of big changes that have built up for 2.1.0.  I think we need to stop accepting new features for 2.1.0 at some point and start heavily testing it and only fixing bugs.
-
-&gt; There are so many new classes. The number of new classes might make the compaction code a bit more logical, but it's a big shift from the current code, and very hard for a newcomer to quickly familiarize themselves with all the code.
-
-Did you look at the javadoc link I posted? The current plugins break down by data and execution.  The CompactionSelector, CompactionConfigurer, and iterators are only concerned with user data and can be set per table or per compaction.  The CompactionPlanner and CompactionDispatcher are only concerned with executing compactions. Planners are configured at the system level and dispatchers are configured per table. Users can set execution hints when initiating a compaction through the API and these hints are made available to the dispatcher and planner.   If this is helpful, I can work this into the javadoc.
-
-&gt; It might help to organize a video chat or slide show to go over all the code changes at a high level, so that other Accumulo devs can quickly assess the new design.
-
-I can do a chat on slack.  One goal of that could be to determine how the written documentation could be improved. 
-
-&gt; I kind of liked the idea of setting a single compaction strategy property that encapsulates all the configuration
-
-This is very vague and I don't know what this would concretely look like.  We could discuss this in the chat.  If you have more specific ideas, it would helpful to write them up somewhere.
-              </div></li><li><div><div><b>body:</b> @ctubbsii something else that I eventually need to write is user facing documention.  The documentation written so for is a bit more internal.  The old WIP PR #1589 does have a bit of user facing documentation in its opening comment that would be useful to look at though.  It shows how to set configure different compaction services and make tables use them.  The properties have changed a bit, but all of the concepts are the same.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                There have not been any comments on this in a while, does anyone have any objections to me merging this?  In other branches in my fork I have been working on following work for #1609, #1611, and #1612.  I would like to merge this so I can submit PRs for those, which are much smaller relative to this.
-
-I have [run a test of this code](https://gist.github.com/keith-turner/29b72dfa97acad53c395dd0724b65f1c) on a cluster and plan to run more test.  I would like to wait to run subsequent test after finishing the follow on work.
-              </div></li><li><div><div><b>body:</b> @milleruntime I found all the TODOs and addressed/removed them.
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                Why disable these from the full logger by default?
-              </div></li><li><div><div><b>body:</b> I don't necessarily see the second reason to be a problem. Binding these into a single entity, can be nice for modularizing the user code to make it more reusable, and maintainable in a separate user-controlled repo. Under the new paradigm, what's the best way for users to combine their overall compaction strategy so they can maintain it separately, and just drop it in when needed? Would they just serialize the `CompactionConfig` in some way?
+(Originally reported at [ACCUMULO-2366](https://issues.apache.org/jira/browse/ACCUMULO-2366))
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> I marked this issue as a "good first issue", because adding the limit is relatively simple. However, the code changes are in an area that may be somewhat unfriendly to approach, so it's slightly more challenging than other possible "good first issues". Perhaps this might be a "good second issue". Either way, it's a small amount of code to be changed and should be easy to implement and create simple test cases for.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                ```suggestion
-    this.className = requireNonNull(className);
-```
+                Upon completion of this issue, a good follow-up PR would be to implement the same restrictions in the size of namespace names.
               </div></li><li><div>
-                Should the CompactionStrategy interface exist in an SPI package? Otherwise, it seems we haven't completely solved the use of internal types here.
-              </div></li><li><div>
-                ```suggestion
-    this.options = Map.copyOf(requireNonNull(opts));
-    return this;
-```
-              </div></li><li><div>
-                Since `className` and `options` have setters, this class is mutable, and changing it can result in unpredictable behavior if stored in data structures that use `hashCode` and `equals`. Can this class be refactored to be immutable?
-              </div></li><li><div><div><b>body:</b> I'm confused by this javadoc. I don't think this javadoc is sufficient for me to understand how it is intended to be used, without additional outside documentation. Can you provide accompanying code for the compression example?
+                &gt;  the code changes are in an area that may be somewhat unfriendly to approach
 
-Also, I'm wondering if we can come up with a better name for this. I might be able to think of something once I get a better grasp on how it's supposed to be used.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                Can this suppression occur more narrowly, rather than for the entire class?
-              </div></li><li><div>
-                Where do these numbers come from? An inline comment would be useful.
-              </div></li><li><div>
-                Presumably, these new properties are for major compactions only. The property prefix could be made consistent with other `tserver.compaction.major` properties.
-              </div></li><li><div>
-                I don't know, it was probably annoying me as I spent a lot of time looking at the logs while working on this.  That change should not be made in this PR, I will pull it out.
-              </div></li><li><div><div><b>body:</b> This entire class is utility code for a deprecated class.
+@ctubbsii where do you think a change should be made for this?
+              </div></li><li><div><div><b>body:</b> Do we know what the impact / actual limit is?  The might be quite a gap between "giant" and  255.  Depending on how tables are created, it is not hard to get larger than 255.  Throw in a base name, a yarn job name and a timestamp or two and you can get a generated name that is not user friendly, but does encode some system runtime info that can be useful.
+
+Whatever limit is "chosen" an approach could to have it as a configuration parameter with a sensible default and some guidance on what the "real" max should be considered to be.  Sort of like the zookeeper jute buffer parameter.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                I don't remember.  I may have taken a git commit hash or they may be random.  The intent is to be random.
-              </div></li><li><div>
-                [CompressionConfigurer](https://github.com/apache/accumulo/blob/bd206be8ed50ebf1fee76dc8cf1e9820ef8ca5b8/core/src/main/java/org/apache/accumulo/core/client/admin/compaction/CompressionConfigurer.java) is an example.  It overrides the table property for compression type when the sum of input files exceeds a certain size.
-              </div></li><li><div>
-                My motivation was in the past we had two compaction strategies included with Accumulo, one that filtered compaction candidates based on max size and another that changed the compression type based on input files sizes.  These had nothing to do with each other, but only one could be configured at a time.
+                Nevermind @ctubbsii , the information I was asking about is in the description.
+              </div></li><li><div><div><b>body:</b> @EdColeman I think adding a configuration parameter makes this issue more complex than something I would be comfortable asking a first-time contributor to do. That could be done as a follow-on issue, if it's in high demand. However, I do think we should keep in mind that the table name is primarily for humans, and should be within reason for humans to read, memorize, type in the shell, view on the monitor, see in the logs, etc.
 
- 
-              </div></li><li><div>
-                That should not be mentioned, that is a copy and paste bug.  I will fix that.
-              </div></li><li><div>
-                The javadoc for Map.copyOf says it will thow an NPE if its input is null.  So the requireNonNull could be dropped.
-              </div></li><li><div><div><b>body:</b> In that case, it too can be marked `@Deprecated` instead of merely suppressing the deprecation.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> I think other non-deprecated code calls this to deal with compaction strategies.  I was trying to put the code that does this in one place and in order to avoid suppression elsewhere.
+I do think you make a good point about it easy to get above 255, with a naming convention that is composed of a few different external sources. If 1024 is more reasonable than 255, I'd be happy to support that instead.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                removed in ecc79e3
+                Currently working on this one.
               </div></li><li><div>
-                Made immutable in ecc79e3
+                Awesome @cradal . Let me know if you run into any issues.
               </div></li><li><div>
-                fixed in ecc79e3
-              </div></li><li><div>
-                fixed in ecc79e3
-              </div></li><li><div>
-                fixed in ecc79e3
-              </div></li><li><div><div><b>body:</b> Would this be more appropriately named as a factory?  It seems to be creating a compaction configuration - so maybe something like CompressionConfigFactory?  
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I agree the current name is not great.  I am not too excited about CompressionConfigFactory either.  One thing that occurred to me while running a recent test on a cluster of this PR is that in addition to thinking of a new class name, we also need to think about the table property names.  Below are table props I set when running the test.
+                Regarding how to discern between the older tables and new ones with the length limit:
 
-```
-table.compaction.configurer=org.apache.accumulo.core.client.admin.compaction.CompressionConfigurer
-table.compaction.configurer.opts.large.compress.threshold=100M
-table.compaction.configurer.opts.large.compress.type=gz
-```
-              </div></li><li><div>
-                @ctubbsii does my answer address your concern?
-              </div></li><li><div>
-                @ctubbsii did the answer and the slack chat we had resolve this or do you think there is still something to be done?
-              </div></li><li><div>
-                Done in 8d024d8
-              </div></li><li><div><div><b>body:</b> Typo
-```suggestion
- * This class selects which files a user compaction will compact. It can also be configured per table
-```
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> Open issue for TODO 
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>body:</b> Open Issue for TODO
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>body:</b> Open issue for TODO
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>body:</b> Open issue for TODO
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>body:</b> Open issue for TODO
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div><div><b>body:</b> You don't want warnings for this class?  It is no longer used with this change.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I think these names weren't updated after previous changes.
-```suggestion
-  private PluginConfig selectorConfig = UserCompactionUtils.DEFAULT_SELECTOR;
-```
-              </div></li><li><div>
-                ```suggestion
-  private PluginConfig configurerConfig = UserCompactionUtils.DEFAULT_CONFIGURER;
-```
-              </div></li><li><div>
-                ```suggestion
- * imported files. Accumulo estimates that bulk imported files have zero entries. The second option
-```
-              </div></li><li><div>
-                ```suggestion
-      "Compaction planner for metadata table"),
-```
-              </div></li><li><div>
-                ```suggestion
-      "Options for the table compaction configurer"),
-```
-              </div></li><li><div>
-                ```suggestion
-      "A configurable dispatcher that decides what compaction service a table should use."),
-```
-              </div></li><li><div><div><b>body:</b> API javadoc needs description. 
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                I think these names weren't updated after previous changes. (see other suggestion)
-              </div></li><li><div>
-                Looks like no changes to this file
-              </div></li><li><div><div><b>body:</b> Not sure what this means, javadoc could be improved.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>body:</b> Javadoc description needed for public facing SPI.
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div>
-                ```suggestion
-  /**
-```
-              </div></li><li><div>
-                Should this class be in this package?
-              </div></li><li><div>
-                Should have brief description.
-              </div></li><li><div>
-                ```suggestion
- * default it dispatches to a compaction service named default.
- *
- * &lt;p&gt;
- * The following schema is supported for configuration options.
-```
-              </div></li><li><div>
-                ```suggestion
- * The following is a description of each functional component.
- *
- * &lt;ul&gt;
- * &lt;li&gt;&lt;b&gt;Compaction Manager&lt;/b&gt; A non pluggable component within the tablet server that brings all
- * other components together. The manager will route compactables to compaction services. For each
- * kind of compaction, an individual compactable will be routed to a single compaction service. For
-```
-              </div></li><li><div>
-                This related to removal for merging minor compactions?
-              </div></li><li><div>
-                Is all the work for removing merging minor compactions done here? 
-              </div></li><li><div>
-                Yes
-              </div></li><li><div>
-                done in 5aa9672
-              </div></li><li><div>
-                done in 5aa9672
-              </div></li><li><div>
-                done in 5aa9672
-              </div></li><li><div>
-                good catch, fixed in 5aa9672
-              </div></li><li><div>
-                yeah, eliminating merging minor compaction eliminated the need of dealing with a file being merged and in use by scans.
-              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Consistency of minor compaction and major compaction differ
-                </div><div><b>description:</b> Minor compactions add files to !METADATA table and then update the tablets in memory list of files.  Major compactions do the opposite, update in memory list then !METADATA.  In the case of machine failures, this could lead to a user see the result of major compaction iterators and then not seeing it.  Minor compactions do not have this issue.  See ACCUMULO-6
+I see this is an issue mainly with cloning and renaming, mainly. These ops are called in the FateServiceHandler for all tables. So, I think we need a way to branch between the two validation functions that account for no-limit-names and limited-names. 
 
+Here is a possible non-time-based  solution, although it is admittedly naive and has a pitfall. What about appending the Accumulo version number that the table was created under to the table name? We could set the user limit to 1024 characters, but have the internal limit to 1027 where the last three chars identify the Accumulo version (e.g. ...tablename1.9). In this way, the validation function could discern between an older table that breaks the new limit and a new table that is compliant by checking the final 3 chars.
 
-                </div></div></li><li><div><div><b>summary:</b> Consistency of minor compaction and major compaction differ
-                </div><div><b>description:</b> Minor compactions add files to !METADATA table and then update the tablets in memory list of files.  Major compactions do the opposite, update in memory list then !METADATA.  In the case of machine failures, this could lead to a user see the result of major compaction iterators and then not seeing it.  Minor compactions do not have this issue.  See ACCUMULO-6
+There is a clear pitfall here, though. There might be older tables that happen to have '1.9' as their last three characters. 
 
+I don't think using the ServerUtil class to detect upgrades will help because, once folks upgrade to the new version with the new limit, there still won't be a way to delineate between tables created pre-upgrade and those created post-upgrade.
 
-                </div></div></li><li><div><div><b>summary:</b> Consistency of minor compaction and major compaction differ
-                </div><div><b>description:</b> Minor compactions add files to !METADATA table and then update the tablets in memory list of files.  Major compactions do the opposite, update in memory list then !METADATA.  In the case of machine failures, this could lead to a user see the result of major compaction iterators and then not seeing it.  Minor compactions do not have this issue.  See ACCUMULO-6
+I will keep looking for identifying info, maybe from ZK or Master, that we can leverage.
+              </div></li><li><div>
+                &gt; Regarding how to discern between the older tables and new ones with the length limit:
 
+The primary action for this issue is to simply impose the limit for new table names. There is no need to distinguish between tables created prior to the restriction being imposed, and after.
 
-                </div></div></li><li><div><div><b>summary:</b> Consistency of minor compaction and major compaction differ
-                </div><div><b>description:</b> Minor compactions add files to !METADATA table and then update the tablets in memory list of files.  Major compactions do the opposite, update in memory list then !METADATA.  In the case of machine failures, this could lead to a user see the result of major compaction iterators and then not seeing it.  Minor compactions do not have this issue.  See ACCUMULO-6
+An optional secondary action is to log a warning with a recommendation to rename tables with names longer than the current limit. For that, there length of the current name is sufficient. There is still no need to distinguish between tables created before and after the limit.
+              </div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Giant table names kill the master
+                </div><div><b>description:</b> Attempting to create a 1MB table results in the master losing it's ZK lock and going down. It gets the following error message twice.
 
+We should probably limit table names for this reason.
 
-                </div></div></li><li><div><div><b>summary:</b> Consistency of minor compaction and major compaction differ
-                </div><div><b>description:</b> Minor compactions add files to !METADATA table and then update the tablets in memory list of files.  Major compactions do the opposite, update in memory list then !METADATA.  In the case of machine failures, this could lead to a user see the result of major compaction iterators and then not seeing it.  Minor compactions do not have this issue.  See ACCUMULO-6
+{code}Error connecting to zookeeper, will retry in 250
+	org.apache.zookeeper.KeeperException$ConnectionLossException: KeeperErrorCode = ConnectionLoss for /accumulo/8da9811c-b74a-43a8-9acd-f35365743241/fate/tx_5be1ffebf4a0a0c1/repo_
+		at org.apache.zookeeper.KeeperException.create(KeeperException.java:99)
+		at org.apache.zookeeper.KeeperException.create(KeeperException.java:51)
+		at org.apache.zookeeper.ZooKeeper.create(ZooKeeper.java:783)
+		at org.apache.accumulo.fate.zookeeper.ZooUtil.putPersistentSequential(ZooUtil.java:213)
+		at org.apache.accumulo.fate.zookeeper.ZooReaderWriter.putPersistentSequential(ZooReaderWriter.java:94)
+		at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+		at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+		at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+		at java.lang.reflect.Method.invoke(Method.java:622)
+		at org.apache.accumulo.server.zookeeper.ZooReaderWriter$1.invoke(ZooReaderWriter.java:67)
+		at com.sun.proxy.$Proxy2.putPersistentSequential(Unknown Source)
+		at org.apache.accumulo.fate.ZooStore.push(ZooStore.java:297)
+		at org.apache.accumulo.fate.AgeOffStore.push(AgeOffStore.java:176)
+		at org.apache.accumulo.fate.Fate.seedTransaction(Fate.java:163)
+		at org.apache.accumulo.server.master.Master$MasterClientServiceHandler.executeTableOperation(Master.java:832)
+		at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+		at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:57)
+		at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+		at java.lang.reflect.Method.invoke(Method.java:622)
+		at org.apache.accumulo.trace.instrument.thrift.TraceWrap$1.invoke(TraceWrap.java:63)
+		at com.sun.proxy.$Proxy3.executeTableOperation(Unknown Source)
+		at org.apache.accumulo.core.master.thrift.MasterClientService$Processor$executeTableOperation.getResult(MasterClientService.java:1591)
+		at org.apache.accumulo.core.master.thrift.MasterClientService$Processor$executeTableOperation.getResult(MasterClientService.java:1575)
+		at org.apache.thrift.ProcessFunction.process(ProcessFunction.java:39)
+		at org.apache.thrift.TBaseProcessor.process(TBaseProcessor.java:39)
+		at org.apache.accumulo.server.util.TServerUtils$TimedProcessor.process(TServerUtils.java:156)
+		at org.apache.thrift.server.AbstractNonblockingServer$FrameBuffer.invoke(AbstractNonblockingServer.java:478)
+		at org.apache.accumulo.server.util.TServerUtils$THsHaServer$Invocation.run(TServerUtils.java:208)
+		at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1146)
+		at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:615)
+		at org.apache.accumulo.trace.instrument.TraceRunnable.run(TraceRunnable.java:47)
+		at org.apache.accumulo.core.util.LoggingRunnable.run(LoggingRunnable.java:34)
+		at java.lang.Thread.run(Thread.java:701){code}
 
 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Any update to this issue? Considering how long it has been open, is it still a concern?
+                A sensible thing could be to adopt the DNS limits: maximum length of 63 bytes for each segment, which means that the maximum length for a fully-qualified table name (i.e. one in a namespace) would be 63+len(".")+63 = 127 bytes.
               </div></li><li><div>
-                There has been no interest in this ticket in the last three years.
+                To be clear, does "ConnectionLoss for /accumulo/8da9811c-b74a-43a8-9acd-f35365743241/fate/tx_5be1ffebf4a0a0c1/repo_" mean that part of the zookeeper entry was cut off? If so, is there an explicit zookeeper guideline for path size?
               </div></li><li><div>
-                This is an open bug. Just because no one has worked on it doesn't mean that it isn't relevant.
+                Closed as duplicate of https://github.com/apache/accumulo/issues/1430
               </div></li></ol></div></div></html>

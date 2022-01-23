@@ -1,146 +1,283 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 3
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> move log ops to callables on a threadpoolexecutor instead of synchronizing.  this prepares the way to merge multiple add() calls into a single sync.
-                </div><div><b>message:</b> move log ops to callables on a threadpoolexecutor instead of synchronizing.  this prepares the way to merge multiple add() calls into a single sync.
-patch by jbellis; reviewed by Jun Rao for CASSANDRA-182
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                
+         * There is 3 main cases that we can translate back into super column
+         * queries:
+         *   1) We have only one slice where the first component of start and
+         *   finish is the same, we translate as a slice query on one SC.
+         *   2) We have only one slice, neither the start and finish have a 2nd
+         *   component, and end has the 'end of component' set, we translate
+         *   as a slice of SCs.
+         *   3) Each slice has the same first component for start and finish, no
+         *   2nd component and each finish has the 'end of component' set, we
+         *   translate as a names query of SCs (the filter must then not be reversed).
+         * Otherwise, we can't do much.
+         
+              </div></li><li><div>
+                 The order of insertion matters!
+              </div></li><li><div>
+                 A slice of supercolumns
+              </div></li><li><div>
+                 Read one more super column
+              </div></li><li><div>
+                 An 'IdentityFilter', keep as is (except for the compositeToGroup)
+              </div></li><li><div><div><b>comment:</b> 
+         * There is 2 complications:
+         *   1) We need to know the number of super columns in the column
+         *   family to write in the header (so we do a first pass to group
+         *   columns before serializing).
+         *   2) For deletion infos, we need to figure out which are top-level
+         *   deletions and which are super columns deletions (i.e. the
+         *   subcolumns range deletions).
+         
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 Extract the first component of a columnName, i.e. the super column name
+              </div></li><li><div>
+                 We assume no range tombstone (there was no way to insert some in a SCF in 1.2)
+              </div></li><li><div>
+                 We're supposed to have either no deletion, or a full SC deletion.
+              </div></li><li><div>
+                 A slice of subcolumns
+              </div></li><li><div>
+                 Extract the 2nd component of a columnName, i.e. the sub-column name
+              </div></li><li><div>
+                 Note: all the resulting filter must have compositeToGroup == 0 because this
+ make no sense for super column on the destination node otherwise
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 new super column
+              </div></li><li><div>
+                 If we're selecting column across multiple SC, it's not something we can translate for an old node
+              </div></li><li><div>
+                 read the number of columns 
+              </div></li><li><div>
+                 Note that there was no way to insert a range tombstone in a SCF in 1.2
+              </div></li><li><div>
+                 Actually Serialize
+              </div></li><li><div>
+                 We don't use CompositeType.Builder mostly because we want to avoid having to provide the comparator.
+              </div></li><li><div>
+                 If the SC was deleted, return that first, otherwise return the first subcolumn
+              </div></li><li><div>
+                 1) we can keep comparator final
+              </div></li><li><div><div><b>comment:</b>  We need to continue saving the comparator and subcomparator separatly, otherwise
+ we won't know at deserialization if the subcomparator should be taken into account
+ TODO: we should implement an on-start migration if we want to get rid of that.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 A ColumnDefinition for super columns applies to the column component
+              </div></li><li><div>
+                 For super columns, the componentIndex is 1 because the ColumnDefinition applies to the column component.
+              </div></li><li><div>
+                 Two exceptions are "static CF" (non-composite non-compact CF) and "super CF"
+ that don't have marker and for which we must query all columns instead
+              </div></li><li><div><div><b>comment:</b> 
+ We never insert markers for Super CF as this would confuse the thrift side.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                 (don't need to worry about cfNew containing Columns that are shadowed by
+              </div></li><li><div>
+                *
+     * Flag affecting deserialization behavior.
+     *  - LOCAL: for deserialization of local data (Expired columns are
+     *      converted to tombstones (to gain disk space)).
+     *  - FROM_REMOTE: for deserialization of data received from remote hosts
+     *      (Expired columns are converted to tombstone and counters have
+     *      their delta cleared)
+     *  - PRESERVE_SIZE: used when no transformation must be performed, i.e,
+     *      when we must ensure that deserializing and reserializing the
+     *      result yield the exact same bytes. Streaming uses this.
+     
+              </div></li><li><div>
+                 Pre-2.0, we need to know if it's a super column. If it is, we
+ must extract the super column name from the predicate (and
+ modify the predicate accordingly)
+              </div></li><li><div>
+                 For super columns, when talking to an older node, we need to translate the filter used.
+ That translation can change the filter type (names -&gt; slice), and so change the command type.
+ Hence we need to detect that early on, before we've written the command type.
+              </div></li><li><div>
+                 Due to SC compat, it's possible we get back a slice filter at this point
+              </div></li><li><div>
+                 Give a bogus atom count since we'll deserialize as long as we're
+ within the index block but we don't know how much atom is there
+              </div></li><li><div>
+                 We'll read as much atom as there is in the index block, so provide a bogus atom count
+              </div></li><li><div>
+                *
+ * This class is obsolete internally, but kept for wire compatibility with
+ * older nodes. I.e. we kept it only for the serialization part.
+ 
+              </div></li><li><div>
+                 Extract component idx from bb. Return null if there is not enough component.
+              </div></li><li><div>
+                 skip end-of-component
+              </div></li><li><div>
+                 ja (1.3.0): super columns are serialized as composites
+             (note that there is no real format change, this is mostly a marker to know if we should expect super
+             columns or not. We do need a major version bump however, because we should not allow streaming of
+             super columns into this new format)
+              </div></li><li><div>
+                 Give time for cassandra to shutdown
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Replace supercolumns internally by composites
+                </div><div><b>message:</b> Replace supercolumns internally by composites
 
-git-svn-id: https://svn.apache.org/repos/asf/incubator/cassandra/trunk@798370 13f79535-47bb-0310-9956-ffa450edef68
+patch by slebresne; reviewed by Vijay for CASSANDRA-3237
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
-                </div></div></li><li><div><div><b>summary:</b> CommitLog.add doesn't really force to disk
-                </div><div><b>description:</b> CommitLog.add does't really force writes to disk. This could result in acked writes being lost.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> refactor super column implmentation to use composite column names instead
+                </div><div><b>description:</b> super columns are annoying.  composite columns offer a better API and performance.  people should use composites over super columns.  some people are already using super columns.  C* should implement the super column API in terms of composites to reduce code, complexity and testing as well as increase performance.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                1. Added a class in SequenceFile called SyncWriter
-2. New configuration option CommitLogForceLogs if you want "safe" writes. Not turning this on leaves everything else the same as before. All this does is use SyncWriter for the logger.
+                In order to continue to support the existing API (delete the children of this parent), we'll need to add an internal representation of deleted slices. CASSANDRA-674 can persist them, but ColumnFamily would also need a slice tombstones list.
+              </div></li><li><div>
+                We would also need to support fetching multiple non-contiguous slices from the same row in order to emulate fetching multiple super columns by name.
+              </div></li><li><div>
+                Multiple Slice Ranges in one query would be nice for the regular API to get access to if that is implemented.
+              </div></li><li><div>
+                We using supercolumns to provide us "buckets of counters". (I've attached the irc log discussing our valid use case for supercolumns).
 
-For trunk and 0.4 we should revisit the options we want to allow on the logs, especially once we re-architect the logger to use batched forces.
-              </div></li><li><div><div><b>body:</b> The more I look at the commitlog code the more I'm inclined to go with my initial reaction, that we shouldn't mess with this for 0.3... :-|
+Today with supercolumns you can select multiple supercolumns in one query.
+With composite columns you have to do a slice for each bucket. In our use case this explodes one query into hundreds of queries.
 
-The FastSync option looks like A&amp;P's attempt to deal with this.  It does call force() on close, for instance.  (Is that really all we need for durability?)  Having two options for syncing, one of which is commented to have issues and the other is virtually entirely untested, doesn't really seem like an improvement to me.
+Will the existing supercoumn API exist so we can continue doing single queries, or will it become possible to do "get_multislice" (get one row with mutliple column slices)?
+              </div></li><li><div>
+                bq. Will the existing supercoumn API exist 
 
-If we did go with "let's add a third option" then IMO we should be doing the force in CommitLog not the writer.  updateHeader for instance does a looping write w/ a single writer; i assume only one sync for the entire method is needed, not one sync per write.
-
-For 0.3 I suggest emailing A&amp;P off-list and see if they can clarify why fastsync has problems purging log files.  If it is something simple to fix great.  Otherwise let's note to "use fastsync for durable writes, but this has the drawback of not purging log files.  fixing this is a priority for 0.4"
+Yes. The first subtask here is about selecting multiple ranges so that we can emulate the "multiple supercolumns in one query" functionality.
+              </div></li><li><div>
+                Oops, helps to read the issue :-(
+              </div></li><li><div>
+                Will there be a migration path for the underlying SC data?  I have two years worth of data in SCs for the same reason as Mck. Having experienced the pain of the 0.6.x -&gt; 0.7.x migration, I'm not thrilled about the idea of figuring out how to get all my data into a new format.  No matter how much the C* community may despise SCs, a lot of people have a lot of data stored in them for valid reasons, so there needs to be a well-defined migration path.
+              </div></li><li><div><div><b>body:</b> @Robbie Don't worry, there will be a migration path or we won't do it. This has never been about breaking this for people, only about cleaning the internals of Cassandra.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> FastSync (inappropriately named, IMHO) option tells the CommitLog to use a FastConcurrentWriter. This certainly doesn't force to disk, and therefore is not an option for durable writes.
+                </div></div></li><li><div><div><b>body:</b> I think the effort will be in 2 phases.
 
-If we don't add a third option for 0.3 which forces to disk, we simply have *no* durable writes. Even on blocking writes, it is possible that the data has not hit disk in any of the replica's logs.
+Phase I:
+Super columns will internally use composite column for storage but will communicate between nodes as Super columns. (for wire compatibility during upgrade)
+We should also modify the startup to scrub the SCF and convert internally to Composite columns.
 
-We have two options:
-1. Release as is, and say "we don't offer durable writes yet"
-2. Add an option to force the logs and say "this is currently a low-performing option and will be improved for 0.4"
+Phase II:
+Make internode communication to use columns instead, Cleanup supercolumn specific code in the next major release.
 
-We can do the forces in CommitLog (probably a cleaner approach in terms of eliminating unnecessary forces, but updateHeader writes only for CFs encountered for the first time).  The approach in CASSANDRA-182.patch seemed minimally invasive to me :-)
-
-Building a well-tested high-performance logger will take significantly more time. (Just testing the logger for correctness is non-trivial.)
+What this means that the user has to upgrade to 1.3 before upgrading to 1.4 (if he/she uses SC).
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> FCW does force on close, leading me to believe that for whatever reason A&amp;P felt that was all that was needed to call the option "Sync."
+                </div></div></li><li><div><div><b>body:</b> I'm not really sure we need to really have 2 phases, and in any case I'm not convinced a startup scrub is the right approach.
 
-Of course I could be reading too much into this.  Always a possibility in "code archaeology." :)
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Assuming we don't hear back from Avinash &amp; Prashant, I suggest that we include a "known issues" section in the README for 0.3 noting this problem.  I'm not comfortable with basing the CL on brand-new code.
-
-For 0.4 let's take a closer look at FastSync and either build on that or rip it out and go with the approach in your patch (either in CL or the writer).  I'd like to see this coupled with a CL executor that force()s less than once per mutation if there is a constant stream of writes, similar to postgresql's commit_delay setting (http://www.postgresql.org/docs/8.3/static/runtime-config-wal.html).
-              </div></li><li><div>
-                I haven't heard back from A&amp;P.
-I'm fine with releasing as is and saying logging doesn't work correctly yet and that it'll be fixed soon.
-              </div></li><li><div>
-                Won't fix in 0.3
-              </div></li><li><div>
-                Are you working on this, Sandeep?  If not I will take it.
-              </div></li><li><div>
-                Nope, I'm not looking at this right now. 
-              </div></li><li><div>
-                confirmed that naive fsync-per-write kills performance -- i'm seeing 1/10 the throughput.
-
-will try the executor approach I mentioned above.
-              </div></li><li><div><div><b>body:</b> I did figure how to avoid using force(true) to flush the metadata in addition to the data (2 disk forces instead of one). If you preallocate the pages for the log file, you need to force(true) only when you have to grab more pages for the log. This would of course require some extra work in the logger code so the end of the log can be tracked without depending on file size/end of file.
+I think that what we need is to write conversions functions for &lt;CF with SC&gt; to and from &lt;CF with equivalent composite&gt; and for requests on both kind of CF. With those, I think you can directly remove the use of SC internally, you just use those functions for 1) compatibility when sending/receiving to/from older nodes and 2) decode old SC format when reading old sstables. Of course that's much more easily said than done.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                the executor approach is looking really good, but that's worth keeping in mind down the road.
-              </div></li><li><div><div><b>body:</b> 07
-    switch to arrayblockingqueue; it's a little cleaner and performance seems unaffected
+                Is there any page/post describing how exactly SC will be implemented using Composite Columns?
+              </div></li><li><div>
+                There isn't, but it's not like there is many way to do it. It'll be a composite with 2 components, the first one being the old SC name, and the second one being the old column name.
+              </div></li><li><div>
+                {quote}... in any case I'm not convinced a startup scrub is the right approach. I think that what we need is to write conversions functions...{quote}
+Despite there being no startup scrub this still means that a manual `nodetool upgradesstables` will use these conversions functions to rewrite all sstables to composite columns?
+              </div></li><li><div><div><b>body:</b> Attached patches for this at https://github.com/pcmanus/cassandra/commits/3237-1.
 
-06
-    config options.  increasing write threads to 32 (was 4) allows performance to be mostly decent again, especially if you crank the delay up to 10ms
+This ain't small so I'll try to explain the main idea here.
 
-05
-    custom CommitLogExecutorService that can fsync per multiple CL additions
+The main idea is that internally, super column families are handled for almost all intents and purposes as if their comparator was a simple CompositeType with 2 components: the 1st one is the old super column name, the 2nd one the old sub-column name. Meaning that they are largely not a special anymore and all the super column specific code go away (including SuperColumn.java).
 
-04
-    threadpoolexecutor, just using an out-of-the-box executor as a first step
+Now for compatibility sake, the main action is in the new SuperColumns.java class. This class contains a bunch of static methods that:
+* deserialize old super column format directly into new composite based CF.
+* serialize new composite based CF to the old super column format
+* convert 'super column query filters' to and from 'composite based query filters'.
 
-03
-    naive fsync-after-each-log-entry.  performance _sucks._
+Then in ColumnFamilySerializer and the ReadCommand serializer, we use those static methods when talking to old nodes (and a super column family is involved). We also convert thrift SC queries into equivalent ones on the new composite format in CassandraServer.java.
 
-02
-    mv AbstractWriter to its own top-level class and remove redundant IFileWriter
+The patch also don't shy away from removing abstractions that are not necessary anymore once super columns are removed. Most notably:
+* QueryPath is removed. It was honestly already kind of useless with super columns but even more so without them. It was also error-prone imho because some method that were taking a QueryPath were actually ignoring everything except the columnFamilyName for instance. I note that the class itself is not removed but kept only to simplify wire compatibility with old nodes.
+* IColumn and IColumnContainer are removed.
 
-01
-    handle incomplete CL entries on recover (a fairly important bug fix)
+We could also merge ColumnFamily and AbstractColumnContainer but I've left that to later.
 
+As far as testing goes:
+* the unit tests pass more or less. There's CassandraServerTest that timeout on my box, but it does so on trunk too (seems to be the JVM that don't exit properly). And there's also a few serializationTest failing but it seems to be more related to the fact that the patch bumps the messaging version up that anything else. I'll look at that later.
+* our old functional tests (in test/system) pass. Again, there is a few failure, but those are test that are assuming CollatingOrderedPartitioner (apparently nobody ran those tests in a while). Anyway, those tests test the thrift API for super columns fairly thorougly.
+* you can now access super column family from CQL3.
+* I've also (briefly) tested wire compatibily and that you can do super columns queries in a mixed version cluster.
+
+Regarding the CQL3 support, SCF for which column_metadata has been defined on the subcolumn are handled almost like sparse CF. The almost is because I've made sure we don't write row marker as in the case of sparse CF, cause that would break backward compatibility (there is no way to have a column with an empty name in a super column). For the same reason, collection are not supported either.
+
+One small downside that I need to note is that during upgrade from 1.2 to 2.0, there might be a noticeable latency increase in super column queries. The reason is that any read query that mix pre and post SC nodes will have a digest mismatch (and so will re-query with the full data). Indeed, digest are not versioned and cannot really be (not easily at least).
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                removed old patches, attached rebased ones
+                Vijay, can you review?
               </div></li><li><div>
-                The patch looks good to me. Thanks, Jonathan.
+                Will do thanks!
+              </div></li><li><div>
+                Have been staring at the patch for a while now... :)
++1, LGTM (We should fix the test though).
+              </div></li><li><div>
+                Alright then, committed, thanks.
 
+(I've fixed the serialization unit tests too)
               </div></li><li><div>
-                committed
-              </div></li><li><div>
-                Integrated in Cassandra #151 (See [http://hudson.zones.apache.org/hudson/job/Cassandra/151/])
-    Use arrayblockingqueue in commitlog executor; this cleans up the code a bit (performance is unaffected since the writes and syncs are far more expensive than any queue ops)
-patch by jbellis; reviewed by Jun Rao for 
-add config options for commitlog syncing
-patch by jbellis; reviewed by Jun Rao for 
-custom CommitLogExecutorService that can fsync per multiple CL additions
-patch by jbellis; reviewed by Jun Rao for 
-move log ops to callables on a threadpoolexecutor instead of synchronizing.  this prepares the way to merge multiple add() calls into a single sync.
-patch by jbellis; reviewed by Jun Rao for 
-naive fsync-after-each-log-entry
-patch by jbellis; reviewed by Jun Rao for 
-mv AbstractWriter to its own top-level class and remove redundant IFileWriter
-patch by jbellis; reviewed by Jun Rao for 
-handle incomplete CL entries on recover
-patch by jbellis; reviewed by Jun Rao for 
+                As an example, supposing I have an older schema with SuperColumns like this:
+{code:xml}
+ROWKEY:
+  SC1:
+    C1: val
+    C2: val
+  SC2:
+    C3: val
+    C4: val
+{code}
+With this schema I can query cassandra for "the first object in row ROWKEY", which would return:
+{code:xml}
+ SC1: (C1: val, C2: val)
+{code}
 
-              </div></li></ol></div></div></html>
+It seems that converting this to CompositeType columns the schema would look like:
+{code:xml}
+ROWKEY:
+  SC1:C1: val
+  SC1:C2: val
+  SC2:C3: val
+  SC2:C4: val
+{code}
+So using this converted schema, if I wanted to obtain the first object of that row, it seems that I would obtain:
+{code:xml}
+SC1:C1: val
+{code}
+
+How is this converted so that compatibility is preserved?
+
+Thanks.
+              </div></li><li><div>
+                bq. How is this converted so that compatibility is preserved?
+
+Exactly the way you've described it. But the code also convert queries on super columns, so that the query that select the first super column of a row still return all the super column, not just the first subcolumn.
+              </div></li><li><div>
+                Ah, great. But sorry to insist, it's just that I'm trying to convert my schemas away from SCF, and so I'm doing manually what this patch does automatically. I would like to know how can I query this CompositeType model to obtain those SCF compatible results. Can it be done with just one query?
+
+Say, if I wanted the first 2 SuperColumns, so I was expecting all SC1 and SC2 data, can I query Cassandra for the first 2 distinct values of the first component of a CompositeType column?
+
+Thanks again.
+              </div></li><li><div><div><b>body:</b> bq. and so I'm doing manually what this patch does automatically
+
+I'm afraid you cannot do *exactly* what the patch does, not at the moment at least, because said patch uses a way to count results that CQL3 uses and that is not exposed to thrift (see CASSANDRA-4989).
+
+bq. it's just that I'm trying to convert my schemas away from SCF
+
+I know there is a lot of "don't use super columns" floating out there, but honestly on the thrift side, the super column API is probably going to be more convenient if your use case do map well to them. And while SC do have limitations like 'they are always deserialized in their entirety', this patch fixes a good part of them moving forward. Just saying.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div></div></html>

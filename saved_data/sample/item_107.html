@@ -1,117 +1,1610 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 107
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> doc: fix typo in install notes (#4633)
-                </div><div><b>message:</b> doc: fix typo in install notes (#4633)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr (#3678)
+                </div><div><b>message:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr (#3678)
 
-Signed-off-by: Abhishek Kumar &lt;abhishek.mrt22@gmail.com&gt;
-                </div><div><b>label:</b> documentation
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> INSTALL.md misspell
-                </div><div><b>body:</b> line 133 # **yum -y instal gcc**
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
 
-it should be **yum -y install gcc**
-                </div></div></li><li><div><div><b>title:</b> INSTALL.md misspell
-                </div><div><b>body:</b> line 133 # **yum -y instal gcc**
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
 
-it should be **yum -y install gcc**
-                </div></div></li><li><div><div><b>title:</b> INSTALL.md misspell
-                </div><div><b>body:</b> line 133 # **yum -y instal gcc**
+Fixes: #3602
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
 
-it should be **yum -y install gcc**
-                </div></div></li><li><div><div><b>title:</b> INSTALL.md misspell
-                </div><div><b>body:</b> line 133 # **yum -y instal gcc**
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
 
-it should be **yum -y install gcc**
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
+                </div></div></li><li><div><div><b>title:</b> Using custom protocol in ACL rule, breaks ACL
+                </div><div><b>body:</b> &lt;!--
+Verify first that your issue/request is not already reported on GitHub.
+Also test if the latest release and master branch are affected too.
+Always add information AFTER of these HTML comments, but no need to delete the comments.
+--&gt;
+
+##### ISSUE TYPE
+&lt;!-- Pick one below and delete the rest --&gt;
+ * Bug Report
+
+
+##### COMPONENT NAME
+&lt;!--
+Categorize the issue, e.g. API, VR, VPN, UI, etc.
+--&gt;
+~~~
+mgmt, ACL rules handling
+~~~
+
+##### CLOUDSTACK VERSION
+&lt;!--
+New line separated list of affected versions, commit ID for issues on master branch.
+--&gt;
+
+~~~
+tested 4.11.2.0, 4.13.0.0
+~~~
+
+##### CONFIGURATION
+&lt;!--
+Information about the configuration if relevant, e.g. basic network, advanced networking, etc.  N/A otherwise
+--&gt;
+
+VPC, custom ACL with a few (ingress) rules applied to a network
+
+##### OS / ENVIRONMENT
+&lt;!--
+Information about the environment if relevant, N/A otherwise
+--&gt;
+NA
+
+##### SUMMARY
+&lt;!-- Explain the problem/feature briefly --&gt;
+
+Adding an ACL rule with a custom **protocol number** (i.e. protocol 50, 51 or any other) - will break ACL/iptables chain inside the VR in following way
+- all the rules BEFORE this one (rule number lower than the custom protocol rule number) will get properly applied
+- this specific rule (custom protocol number) will NOT be injected at all inside the VR (seems it is not sent by mgmt server to the VR ) 
+- all the rules that come AFTER this one, will be injected only AFTER the default DENY rule is injected
+
+
+##### STEPS TO REPRODUCE
+&lt;!--
+For bugs, show exactly how to reproduce the problem, using a minimal test-case. Use Screenshots if accurate.
+
+For new features, show how the feature would be used.
+--&gt;
+
+&lt;!-- Paste example playbooks or commands between quotes below --&gt;
+
+Create a VPC with custom ACL on the network i.e.:
+![image](https://user-images.githubusercontent.com/45762285/65315803-06ad2300-db99-11e9-980b-184eab9468e0.png)
+
+Confirm rules are properly applied inside the VR:
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+```
+
+Now, add a custom rule in the middle of the rules list (rule number 31 in the example below), as follows:
+
+![image](https://user-images.githubusercontent.com/45762285/65315955-4d9b1880-db99-11e9-8f51-56b12b6fb087.png)
+
+Again examine the rules in the VR:
+
+```
+root@r-47-VM:~# iptables-save | grep INBOUND_eth2
+:ACL_INBOUND_eth2 - [0:0]
+-A FORWARD -d 10.10.10.0/24 -o eth2 -j ACL_INBOUND_eth2
+-A ACL_INBOUND_eth2 -d 225.0.0.50/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -d 224.0.0.18/32 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 6.6.6.6/32 -p tcp -m tcp --dport 666 -j ACCEPT
+-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p tcp -m tcp --dport 222 -j ACCEPT
+-A ACL_INBOUND_eth2 -j DROP
+-A ACL_INBOUND_eth2 -s 3.3.3.3/32 -p tcp -m tcp --dport 333 -j ACCEPT
+```
+
+Notice that:
+- the rule for protocol 50 is missing (not even mentioned in the /var/log/cloud.log, while inside the management.log there is simply a "success" adding a rule - i.e. no exceptions)
+- the default DENY rule is applied in the middle of the chain
+- other rules (the ones that should come after the custom protocol number rule) are added later, below the DENY rule (so they never get evaluated)
+
+&lt;!-- You can also paste gist.github.com links for larger files --&gt;
+
+##### EXPECTED RESULTS
+&lt;!-- What did you expect to happen when running the steps above? --&gt;
+
+~~~
+A working ACL.
+~~~
+
+##### ACTUAL RESULTS
+&lt;!-- What actually happened? --&gt;
+
+&lt;!-- Paste verbatim command output between quotes below --&gt;
+~~~
+Read the "STEPS TO REPRODUCE" section.
+~~~
+
                 </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                @gavinma86 care to submit a PR?
+                For reference: IP protocol numbers 50 and 51 are for IPsec in transport mode. They are useful if IPsec endpoints are operated behind the router and tunnel mode (UDP port 500) cannot be used.
               </div></li><li><div>
-                Fixed by #4633
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> doc: fix typo in install notes
-                </div><div><b>body:</b> ### Description
-Fixes #4546 
+                _(I tested with protocol number 6 (TCP) and saw the same behaviour)_
+              </div></li><li><div>
+                @andrijapanicsb 
+have you fixed this issue? If not, I will take it. we have a fix for it.
+              </div></li><li><div>
+                not yet @weizhouapache, thx in advance! 
+              </div></li><li><div>
+                @andrijapanicsb I have created a PR #3678 for this issue.
+Please review/test it, thanks !
+              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
 
-&lt;!--- ********************************************************************************* --&gt;
-&lt;!--- NOTE: AUTOMATATION USES THE DESCRIPTIONS TO SET LABELS AND PRODUCE DOCUMENTATION. --&gt;
-&lt;!--- PLEASE PUT AN 'X' in only **ONE** box --&gt;
-&lt;!--- ********************************************************************************* --&gt;
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
 
-### Types of changes
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
 
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
 - [ ] Breaking change (fix or feature that would cause existing functionality to change)
 - [ ] New feature (non-breaking change which adds functionality)
-- [x] Bug fix (non-breaking change which fixes an issue)
+- [X] Bug fix (non-breaking change which fixes an issue)
 - [ ] Enhancement (improves an existing feature and functionality)
 - [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
 
-### Feature/Enhancement Scale or Bug Severity
+## Screenshots (if appropriate):
 
-#### Feature/Enhancement Scale
-
-- [ ] Major
-- [ ] Minor
-
-#### Bug Severity
-
-- [ ] BLOCKER
-- [ ] Critical
-- [ ] Major
-- [ ] Minor
-- [x] Trivial
-
-
-### Screenshots (if appropriate):
-
-
-### How Has This Been Tested?
+## How Has This Been Tested?
 &lt;!-- Please describe in detail how you tested your changes. --&gt;
 &lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
 &lt;!-- see how your change affects other areas of the code, etc. --&gt;
 
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
 
 &lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
 
-                </div></div></li><li><div><div><b>title:</b> doc: fix typo in install notes
-                </div><div><b>body:</b> ### Description
-Fixes #4546 
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
 
-&lt;!--- ********************************************************************************* --&gt;
-&lt;!--- NOTE: AUTOMATATION USES THE DESCRIPTIONS TO SET LABELS AND PRODUCE DOCUMENTATION. --&gt;
-&lt;!--- PLEASE PUT AN 'X' in only **ONE** box --&gt;
-&lt;!--- ********************************************************************************* --&gt;
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
 
-### Types of changes
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
 
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
 - [ ] Breaking change (fix or feature that would cause existing functionality to change)
 - [ ] New feature (non-breaking change which adds functionality)
-- [x] Bug fix (non-breaking change which fixes an issue)
+- [X] Bug fix (non-breaking change which fixes an issue)
 - [ ] Enhancement (improves an existing feature and functionality)
 - [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
 
-### Feature/Enhancement Scale or Bug Severity
+## Screenshots (if appropriate):
 
-#### Feature/Enhancement Scale
-
-- [ ] Major
-- [ ] Minor
-
-#### Bug Severity
-
-- [ ] BLOCKER
-- [ ] Critical
-- [ ] Major
-- [ ] Minor
-- [x] Trivial
-
-
-### Screenshots (if appropriate):
-
-
-### How Has This Been Tested?
+## How Has This Been Tested?
 &lt;!-- Please describe in detail how you tested your changes. --&gt;
 &lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
 &lt;!-- see how your change affects other areas of the code, etc. --&gt;
 
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
 
 &lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
 
                 </div><div><b>label:</b> documentation
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li><li><div><div><b>title:</b> vpc: fix acl rule with protocol number is not applied correctly in vpc vr
+                </div><div><b>body:</b> ## Description
+&lt;!--- Describe your changes in detail --&gt;
+
+&lt;!-- For new features, provide link to FS, dev ML discussion etc. --&gt;
+&lt;!-- In case of bug fix, the expected and actual behaviours, steps to reproduce. --&gt;
+
+&lt;!-- When "Fixes: #&lt;id&gt;" is specified, the issue/PR will automatically be closed when this PR gets merged --&gt;
+&lt;!-- For addressing multiple issues/PRs, use multiple "Fixes: #&lt;id&gt;" --&gt;
+&lt;!-- Fixes: # --&gt;
+
+When add a acl rule with protocol number, the iptables rules in vpc vr is not applied correctly.
+for example, when add an ingress acl rule (protocol number:50, cidr: 2.2.2.2/32), we expect to have a iptables rule: "-A ACL_INBOUND_eth2 -s 2.2.2.2/32 -p esp -j ACCEPT"
+the actual rule is "-A ACL_INBOUND_eth2 -j DROP"
+
+It is because the rules in json are not correct.
+network_acl.json.a8c52dca-0278-4e1c-b72b-987ca7121f4f.gz:{"device":"eth2","mac_address":"02:00:7d:27:00:02","private_gateway_acl":false,"nic_ip":"192.168.11.12","nic_netmask":"28","ingress_rules":[{"type":"protocol","protocol":50,"cidr":"ACCEPT","allowed":false},{"type":"all","cidr":"0.0.0.0/0","allowed":true},],"egress_rules":[],"type":"networkacl"}
+
+Fixes: #3602 
+
+## Types of changes
+&lt;!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: --&gt;
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] New feature (non-breaking change which adds functionality)
+- [X] Bug fix (non-breaking change which fixes an issue)
+- [ ] Enhancement (improves an existing feature and functionality)
+- [ ] Cleanup (Code refactoring and cleanup, that may add test cases)
+
+## Screenshots (if appropriate):
+
+## How Has This Been Tested?
+&lt;!-- Please describe in detail how you tested your changes. --&gt;
+&lt;!-- Include details of your testing environment, and the tests you ran to --&gt;
+&lt;!-- see how your change affects other areas of the code, etc. --&gt;
+
+Add acl rule in VPC, then check the iptables rules in VPC VR. all are good with this change.
+
+&lt;!-- Please read the [CONTRIBUTING](https://github.com/apache/cloudstack/blob/master/CONTRIBUTING.md) document --&gt;
+
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                @blueorangutan package
+              </div></li><li><div>
+                @andrijapanicsb a Jenkins job has been kicked to build packages. I'll keep you posted as I make progress.
+              </div></li><li><div>
+                Packaging result: ✔centos6 ✔centos7 ✔debian. JID-350
+              </div></li><li><div>
+                @blueorangutan test
+              </div></li><li><div>
+                @blueorangutan test
+              </div></li><li><div>
+                @andrijapanicsb a Trillian-Jenkins test job (centos7 mgmt + kvm-centos7) has been kicked to run smoke tests
+              </div></li><li><div>
+                @weizhouapache seems that blueorangutan doesn't honour your request, will need to kick his bash :) 
+thx for the fix, I'm testing manually as we speak.
+              </div></li><li><div>
+                LGTM
+
+tested manually, results below.
+
+Setup:
+![image](https://user-images.githubusercontent.com/45762285/68716860-7b9f4680-05a5-11ea-9610-c09e7ab48ab3.png)
+
+Results as expected:
+![image](https://user-images.githubusercontent.com/45762285/68716817-5f9ba500-05a5-11ea-8eaa-5b639d05c674.png)
+
+The only concern I have is that the PORT for the custom protocol is NOT honoured, and the rule simply allows any port with ESP protocol (50) or AH (51) - will work in sense of connectivity, but perhaps you want to advise @weizhouapache  /CC @rhtyd 
+              </div></li><li><div><div><b>body:</b> Actually, by checking some strongswan documentation, that is how rules should be added (no PORT definition in the rule) - so that is all OK.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                &lt;b&gt;Trillian test result (tid-472)&lt;/b&gt;
+Environment: kvm-centos7 (x2), Advanced Networking with Mgmt server 7
+Total time taken: 28154 seconds
+Marvin logs: https://github.com/blueorangutan/acs-prs/releases/download/trillian/pr3678-t472-kvm-centos7.zip
+Smoke tests completed. 77 look OK, 0 have error(s)
+Only failed tests results shown below:
+
+
+Test | Result | Time (s) | Test File
+--- | --- | --- | ---
+
+              </div></li><li><div>
+                @andrijapanicsb thanks for testing !
+
+dport is not supported by some protocols , for example ah/esp/gre (50/51/47)
+According to iptables document (https://linux.die.net/man/8/iptables) , dport is supported by some other protocols  besides tcp/udp , for example dccp, sctp. The protocols are rarely used.
+
+              </div></li><li><div>
+                @andrijapanicsb 
+I have tested in a virtual router, it gives the same result, only tcp/udp/dccp/sctp support dport.
+
+```
+root@r-597-VM:~# for i in `seq 0 142`;do iptables -I ACL_INBOUND_eth2 -p $i --dport 1000 -j ACCEPT &gt;/dev/null 2&gt;&amp;1;if [ "$?" == "0" ];then echo $i;fi;done
+6
+17
+33
+132
+```
+https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+              </div></li><li><div>
+                yes @weizhouapache that's what I mean, that's fine. 
+              </div></li><li><div>
+                @andrijapanicsb nice. 
+maybe we can take dccp/sctp into consideration afterwards.
+They are not in use on our platforms.
+              </div></li><li><div>
+                your call @weizhouapache  (for now, I'm fine with just this fix here). Thx
+              </div></li><li><div>
+                @rhtyd @DaanHoogland can you please review it ?
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

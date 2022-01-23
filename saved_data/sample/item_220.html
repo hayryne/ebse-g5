@@ -1,471 +1,156 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 220
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>message:</b> ZOOKEEPER-3479: Logging false leader election times
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ZOOKEEPER-3074: Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>message:</b> ZOOKEEPER-3074: Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
 
-See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
+more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
 
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
+Author: maoling &lt;maoling199210191@sina.com&gt;
 
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
+Reviewers: hanm@apache.org, andor@apache.org, nkalmar@cloudera.com
 
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
+Closes #556 from maoling/ZOOKEEPER-3074
 
-Author: foo bar &lt;karolos@gmail.com&gt;
+(cherry picked from commit 81b51554922d4cee5dde4a848a106f286f4c407b)
+Signed-off-by: Andor Molnar &lt;andor@apache.org&gt;
 
-Reviewers: Michael Han &lt;hanm@apache.org&gt;, Allan Lyu &lt;fangmin@apache.org&gt;
-
-Closes #1031 from insumity/ZOOKEEPER-3479
-
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
+                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3074:Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>body:</b> more details in [ZOOKEEPER-3074](https://issues.apache.org/jira/browse/ZOOKEEPER-3074)
                 </div><div><b>label:</b> test
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
-                </div></div></li><li><div><div><b>title:</b> ZOOKEEPER-3479: Logging false leader election times
-                </div><div><b>body:</b> See https://issues.apache.org/jira/browse/ZOOKEEPER-3479 here for the issue.
-
-The problem is that the logged leader election times are much smaller than in reality. For example, we have log files that contain the following lines:
-```
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS
-```
-Leader election took more than 400ms, not 1ms!
-
-
-The reason this logging bug exists has to do with this [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402) in `QuorumPeer`. The computation of the leader election time starts inside [`FastLeaderElection.lookForLeader` ](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L915) where `start_fle` is set. After a server has found a leader, it repeats the `QuorumPeer` [loop](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288) and resets the `start_fle` value. Hence, when, for example, a follower [logs](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/Follower.java#L75) how much time it took for the leader election, it logs a much smaller time than it actually took for the leader election to complete. To be precise, it just logs the time it took to loop inside [`QuorumPeer`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1288).
-
-Furthermore, if we remove the problematic [line](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402), then there is no reason to check whether `start_fle == 0` in [`FastLeaderElection`](https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java#L914), since `start_fle` is always `0` at that point. I'm not sure if this `if` statement is needed in the first place.
-
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                LGTM.
+                +1 thank you @maoling !
 
-@lvfangmin Any feedback for this patch? I am curious if you guys use something different internally to measure LE time, as the current LE metrics is not very reliable.
+i've restarted the build. if it passes, i'll get this committed.
               </div></li><li><div>
-                @hanm internally, we're tracking the quorum unavailable time, which is the time between server first went to LOOKING state and set ZAB state to leading broadcast state. This is close to real quorum unavailable time in general, which includes leader election time + leader activation time (syncing with majority).
-
-This metric is more useful than the leader election itself, and we're using this instead of the leader election metric, we'll contribute that back as well.
-              </div></li><li><div><div><b>body:</b> Jenkins failed due to flaky test in CommitProcessorMetricsTest, tracked in JIRA ZOOKEEPER-3480.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div>
-                retest maven build
+                Looks like it has already passed, status just hasn't been updated here.
               </div></li><li><div>
-                retest maven build
+                yes, it did look like they passed, but it stayed as failed. kicking again.
               </div></li><li><div>
-                thanks @lvfangmin.
-
-&gt;&gt; which includes leader election time + leader activation time
-
-Agree. Since this also include LE time, unless you guys are using something different to measure LE, this patch should improve your metrics accuracy as well, though it probably would not make a big difference if the leader activation time costs a lot more than LE. 
+                it would be nice to get this in. i'm on vacation right now. @anmolnar or @phunt do you have any idea how we can debug what is going on on jenkins?
               </div></li><li><div>
-                test maven build
+                @maoling Would you please re-open the pull request and see how it goes?
+I'll open an INFRA ticket, if it's hanging again.
               </div></li><li><div>
-                retest maven build
+                What was the issue? All tests passed but Jenkins still complains? The Jenkins check also includes findbug and forrrest (documentation) check if I remember correctly. Maybe it was find bug complaining?
+
+In any case, I would reopen this PR which will kick off Jenkins and then we can start from there. There is no way of debugging without looking into the actual Jenkins job that complains.
               </div></li><li><div>
-                retest maven build
+                As far as I remember Jenkins job finished successfully, but hasn't updated this PR's status.
               </div></li><li><div>
-                retest maven build
+                &gt;&gt; As far as I remember Jenkins job finished successfully, but hasn't updated this PR's status.
+
+It could be an infrastructure issue that Jenkins job failed to post the comment to github after it succeeded. If we still have to a link to that Jenkins job, i can take a look. Anyway, it's green now, and this one is ready to commit.
               </div></li><li><div>
-                retest maven build
-              </div></li><li><div>
-                Thanks @insumity , the build is green now, and I am landing this patch.
-              </div></li><li><div>
-                &gt; This metric is more useful than the leader election itself, and we're using this instead of the leader election metric, we'll contribute that back as well.
-
-@lvfangmin Your point makes sense. Did you contribute that metric back? I am interested in it.
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Logging false leader election times
-                </div><div><b>description:</b> There seems to be a problem with the logging of leader election times: the logged times are much smaller than the actual time it took for the leader election to complete.
-
-This bug can be easily reproduced by following these steps:
-
-1) Run a ZK cluster of 3 servers
-
-2) Kill the server that is currently the leader
-
-3) The log files of the remaining 2 servers contain false leader election times
-
-&nbsp;
-
-In the attached files you can see the log files of the remaining 2 serve. For brevity, I removed the parts before and after the leader election from the log files.
-
-For example, in {{server1.txt}} we can see that:
-
-&nbsp;
-{code:java}
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS{code}
-Leader election supposedly took only 1ms, but in reality it took (32,272 - 31,853) = 419ms!
-
-The reason for this bug seems to be the introduction of this line
-{code:java}
-start_fle =&nbsp;Time.currentElapsedTime();{code}
-(seen here&nbsp;[https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402])&nbsp;
-
-back in this commit&nbsp;[https://github.com/apache/zookeeper/commit/5428cd4bc963c2e653a260c458a8a8edf3fa08ef].
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-                </div></div></li><li><div><div><b>summary:</b> Logging false leader election times
-                </div><div><b>description:</b> There seems to be a problem with the logging of leader election times: the logged times are much smaller than the actual time it took for the leader election to complete.
-
-This bug can be easily reproduced by following these steps:
-
-1) Run a ZK cluster of 3 servers
-
-2) Kill the server that is currently the leader
-
-3) The log files of the remaining 2 servers contain false leader election times
-
-&nbsp;
-
-In the attached files you can see the log files of the remaining 2 serve. For brevity, I removed the parts before and after the leader election from the log files.
-
-For example, in {{server1.txt}} we can see that:
-
-&nbsp;
-{code:java}
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS{code}
-Leader election supposedly took only 1ms, but in reality it took (32,272 - 31,853) = 419ms!
-
-The reason for this bug seems to be the introduction of this line
-{code:java}
-start_fle =&nbsp;Time.currentElapsedTime();{code}
-(seen here&nbsp;[https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402])&nbsp;
-
-back in this commit&nbsp;[https://github.com/apache/zookeeper/commit/5428cd4bc963c2e653a260c458a8a8edf3fa08ef].
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-                </div></div></li><li><div><div><b>summary:</b> Logging false leader election times
-                </div><div><b>description:</b> There seems to be a problem with the logging of leader election times: the logged times are much smaller than the actual time it took for the leader election to complete.
-
-This bug can be easily reproduced by following these steps:
-
-1) Run a ZK cluster of 3 servers
-
-2) Kill the server that is currently the leader
-
-3) The log files of the remaining 2 servers contain false leader election times
-
-&nbsp;
-
-In the attached files you can see the log files of the remaining 2 serve. For brevity, I removed the parts before and after the leader election from the log files.
-
-For example, in {{server1.txt}} we can see that:
-
-&nbsp;
-{code:java}
-2019-07-31 00:57:31,852 [myid:1] - WARN [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1318] - PeerState set to LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):QuorumPeer@1193] - LOOKING
-2019-07-31 00:57:31,853 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):FastLeaderElection@885] - New election. My id = 1, proposed zxid=0x100000001
-[...]
-2019-07-31 00:57:32,272 [myid:1] - INFO [QuorumPeer[myid=1](plain=/0.0.0.0:2791)(secure=disabled):Follower@69] - FOLLOWING - LEADER ELECTION TOOK - 1 MS{code}
-Leader election supposedly took only 1ms, but in reality it took (32,272 - 31,853) = 419ms!
-
-The reason for this bug seems to be the introduction of this line
-{code:java}
-start_fle =&nbsp;Time.currentElapsedTime();{code}
-(seen here&nbsp;[https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java#L1402])&nbsp;
-
-back in this commit&nbsp;[https://github.com/apache/zookeeper/commit/5428cd4bc963c2e653a260c458a8a8edf3fa08ef].
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
+                Merged to 3.5 and master branches.
+Thanks @maoling !
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Thanks for catching this and fixing it! The serverstats.getMaxLatency() should of went in the "actual" parameter and the magic number as the greaterThanOrEqualTo parameter. (I did this test. Sorry...)
+But changing greater to less work just fine.
+              </div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Flaky test:org.apache.zookeeper.server.ServerStatsTest.testLatencyMetrics
+                </div><div><b>description:</b> Jenkins complains about this Flaky test: https://builds.apache.org/job/ZooKeeper-trunk/77/testReport/junit/org.apache.zookeeper.server/ServerStatsTest/testLatencyMetrics/
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Issue resolved by pull request 1031
-[https://github.com/apache/zookeeper/pull/1031]
-              </div></li><li><div>
-                FAILURE: Integrated in Jenkins build ZooKeeper-trunk #643 (See [https://builds.apache.org/job/ZooKeeper-trunk/643/])
-ZOOKEEPER-3479: Logging false leader election times (hanm: rev 3882a0171f91280bf1adbbd4ffaeb17cb5131316)
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java
+                -1 overall.  GitHub Pull Request  Build
+      
 
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 3.0.1) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    -1 core tests.  The patch failed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1889//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1889//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1889//console
+
+This message is automatically generated.
               </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build Zookeeper-trunk-single-thread #479 (See [https://builds.apache.org/job/Zookeeper-trunk-single-thread/479/])
-ZOOKEEPER-3479: Logging false leader election times (hanm: rev 3882a0171f91280bf1adbbd4ffaeb17cb5131316)
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/FastLeaderElection.java
-* (edit) zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/QuorumPeer.java
+                -1 overall.  GitHub Pull Request  Build
+      
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 3.0.1) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    -1 core tests.  The patch failed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1913//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1913//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1913//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                +1 overall.  GitHub Pull Request  Build
+      
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    +1 findbugs.  The patch does not introduce any new Findbugs (version 3.0.1) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed core unit tests.
+
+    +1 contrib tests.  The patch passed contrib unit tests.
+
+Test results: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1958//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1958//artifact/trunk/build/test/findbugs/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-ZOOKEEPER-github-pr-build/1958//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Issue resolved by pull request 556
+[https://github.com/apache/zookeeper/pull/556]
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build ZooKeeper-trunk #108 (See [https://builds.apache.org/job/ZooKeeper-trunk/108/])
+ZOOKEEPER-3074: Flaky (andor: rev 81b51554922d4cee5dde4a848a106f286f4c407b)
+* (edit) src/java/test/org/apache/zookeeper/server/ServerStatsTest.java
 
               </div></li></ol></div></div></html>

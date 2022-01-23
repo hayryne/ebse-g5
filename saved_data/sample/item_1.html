@@ -1,89 +1,61 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 1
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> do not recalculate cache capacity post-compaction if it's been manually modified.  patch by jbellis; reviewed by Ryan King for CASSANDRA-1079
-                </div><div><b>message:</b> do not recalculate cache capacity post-compaction if it's been manually modified.  patch by jbellis; reviewed by Ryan King for CASSANDRA-1079
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 The current element cover a single value which is equal to the start of the inserted
+ element. If the inserted element overwrites the current one, just remove the current
+ (it's included in what we insert) and proceed with the insert.
+              </div></li><li><div>
+                 Does the new element stops before/at the current one,
+              </div></li><li><div>
+                 Otherwise (the current singleton interval override the new one), we want to leave the
+ current element and move to the next, unless start == end since that means the new element
+ is in fact fully covered by the current one (so we're done)
+              </div></li><li><div>
+                 Here start &lt;= starts[i] and end &lt;= starts[i]
+ This means the current element is before the current one. However, one special
+ case is if end == starts[i] and starts[i] == ends[i]. In that case,
+ the new element entirely overwrite the current one and we can just overwrite
+              </div></li><li><div>
+                 If start == ends[i], then we can insert from the next one (basically the new element
+ really start at the next element), except for the case where starts[i] == ends[i].
+ In this latter case, if we were to move to next element, we could end up with ...[x, x][x, x]...
+              </div></li><li><div>
+                 We generate the list randomly, so "all" we check is that the resulting range tombstone list looks valid.
+              </div></li><li><div>
+                 We check that ranges are in the right order and that we never have something
+ like ...[x, x][x, x] ...
+              </div></li><li><div>
+                 We can have an interval [x, x], but not 2 consecutives ones for the same x
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Fix potential AssertionError in RangeTombstoneList
+                </div><div><b>message:</b> Fix potential AssertionError in RangeTombstoneList
 
-git-svn-id: https://svn.apache.org/repos/asf/cassandra/branches/cassandra-0.6@945315 13f79535-47bb-0310-9956-ffa450edef68
+patch by slebresne; reviewed by thobbs for CASSANDRA-7700
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Unexpected exception in RangeTombstoneList.insertFrom during Python Driver Duration Test
+                </div><div><b>description:</b> Found the attached exception (duration test log and associated Cassandra log) when running the Python driver duration tests against CASSANDRA_VERSION=cassandra-2.1.0-rc5 and master branch of driver. Error repeated in logs twice over 12 hours on master_gevent cluster, and once on gevent cluster over the same time period. Cluster and associated cluster setup via ctool.
 
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
+Log excerpt:
+{noformat}
+INFO  [MemtableFlushWriter:184] 2014-08-05 05:45:39,161 Memtable.java:360 - Completed flushing /srv/performance/cass/data/duration_test/ints-133f8c901c2f11e491e66b1b73f81641/duration_test-ints-ka-173-Data.db (2131716 bytes) for commitlog position ReplayPosition(segmentId=1407193910537, position=13460548)
+ERROR [SharedPool-Worker-7] 2014-08-05 05:45:45,160 ErrorMessage.java:218 - Unexpected exception during request
+java.lang.AssertionError: null
+	at org.apache.cassandra.db.RangeTombstoneList.insertFrom(RangeTombstoneList.java:528) ~[main/:na]
+	at org.apache.cassandra.db.RangeTombstoneList.addAll(RangeTombstoneList.java:221) ~[main/:na]
+{noformat}
 
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
+more details in attachment.
 
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
 
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
-                </div></div></li><li><div><div><b>summary:</b> Cache capacity settings done via nodetool get reset on memtable flushes
-                </div><div><b>description:</b> In an experiment we set cache capacities via nodetool. The config file had the KeyCache for this CF at 1000000, we set the RowCache to 10000000 via nodetool.
-
-The next time we flushed a memtable for that CF, the cache capacity settings got reverted to what is in the conf file. We repeated the experiment with the same results.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                this is working as designed.  the config file is The Source Of Truth for settings it contains.
-              </div></li><li><div><div><b>body:</b> If we're not going to let the jmx-based setting live longer than one memtable, we should probably remove the ability to set it that way. The current behavior is too surprising.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> It's not surprising if you remember that the conf is The Source Of Truth. :)
+                Could you point to the duration test that was run exactly? To at least know the kind of operation involved.
+              </div></li><li><div><div><b>body:</b> I'm reasonably confident that this is due to the fact that RangeTombstoneList does not handle properly ranges with the same start and end.
 
-I'm big on "there should only be one way to do it" but restarting to test cache size effects is too painful.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> ??I'm big on "there should only be one way to do it" but restarting to test cache size effects is too painful.??
+No query directly create such ranges currently but while writing sstables, it's possible for the {{RangeTombstone.Tracker.writeOpenedMarker}} method to create some. It's not new, 2.0 is affected too, though you'd have to be reasonably unlucky to trigger it, which is probably why we haven't seen it reported before.
 
-I'm confused. Did you mean "isn't"?
-                </div><div><b>label:</b> code-design
+Attaching a patch (against 2.0) to properly handle such ranges. It includes a unit test thati does reproduce the assertion error here, though I'll note that I haven't ran the duration tests described above, so I'm suspecting the problem is indeed the one I describe and test here but I'm not 100% sure (it is "a" bug worth fixing in any case).
+                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                I think the disconnect is that Ryan and Jeff would like to be able to tune cache sizes on a cluster that is receiving writes, which is difficult when it is reset per-memtable.
+                +1
               </div></li><li><div>
-                Oh.  Sometimes I need to read things twice -- yes, it's a bug if it's not persisting between flushes.  (I'm saying that it's not supposed to persist b/t restarts, unless you change the conf file too.)
-              </div></li><li><div>
-                Yes, "not persisting  between restarts" is expected, it currently gets reset when at every flush.
-              </div></li><li><div>
-                It appears the problem is that SSTableTracker's replace method calls updateCacheSizes, which reads the cache settings from DatabaseDescriptor (which doesn't get updated by the jmx command).
-              </div></li><li><div>
-                patch to not recalculate cache capacity if it's been manually modified
-              </div></li><li><div>
-                Patch looks good to me.
-              </div></li><li><div>
-                committed
+                Committed, thanks
               </div></li></ol></div></div></html>

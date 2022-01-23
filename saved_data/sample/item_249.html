@@ -1,1342 +1,485 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 249
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Update to mochiweb 2.19.0
-                </div><div><b>message:</b> Update to mochiweb 2.19.0
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Unlink index pid and swallow EXIT message if present
+                </div><div><b>message:</b> Unlink index pid and swallow EXIT message if present
 
-It has a fix to revert user socket buffer size to 8192 and also
-allow setting this buffer values directly (not necessarily
-via {recbuf, ...}).
+This should prevent unexpected exit messages arriving which crash
+couch_index_server.
 
-Fixes #1810
+Patch suggested by davisp.
 
-Warning:
+Closes #3061.
 
-2.19.0 blacklists a series of OTP releases: 21.2, 21.2.1, 21.2.2
-This is done via a runtime check of the ssl application version.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-The blacklist seems valid as there is a bug which prevents data from
-being delivered on TSL sockets. That could affect either CouchDB
-server side (chttpd) or replication client side (ibrowse).
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-Example of failing request: 
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
+where the "fd" was not a live process.
 
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-Example of successful request:
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
+where the "fd" was not a live process.
 
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-Example of failing request: 
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
+where the "fd" was not a live process.
 
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-Example of failing request: 
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-Example of successful request:
+where the "fd" was not a live process.
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
+where the "fd" was not a live process.
 
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-Example of failing request: 
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-Example of successful request:
+where the "fd" was not a live process.
 
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
 
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
 
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
 
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
 
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
 
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
-                </div></div></li><li><div><div><b>title:</b> Requests return 400 Bad Request when URL length exceeds 1460 characters
-                </div><div><b>body:</b> When using `chttpd.server_option = [{recbuf, undefined}]`, requests with URL length exceeding 1459 characters fail with `400 Bad Request` with no error in the logs. (The relevant URL length excludes protocol and userinfo).
-
-Example of failing request: 
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1467 (1460 excluding protocol and userinfo)
-
-## Expected Behavior
-Should return:
-```
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 404 Object Not Found
-Cache-Control: must-revalidate
-Content-Length: 41
-Content-Type: application/json
-Date: Thu, 13 Dec 2018 13:18:50 GMT
-Server: CouchDB/2.3.0 (Erlang OTP/20)
-X-Couch-Request-ID: 0b4ad7148f
-X-CouchDB-Body-Time: 0 
-{"error":"not_found","reason":"missing"}
-```
-
-## Current Behavior
-Actually returns:
-```
-HTTP/1.1
-Host: 127.0.0.1:5984
-User-Agent: curl/7.58.0
-Accept: */*
- 
-HTTP/1.1 400 Bad Request
-Connection: close
-Content-Length: 0
-Date: Thu, 13 Dec 2018 13:15:09 GMT
-Server: MochiWeb/1.0 (Any of you quaids got a smint?) 
-```
-
-Example of successful request:
-
-```
-curl -v http://127.0.0.1:5984/_users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-```
-URL length is 1466 (1459 excluding protocol and userinfo). 
-
-## Possible Cause
-It appears that, by not setting a `recbuf` value, mochiweb_socket_server sockets end up with a `buffer` size of 1460 (the user-level buffer - http://erlang.org/doc/man/inet.html), which causes this limitation (`recbuf` and `sndbuf` are indeed defaulting to much larger values).
-This default value of 1460 seems to be coming from [Erl inet_drv.c](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L923) and initialized [here](https://github.com/erlang/otp/blob/56f93ad10f89e6b8d3372e45127ec9fdc3fca35b/erts/emulator/drivers/common/inet_drv.c#L9057).
-
-## Steps to Reproduce
-Install CouchDB 2.3 (or build from `master`) and run with default configuration (specifically `chttpd.server_option = [{recbuf, undefined}]`).  
-Execute a request with a URL length (excluding protocol and authority) exceeding 1460 characters (method or endpoint appear to be irrelevant).
-
-## Context
-We are using PouchDB to interact with our CouchDB database and ran into this error with view queries. PouchDB does issue a POST request instead of a GET, but only when the query string exceeds 2000 characters (see [here](https://github.com/pouchdb/pouchdb/blob/f87c57a3b3b791dbb62bd881378755ca0a195d13/packages/node_modules/pouchdb-abstract-mapreduce/src/index.js#L262)). 
-
-## Your Environment
-* Version used: 2.3.0, master
-* Using: Chrome, cURL, wget
-* Operating system: Ubuntu 18, Ubuntu 16 (desktop)
-
-Even if it is decided that this is desired behavior, I believe this change should at least be documented.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
+                </div></div></li><li><div><div><b>title:</b> couch_index_server crashes too easily
+                </div><div><b>body:</b> We have a problem with couch_index_server.
+
+handle_info({'EXIT', Pid, Reason}, Server) -&gt;
+    case ets:lookup(?BY_PID, Pid) of
+        [{Pid, {DbName, Sig}}] -&gt;
+            DDocIds = [DDocId || {_, {DDocId, _}}
+                &lt;- ets:match_object(?BY_DB, {DbName, {'$1', Sig}})],
+            rem_from_ets(DbName, Sig, DDocIds, Pid);
+        [] when Reason /= normal -&gt;
+            exit(Reason); &lt;--
+
+whenever an index process crashes abnormally couch_index_server also terminates, taking all other index processes with it.
+
+The cause of the couch_index crash I saw this with was from couch_mrview_index;
+
+close(State) -&gt;
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    couch_file:close(State#mrst.fd).
+
+where the "fd" was not a live process.
+
+couch_index_server should _not_ terminate if there is an abnormal exit by a single index.
                 </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                Hi @dianabarsan , thanks for the report.
+                The odd thing is that this is actually an unknown process dying which suggests there's something else afoot. Perhaps we remove an indexer from ets before getting its `EXIT` signal?
+              </div></li><li><div>
+                And by unknown, I mean its a process that's linked cause we're getting the `EXIT` but the process isn't in ets. Which means we're either accidentally linking something to `couch_index_server` or we're removing a linked process from ets without unlinking/flushing any pending `EXIT` messages.
+              </div></li><li><div><div><b>body:</b> in the original logs, which I can't share here, there's a design document deletion while that index is building. the delete removes the underlying .view files and kills the couch_file pids, so when the index_server process itself terminates, it crashes -in- terminate when trying to close the now dead pid
 
-This is definitely not intended - we'll take a closer look. See https://github.com/apache/couchdb/issues/1409 for the history here; we can't directly just revert the change because the other use case will be impacted, so this may take a bit of research to resolve sufficiently.
-              </div></li><li><div><div><b>body:</b> http://erlang.org/pipermail/erlang-questions/2011-June/059571.html
-https://github.com/ninenines/cowboy/issues/3
-https://github.com/ninenines/cowboy/commit/29e71cf4daec684c13047952a95ec0dc9540aad5
+I can't say that this is the only root to killing couch_index_server, though, so I would rather focus on removing the
 
-We're weighing our options now. Currently hoping improving mochiweb to pass `[{buffer, 8192}]` usefully thru one or another setting in `*.ini` or similar would be enough. The cowboy solution is going to be more reliable in the long run, but is a fairly large retrofit to mochiweb.
+```
+[] when Reason /= normal -&gt;
+    exit(Reason); 
+```
+
+bit, which seems like an over-reaction now.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Hi @dianabarsan,
-
-Thank you for the bug report and excellent analysis.
-
-You're absolutely correct, `chttpd.server_option = [{recbuf, undefined}]).` ends up not setting recbuf value, which means Erlang userland buffer gets a default value of 1460 (when recbuf is set so is the userland buffer).
-
-This buffer size limit combined with a long-standing bug in Erlang's `{packet, http}` parser ends crashing the socket receive code with an `emsgsize` error.
-
-It's not possible to set the buffer size in mochiweb currently, so I will make a PR request to fix that.
-
-Notice:
-
-```
-30&gt; f(), SockInfo = fun(S) -&gt; inet:getopts(S, [recbuf, buffer]) end, {ok, LS} = gen_tcp:listen(0, [{recbuf, 8192}]), LRes = SockInfo(LS).
-{ok,[{recbuf,8192},{buffer,8192}]}
-```
-
-```
-31&gt; f(), SockInfo = fun(S) -&gt; inet:getopts(S, [recbuf, buffer]) end, {ok, LS} = gen_tcp:listen(0, []), LRes = SockInfo(LS).
-{ok,[{recbuf,131072},{buffer,1460}]}
-```
-              </div></li><li><div>
-                pull request:
-
-https://github.com/mochi/mochiweb/pull/208
-              </div></li><li><div>
-                Hi @wohali , @nickva 
-
-Thank you very much for the quick responses and for the additional context! 
-The Erlang http packet parser bug was the missing piece in my understanding of why this is happening. 
-
-We will be updating our configs to set a `recbuf` value for 2.3.0 installs. 
-              </div></li><li><div><div><b>body:</b> @dianabarsan Be advised that this may adversely affect your attachment performance (if you use attachments), see #1409.
-
-We are considering a 2.3.1 fix for this bug since it's rather a surprising regression.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> @nickva I'm not sure that the fix in https://github.com/mochi/mochiweb/pull/208 is going to satisfy the situation in #1409.
-
-Basically, the patch as written I *think* only sets the buffer to `8192` if `recbuf` is undefined. This means if you need &gt;8k of headers you have *no choice* but to peg `recbuf` higher, which causes the issue seen in #1409. I don't think it's fair to tradeoff a fix for this with poor attachment performance again.
-
-Ideally we shouldn't be using a fixed 8k value in mochiweb but instead calling `getopts` to figure out the OS's window size (at least initially) and use that to set `buffer`'s size. I know you had runtime reservations about the performance of inserting a `getopts` call with every socket open but we should characterize this.
-
-An alternative without going back to mochiweb would be to pass in `{buffer, BIGNUM}` . I don't know if your patch to mochiweb allows passing `buffer`9 in now as part of `server_options`, does it? If so this could be a documented workaround; based on testing on Linux the default was like 50k on my system, and 50k of headers should be sufficient. So in this case, we'd tell people to leave recbuf as undefined and just pass in `{buffer, 100000}` or so. As long as `buffer &gt;= recbuf` you're fine, and we can provide the `remsh` command to determine your actual `recbuf` value as set by the OS.
-
-But the only real fix for this (arbitrary header length + undefined `recbuf`) is to stop using `{packet, http}` and allowing multiple `recv`s on the socket to get all of the header content if necessary (with appropriate limits on the # of headers and max length for each) which is a MASSIVE change to mochiweb and no one is volunteering to write it. So I'm hoping the tradeoff above is sufficient.
-
-/cc @kocolosk @davisp 
+                Which sounds like we've removed it from ets before we should/without dropping a link or flushing a message.
+              </div></li><li><div><div><b>body:</b> That is to say, freaking out when we get an unknown `EXIT` message seems like a pretty reasonable reaction.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                @nickva bump, we need to solve this, see #1843. Any comments on my proposal?
+                https://github.com/apache/couchdb/blob/master/src/couch_index/src/couch_index_server.erl#L246-L248
+
+We do a monitor dance as well. We should add a second receive to flush the `EXIT` message.
               </div></li><li><div>
-                @wohali oh, sorry, dropped this one, it's already solved, just need to merge latest mochiweb master to our copy and tag it
-
+                And/or replace the monitor dance by waiting for the 'EXIT' instead would likely be better.
               </div></li><li><div>
-                @nickva did you read my comment above?  https://github.com/apache/couchdb/issues/1810#issuecomment-448060589
+                Could also add a `catch` on this line: https://github.com/apache/couchdb/blob/master/src/couch_mrview/src/couch_mrview_index.erl#L156
 
-Maybe we just call it good enough with 8192 for now, but I'm not sure it's sufficient.
-
-Do we want to cut a 2.3.1 with this?
+Or we could change things so that close/shutdown/delete can return a new state so that they would know whether their couch_file pid is alive.
               </div></li><li><div>
-                @wohali I wasn't sure I understood some parts 1409 so didn't know how and whether it would affect that case.
-
-&gt; Basically, the patch as written I think only sets the buffer to 8192 if recbuf is undefined. This means if you need &gt;8k of headers you have no choice but to peg recbuf higher, which causes the issue seen in #1409. 
-
-The patch sets the buffer to 8k if recbuf if not defined, because that was the setting before the recbuf undefined became an option. I am not sure if 1k userland buffer size is what affected case 1409 the most. But this patch also allows setting a custom buffer size in general via mochiweb's socket options.
-
-&gt; An alternative without going back to mochiweb would be to pass in {buffer, BIGNUM} .
-
-Don't think it would work currently on a listening mochiweb socket (need this patch for that). It could be set later in chttpd but by that point the headers would have failed to parsed.
-
-&gt; and 50k of headers should be sufficient. 
-
-I think it's not as much about 50k worth of headers but 50k being the longest line in the header (just the `GET /....long...path` line). That used to work well with an 8k buffer but doesn't with an 1k buffer anymore.
+                Original introduction of this problem is here https://github.com/apache/couchdb/commit/d977eb7ec52bc13dca7b4f530cb51f42df0f6224. 
               </div></li><li><div>
-                @nickva can you hop on IRC briefly to finish hashing this out? I want to be sure I understand where you're talking about the OS buffer (recbuf) and the mochiweb buffer (buffer) above, so that we don't force people to have to manually specify recbuf's size just to bump buffer's size.
-              </div></li><li><div><div><b>body:</b> OK, for those who are curious - @nickva 's patch to mochiweb does the right thing, it's just that above our discussion of `recbuf` vs. `buffer` as mochiweb settings isn't 100% clear.
+                ```
+diff --git a/src/couch_index/src/couch_index_server.erl b/src/couch_index/src/couch_index_server.erl
+index 49d1e61b7..f1828c665 100644
+--- a/src/couch_index/src/couch_index_server.erl
++++ b/src/couch_index/src/couch_index_server.erl
+@@ -243,9 +243,8 @@ reset_indexes(DbName, Root) -&gt;
+     end, dict:new(), ets:lookup(?BY_DB, DbName)),
+     Fun = fun({Sig, DDocIds}) -&gt;
+         [{_, Pid}] = ets:lookup(?BY_SIG, {DbName, Sig}),
+-        MRef = erlang:monitor(process, Pid),
+         gen_server:cast(Pid, delete),
+-        receive {'DOWN', MRef, _, _, _} -&gt; ok end,
++        receive {'EXIT', Pid, _Reason} -&gt; ok end,
+         rem_from_ets(DbName, Sig, DDocIds, Pid)
+     end,
+     lists:foreach(Fun, dict:to_list(SigDDocIds)),
+```
 
-With the patch to mochiweb, and a stock CouchDB (no changes in `*.ini`), we set mochiweb's `recbuf` to undefined. Mochiweb then lets the kernel manage its buffer size itself (`recbuf` is undefined), and sets the Erlang kernel buffer to `8192`.
-
-Because the Erlang `http` packet parser requires the entire header line (URL path, cookie, anything is fair game) to be in the buffer returned from the kernel, if the request exceeds `8192` bytes, erlang/mochiweb explode, and CouchDB will return a 400. (The parser can't handle header lines split across buffers.)
-
-The workaround for this is to set your `server_options = [{buffer, 16384}]` or other suitably large size, leaving `recbuf` undefined. This way the kernel still manages its buffer size automatically, and only the Erlang userland buffer is made bigger to handle that.
-
-This doesn't catch 100% of the use cases - `buffer` can only be made as large as the kernel `recbuf`, and if the kernel buffer isn't big enough for all the headers, you still fail. In that case - and in my testing, you're talking about ~50k on Linux - you have to bump `recbuf` (which, in turn, auto-bumps `buffer` to the same size). This should be very, very rare, though, on modern OSes.
-
-Unfortunately there's no easy way to make mochiweb smarter here. If `buffer &lt; recbuf`, and the line length is &gt; `buffer`, mochiweb gets an `emsgsize` error back and returns a 400 before Couch even gets its hands on anything. If `buffer = recbuf` and the Request-uri is still too long, Erlang fails with an `http_error` message. I think our best bet is to document this.
-
-What's left to do:
-
-1. Write a test that bumping `[{buffer, 16384}]` for a 16k URL path is successful
-1. Document the above in a useful way in the CouchDB Documentation troubleshooting section
-1. Release 2.3.1, as this is very surprising for users.
+Is this what you mean, @davisp?
+              </div></li><li><div><div><b>body:</b> I don't much like the idea of couch_index_server having to wait for that clean shutdown elsewhere.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Is there a due date for the release of 2.3.1 as this bug is biting us currently.
+                Roughly but not quite. It'd be something like:
+
+```
+unlink(Pid),
+gen_server:cast(Pid, delete),
+receive
+    {'EXIT', Pid, _Reason} -&gt; ok
+    after 0 -&gt; ok
+end,
+rem_from_ets(DbName, Sig, DDocIds, Pid)
+```
               </div></li><li><div>
-                We are currently in the release process - need to finish acceptance testing.
-              </div></li><li><div><div><b>body:</b> @wohali Awesome! For now we implemented a workaround. Thanks for the prompt reply and keep up the good work! 
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                that looks better to me
+
+              </div></li><li><div>
+                Might want to double check that the `delete` message causes the indexer to exit. I think it does but didn't double check.
+
+              </div></li><li><div>
+                ```
+handle_cast(delete, State) -&gt;
+    #st{mod=Mod, idx_state=IdxState} = State,
+    ok = Mod:delete(IdxState),
+    {stop, normal, State};
+```
+              </div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

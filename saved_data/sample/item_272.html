@@ -1,157 +1,92 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 272
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-4304 adding checks whether coprocesseros presently already before adding again(Rajeshbabu)
-                </div><div><b>message:</b> PHOENIX-4304 adding checks whether coprocesseros presently already before adding again(Rajeshbabu)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
+                </div><div><b>message:</b> PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get stuck
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div></div></li><li><div><div><b>summary:</b> Refactoring to avoid using deprecated HTableDescriptor, HColumnDescriptor, HRegionInfo
-                </div><div><b>description:</b> We can change 
-HTableDescriptor - &gt; TableDescriptor
-HColumnDescriptor -&gt; ColumnFamilyDescriptor
-HRegioInfo -&gt; RegionInfo
-                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> During restart RS that hosts SYSTEM.CATALOG table may get stuck
+                </div><div><b>description:</b> Sometimes when a cluster has restarted the regions that belong to SYSTEM.CATALOG and other system tables on the same RS may be stuck in RiT. 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                [~ankit@apache.org] [~sergey.soldatov] [~elserj] Here is the patch replace deprecated HTD,HCD and HRI with TableDescriptor, ColumnFamilyDescriptor, RegionInfo respectively. Please review.
-              </div></li><li><div><div><b>body:</b> LGTM.
+                That's well reproduced on 5.x branch, but may (should) affect master branch under certain circumstances. The SYSTEM.CATALOG region get stuck during open operation because there are 2 concurrent open region threads that are trying to load system tables. 
+Loading sequence:
+Thread 1:
+MetaDataEndpointImpl -&gt; PhoenixDatabaseMetaData -- (trying to load QueryConstants)
+Thread 2:
+MetaDataRegionObserver -&gt; QueryConstants -&gt; TableProperty -&gt; SQLExceptionCode -&gt; (trying to load PhoenixDatabaseMetaData)
+Since only one thread is capable to load class and second thread is already loading QueryConstants and first thread is loading PhoenixDatabaseMetaData , we have a dead lock. 
+We can break this by removing the dependency between SQLExceptionCode and PhoenixDatabaseMetaData.
 
-{code}
-@@ -1690,17 +1675,17 @@ public class ConnectionQueryServicesImpl extends DelegateQueryServices implement
-     private void ensureViewIndexTableCreated(PTable table, long timestamp, boolean isNamespaceMapped)
-             throws SQLException {
-         byte[] physicalTableName = table.getPhysicalName().getBytes();
--        HTableDescriptor htableDesc = this.getTableDescriptor(physicalTableName);
-+       TableDescriptor htableDesc = this.getTableDescriptor(physicalTableName);
-{code}
 
-Nit: space :)
+              </div></li><li><div><div><b>body:</b> [~rajeshbabu], [~elserj] the fix is even simpler than I expected.
+[~jamestaylor] can you please take a look. Actually, I think that we even may replace all those calls for MetaDataUtil.decodeHBaseVersionAsString(VersionUtil.encodeVersion(...)) with the string constants to eliminate calls of other classes and reduce dependencies between classes that have static initializers. 
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> Thanks, [~sergey.soldatov]. I'd rather stick with the constants (as it ensures consistency - these are used in multiple places - and makes the code easier to read). But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                LGTM, but not compatible with the 5.x branch already. (5 files in conflict).
+                {quote}But we should make sure we put them all in one place that doesn't have other dependencies. Maybe in MetaDataProtocol or QueryConstants?
+{quote}
+That sounds like a good idea. No strong feelings from me where they get put :)
               </div></li><li><div>
-                Ankit handled the conflicts and committed the patch. Thanks [~ankit@apache.org]. This issue is specific to HBase 2.0 hence closing.
+                Great find, [~sergey.soldatov]. Let's move all these version constants to MetaDataProtocol since that's where other version info is (and it won't have outside dependencies). Will you be working up a patch?
               </div></li><li><div>
-                [~rajeshbabu], In the addendum I see, we are ignoring SecureUserConnectionsTest, is there any reason for it?
+                [~jamestaylor] sounds reasonable. Will do it shortly. 
               </div></li><li><div>
-                FYI, I changed fixVersion from 4.14.0 to 5.0.0 as I don't think this has made it yet to 4.x branches.
+                +1. Thanks, [~sergey.soldatov]!
+              </div></li><li><div>
+                [~jamestaylor] Thanks! Committed to 4.x, 5x. branches.
+              </div></li><li><div>
+                SUCCESS: Integrated in Jenkins build Phoenix-4.x-HBase-1.3 #147 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-1.3/147/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 24af1040591e088a9b4722ae825762d331d102c2)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+
+              </div></li><li><div>
+                ABORTED: Integrated in Jenkins build Phoenix-4.x-HBase-0.98 #1908 (See [https://builds.apache.org/job/Phoenix-4.x-HBase-0.98/1908/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev e6f9ce0352dbf4f5b1a2d086c1c6068426afc1ac)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1892 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1892/])
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev 614c57d91ba11bd8109dac769860e0186c8752bf)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
+
               </div></li><li><div>
                 FAILURE: Integrated in Jenkins build PreCommit-PHOENIX-Build #1930 (See [https://builds.apache.org/job/PreCommit-PHOENIX-Build/1930/])
-PHOENIX-4304 Refactoring to avoid using deprecated HTableDescriptor, (ankitsinghal59: rev c3ec80d3166d8b365ae39a69bd57d24d8971c63d)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/IndexUtil.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/compile/QueryCompilerTest.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/MutableIndexSplitIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/MappingTableDataTypeIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/parse/CreateTableStatement.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/DelegateConnectionQueryServices.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/IndexToolForPartialBuildIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/RepairUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/transaction/TephraTransactionTable.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/QueryDatabaseMetaDataIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/MutableIndexIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/transaction/PhoenixTransactionContext.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/Indexer.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/AlterTableIT.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/write/TestWALRecoveryCaching.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/DynamicColumnIT.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/util/TestIndexManagementUtil.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/rpc/PhoenixServerRpcIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServices.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/write/recovery/TestPerRegionIndexWriteCache.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/SetPropertyIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionlessQueryServicesImpl.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/covered/NonTxIndexBuilderTest.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/FlappingLocalIndexIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/covered/NonTxIndexBuilder.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/iterate/BaseResultIterators.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/AlterMultiTenantTableWithViewsIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/GuidePostsCache.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixIndexFailurePolicy.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/NativeHBaseTypesIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/FlappingAlterTableIT.java
-* (edit) phoenix-core/src/it/java/org/apache/hadoop/hbase/regionserver/wal/WALRecoveryRegionPostOpenIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/iterate/TableSnapshotResultIterator.java
-* (edit) phoenix-core/src/main/java/org/apache/hadoop/hbase/regionserver/IndexHalfStoreFileReaderGenerator.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/MutableIndexReplicationIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/compile/UpsertCompiler.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/BaseIndexIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/LocalIndexIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/cache/ServerCacheClient.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/LocalIndexSplitMergeIT.java
+PHOENIX-4759 During restart RS that hosts SYSTEM.CATALOG table may get (ssa: rev d79c30023af47f32e2dac9d871aa75265cebc34f)
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataEndpointImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/exception/SQLExceptionCode.java
 * (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/TrackingParallelWriterIndexCommitter.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/hbase/index/FailForUnsupportedHBaseVersionsIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/execute/ClientAggregatePlan.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/ColumnProjectionOptimizationIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/NamespaceSchemaMappingIT.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/util/TestUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixIndexCodec.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/QueryConstants.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/tx/ParameterizedTransactionIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/iterate/RegionScannerFactory.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/query/BaseTest.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/schema/stats/StatisticsScannerTest.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/execute/UpsertSelectOverlappingBatchesIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
 * (edit) phoenix-core/src/main/java/org/apache/phoenix/util/ScanUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/UpgradeUtil.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/CreateTableIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/tx/TransactionIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/UseSchemaIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/ViewIT.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/write/TestIndexWriter.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/util/MetaDataUtil.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/iterate/MapReduceParallelScanGrouper.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/coprocessor/StatisticsCollectionRunTrackerIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/schema/stats/StatsCollectorIT.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/UngroupedAggregateRegionObserver.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/iterate/SnapshotScanner.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/transaction/OmidTransactionTable.java
-* (edit) phoenix-core/src/it/java/org/apache/hadoop/hbase/regionserver/wal/WALReplayWithIndexWritesAndCompressedWALIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/index/DropMetadataIT.java
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/hbase/index/covered/CoveredColumnIndexSpecifierBuilder.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/end2end/SkipScanAfterManualSplitIT.java
-* (edit) phoenix-core/src/it/java/org/apache/phoenix/iterate/RoundRobinResultIteratorIT.java
-PHOENIX-4304 adding checks whether coprocesseros presently already (rajeshbabu: rev 06bb5d95ada56ccd86b538b29d12468a096ff376)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-PHOENIX-4304 fixing the coprocessor checks(Rajeshbabu) (rajeshbabu: rev a3d6c774ad309cd2bd0895ee4d5cb7172a03aa20)
-* (edit) phoenix-core/src/test/java/org/apache/phoenix/jdbc/SecureUserConnectionsTest.java
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
-PHOENIX-4304 Adding coprocessor existence checks to avoid (rajeshbabu: rev 30ff6d5bbca230ccfba9cbfeceea34b06cf9b022)
-* (edit) phoenix-core/src/main/java/org/apache/phoenix/query/ConnectionQueryServicesImpl.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/jdbc/PhoenixDatabaseMetaData.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/index/PhoenixTransactionalIndexer.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/coprocessor/MetaDataProtocol.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/schema/MetaDataClient.java
+* (edit) phoenix-core/src/main/java/org/apache/phoenix/hbase/index/write/ParallelWriterIndexCommitter.java
 
               </div></li></ol></div></div></html>

@@ -1,49 +1,156 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 264
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merged revisions 997892 via svnmerge from 
-                </div><div><b>message:</b> Merged revisions 997892 via svnmerge from 
-https://svn.apache.org/repos/asf/cxf/trunk
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 remove the recursive reference if present
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Merged revisions 1366314 via  svn merge from
+                </div><div><b>message:</b> Merged revisions 1366314 via  svn merge from
+https://svn.apache.org/repos/asf/cxf/branches/2.5.x-fixes
 
 ........
-  r997892 | dkulp | 2010-09-16 15:45:52 -0400 (Thu, 16 Sep 2010) | 2 lines
+  r1366314 | ay | 2012-07-27 11:11:03 +0200 (Fri, 27 Jul 2012) | 17 lines
   
-  [CXF-2995] Patch use of cxf with lazy inits.
-  Patch from Adam Lewandowski applied
+  Merged revisions 1366312 via  svn merge from
+  https://svn.apache.org/repos/asf/cxf/branches/2.6.x-fixes
+  
+  ........
+    r1366312 | ay | 2012-07-27 10:53:50 +0200 (Fri, 27 Jul 2012) | 9 lines
+    
+    Merged revisions 1366308 via  svn merge from
+    https://svn.apache.org/repos/asf/cxf/trunk
+    
+    ........
+      r1366308 | ay | 2012-07-27 10:49:03 +0200 (Fri, 27 Jul 2012) | 1 line
+      
+      protect against a recursive reference in responseContext (for CXF-4437)
+    ........
+    
+  ........
+  
 ........
 
 
-git-svn-id: https://svn.apache.org/repos/asf/cxf/branches/2.2.x-fixes@997900 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/cxf/branches/2.4.x-fixes@1366315 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Bus configuration ignored if Spring context has default-lazy-init=true
-                </div><div><b>description:</b> Bus configuration using the Spring namespace handler is ignored if the containing context defaults to lazy-init (default-lazy-init=true). The configuration bean definition (BusDefinitionParser$BusConfig) created by BusDefinitionParser inherits this setting. Since the bean is never explicitly referenced it does not get instantiated which would trigger the setApplicationContext method, registering the configured bus under the 'cxf' bean name. Instead, you get a bus with the default configuration.
-As a workaround, you can set the containing context to eager-init, but this is not feasible in many cases. 
-I've attached a patch which includes a test case and fix in BusDefinitionParser to force the config bean to be eager-init.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Stack Overflow exception in org.apache.cxf.endpoint.ClientImpl when logging set to FINE
+                </div><div><b>description:</b> Hi,
 
-I've read a few places that Daniel Kulp mentions most CXF beans will be lazy-init in 2.3, perhaps this will be addressed then. In the meantime, this patch is working for me.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div><div><b>summary:</b> Bus configuration ignored if Spring context has default-lazy-init=true
-                </div><div><b>description:</b> Bus configuration using the Spring namespace handler is ignored if the containing context defaults to lazy-init (default-lazy-init=true). The configuration bean definition (BusDefinitionParser$BusConfig) created by BusDefinitionParser inherits this setting. Since the bean is never explicitly referenced it does not get instantiated which would trigger the setApplicationContext method, registering the configured bus under the 'cxf' bean name. Instead, you get a bus with the default configuration.
-As a workaround, you can set the containing context to eager-init, but this is not feasible in many cases. 
-I've attached a patch which includes a test case and fix in BusDefinitionParser to force the config bean to be eager-init.
+I can reproduce the issue in our code, but will probably struggle to
+create a test case.  
 
-I've read a few places that Daniel Kulp mentions most CXF beans will be lazy-init in 2.3, perhaps this will be addressed then. In the meantime, this patch is working for me.
-                </div></div></li><li><div><div><b>summary:</b> Bus configuration ignored if Spring context has default-lazy-init=true
-                </div><div><b>description:</b> Bus configuration using the Spring namespace handler is ignored if the containing context defaults to lazy-init (default-lazy-init=true). The configuration bean definition (BusDefinitionParser$BusConfig) created by BusDefinitionParser inherits this setting. Since the bean is never explicitly referenced it does not get instantiated which would trigger the setApplicationContext method, registering the configured bus under the 'cxf' bean name. Instead, you get a bus with the default configuration.
-As a workaround, you can set the containing context to eager-init, but this is not feasible in many cases. 
-I've attached a patch which includes a test case and fix in BusDefinitionParser to force the config bean to be eager-init.
+I have narrowed down the culprit (in 2.6.1) to org.apache.cxf.endpoint.ClientImpl line 636
 
-I've read a few places that Daniel Kulp mentions most CXF beans will be lazy-init in 2.3, perhaps this will be addressed then. In the meantime, this patch is working for me.
+The method protected Object[] processResult(Message message,
+                                   Exchange exchange,
+                                   BindingOperationInfo oi,
+                                   Map&lt;String, Object&gt; resContext)
+throws Exception {
+
+And the code:
+
+if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine("set responseContext to be" + resContext);
+                }
+
+
+The code to add all the properties from the message to resContext, creates a recursive reference, because the message already has a reference to resContext.  This causes the logging to fail as when it tries to serialise the content of the map, it gets a stack overflow.
+
+The org.apache.cxf.invocation.context contains the ResponseContext and
+the ResponseContext contains the org.apache.cxf.invocation.context
+
+To prove my hypothesis I added the following code to replace the log call:
+
+HashMap contextMap = (HashMap)
+resContext.get("org.apache.cxf.invocation.context");
+                        HashMap responseContextMap = (HashMap)
+contextMap.get("ResponseContext");
+                        HashMap secondContextMap = (HashMap)
+responseContextMap.get("org.apache.cxf.invocation.context");
+                        if (secondContextMap != null) {
+                                System.out.println("Oh boy here is the error!");
+                        }
+
+And I got the Oh boy here is the error! message back.
+
+The original stack trace is:
+
+
+java.lang.StackOverflowError
+        at java.util.HashMap$EntrySet.iterator(HashMap.java:950)
+        at java.util.AbstractMap.toString(AbstractMap.java:478)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+        at java.lang.String.valueOf(String.java:2826)
+        at java.lang.StringBuilder.append(StringBuilder.java:115)
+        at java.util.AbstractMap.toString(AbstractMap.java:490)
+
+&lt;snip&gt;
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> In addition in the same code I think the setContext method is not
+actually logging what is expected.
+
+Should it be adding all the request context info to the message or vice versa?
+
+Should it be:
+   message.putAll(ctx);
+
+Or:
+ctx.putAll(message);
+
+As for the processResult logging?
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Bus configuration ignored if Spring context has default-lazy-init=true
-                </div><div><b>description:</b> Bus configuration using the Spring namespace handler is ignored if the containing context defaults to lazy-init (default-lazy-init=true). The configuration bean definition (BusDefinitionParser$BusConfig) created by BusDefinitionParser inherits this setting. Since the bean is never explicitly referenced it does not get instantiated which would trigger the setApplicationContext method, registering the configured bus under the 'cxf' bean name. Instead, you get a bus with the default configuration.
-As a workaround, you can set the containing context to eager-init, but this is not feasible in many cases. 
-I've attached a patch which includes a test case and fix in BusDefinitionParser to force the config bean to be eager-init.
-
-I've read a few places that Daniel Kulp mentions most CXF beans will be lazy-init in 2.3, perhaps this will be addressed then. In the meantime, this patch is working for me.
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> Patch including a test case and fix
-                </div><div><b>label:</b> test
                 </div></div></li><li><div>
-                
-Patch applied.  Thanks!
+                Hi Jason,
+I think we can guard against this situation by not allowing the invocation context to be put into the response context but I am wondering how the invocation context was inserted into the response context in your case. 
 
-              </div></li></ol></div></div></html>
+Are you doing something particular in your code? For instance, copying the request message to the response message?
+Thanks.
+regards, aki
+              </div></li><li><div>
+                
+I'm also wondering if it would make sense to just log the keySet instead of the whole map.... The values can contain things like passwords, credentials for security keysets, etc...   Maybe "FINEST" log everything.  Not really sure, but its a thought.
+
+              </div></li><li><div>
+                Hi,
+
+Thanks for your comments. The problem occurs when we abort the outgoing chain and 
+Call the onMessage on the Message Observer. What we are not doing is creating a new Response message which. I guess is pretty stupid. I will change our code to do this and see if the issue goes away.
+              </div></li><li><div>
+                Hi Jason,
+that explains the reason. The request message contains the invocation context, whereas the response message does not. So, the current code that copies the response message properties into the response context should not create a recursive reference. However, if the request message is directly used as the response message, there will be a recursive reference.
+
+So, if you are not using the request message directly as the response message, this problem should not occur.
+
+@Dan,
+to be on the protected side, we should change the code to not put the invocation context into the response context.
+In addition, should we even get rid of this log line or log only the keys? I don't know if it is okay to log the context properties from the security point of view even if the level is set to FINEST. 
+
+regards, aki
+
+              </div></li><li><div><div><b>body:</b> Removed the invocation context from the response context if present to protect against this kind of issue.
+
+Additionally, removed the code for logging the response context to avoid revealing potentially sensitive information.
+
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div></div></html>

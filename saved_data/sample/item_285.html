@@ -1,781 +1,151 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 285
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Do not provide a stale negative cache (#7422)
-                </div><div><b>message:</b> Do not provide a stale negative cache (#7422)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> replace psutil.pid() with psutil.process_iter() for safer execution (#7515)
+                </div><div><b>message:</b> replace psutil.pid() with psutil.process_iter() for safer execution (#7515)
 
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> Thread config tests not stable as it should
+                </div><div><b>body:</b> This exception shows up sometimes.
 ```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 340, in wrapper
+    ret = self._cache[fun]
+AttributeError: _cache
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1517, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 343, in wrapper
+    return fun(self)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1559, in _parse_stat_file
+    with open_binary("%s/%s/stat" % (self._procfs_path, self.pid)) as f:
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 604, in open_binary
+    return open(fname, "rb", **kwargs)
+FileNotFoundError: [Errno 2] No such file or directory: '/proc/19527/stat'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 474, in _init
+    self.create_time()
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 824, in create_time
+    self._create_time = self._proc.create_time()
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1517, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1729, in create_time
+    ctime = float(self._parse_stat_file()['create_time'])
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1524, in wrapper
+    raise NoSuchProcess(self.pid, self._name)
+psutil.NoSuchProcess: psutil.NoSuchProcess process no longer exists (pid=19527)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "check_threads.py", line 126, in &lt;module&gt;
+    main()
+  File "check_threads.py", line 122, in main
+    exit(count_threads(args.ts_path, args.etnet_threads, args.accept_threads, args.task_threads, args.aio_threads))
+  File "check_threads.py", line 31, in count_threads
+    p = psutil.Process(pid)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 447, in __init__
+    self._init(pid)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 487, in _init
+    raise NoSuchProcess(pid, None, msg)
+psutil.NoSuchProcess: psutil.NoSuchProcess no process found with pid 19527
 ```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
+                </div></div></li><li><div><div><b>title:</b> Thread config tests not stable as it should
+                </div><div><b>body:</b> This exception shows up sometimes.
 ```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 340, in wrapper
+    ret = self._cache[fun]
+AttributeError: _cache
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1517, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 343, in wrapper
+    return fun(self)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1559, in _parse_stat_file
+    with open_binary("%s/%s/stat" % (self._procfs_path, self.pid)) as f:
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_common.py", line 604, in open_binary
+    return open(fname, "rb", **kwargs)
+FileNotFoundError: [Errno 2] No such file or directory: '/proc/19527/stat'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 474, in _init
+    self.create_time()
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 824, in create_time
+    self._create_time = self._proc.create_time()
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1517, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1729, in create_time
+    ctime = float(self._parse_stat_file()['create_time'])
+  File "/usr/local/lib64/python3.6/site-packages/psutil/_pslinux.py", line 1524, in wrapper
+    raise NoSuchProcess(self.pid, self._name)
+psutil.NoSuchProcess: psutil.NoSuchProcess process no longer exists (pid=19527)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "check_threads.py", line 126, in &lt;module&gt;
+    main()
+  File "check_threads.py", line 122, in main
+    exit(count_threads(args.ts_path, args.etnet_threads, args.accept_threads, args.task_threads, args.aio_threads))
+  File "check_threads.py", line 31, in count_threads
+    p = psutil.Process(pid)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 447, in __init__
+    self._init(pid)
+  File "/usr/local/lib64/python3.6/site-packages/psutil/__init__.py", line 487, in _init
+    raise NoSuchProcess(pid, None, msg)
+psutil.NoSuchProcess: psutil.NoSuchProcess no process found with pid 19527
 ```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li><li><div><div><b>title:</b> stale negative cache is not updated by fresh negative response
-                </div><div><b>body:</b> Hello,
-
-ATS does not update existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-```
-CONFIG proxy.config.http.negative_revalidating_enabled INT 1
-CONFIG proxy.config.http.negative_revalidating_lifetime INT 3600
-```
-
-If the backend replies 502 result having `Cache-Control: max-age=60, public`, it is well cached in ATS, that is good. When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means : 
-
- - The client cannot get a newer 'negative' response.
- - Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-It is of course good 'not updating positive stale cache by negative fresh response', but there is no reason 'not to update negative stale cache by negative fresh response'.
-
-[background]
-
-My idea is switching between 'normal' backend and 'maintenance mode' backend using HAProxy behind ATS. Usually normal backend replies 200 status with `Cache-Control: max-age=300, public`. When we switch to the 'maintenance mode' backend, it replies a beautiful maintenance information page having 502 status with `Cache-Control: max-age=60, public` for whatever HTML requests. By using this short max-age cache, we would like to avoid heavy load on the maintenance mode backend.
-
-Thanks to 502 status of 'maintenance mode' backend, ATS tries to return a stale cache of 'positive' response, if exists, until long-enough `negative_revalidating_lifetime` reaches, i.e. we can provide a normal site as much as possible. And when `negative_revalidating_lifetime` reaches, or positive cache does not exist (for explicit `no-store` requests etc.), the client will get a beautiful maintenance information page.
-
-But because of the behaviour describing here, the client cannot get the updated maitenance information page during maintenance mode and also the maintenance mode backend needs to respond for each request in vain.
-
-Here is an example timeline.
-
-```
-00:00 ATS fetches 200 response from the normal backend and replies it
-00:01 (we switch to the maintenance mode backend)
-00:03 ATS replies a normal cache
-00:10 cache is already stale, but ATS still replies a normal cache thanks to negative_revalidating_lifetime
-01:15 ATS fetches from the maintenance mode backend, then caches it and replies it
-01:16 (we update the maintenance page on the maintenance backend)
-01:17 'negative' cache is already stale, thus ATS fetches again from the maintenance mode backend,
-      but replies the old existing stale 'negative' cache without updating it
-01:20 'negative' cache is always stale, thus ATS fetches again from the maintenance mode backend.
-```
-
-If ATS supports `stale-if-error`, our responses would be:
-
-- from 'normal' backend: `Cache-Control: max-age=...,stale-if-error=&lt;7 days&gt;`
-- from 'maintenance' backend: `Cache-Control: max-age: 60` (without `stale-if-error`)
-
-but it is not supported for now, thus we are trying this approach with using `negative_revalidating_lifetime`.
-
-I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-Thanks in advance !
-Kazuhiko
-/cc @vpelletier
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                I would like to propose the following patch that perfectly solves this issue.
-```
---- trafficserver-8.1.1/proxy/http/HttpTransact.cc.orig 2020-12-01 00:30:26.000000000 +0100
-+++ trafficserver-8.1.1/proxy/http/HttpTransact.cc      2021-01-11 11:35:41.946893735 +0100
-@@ -5752,6 +5752,7 @@
- HttpTransact::is_stale_cache_response_returnable(State *s)
- {
-   HTTPHdr *cached_response = s-&gt;cache_info.object_read-&gt;response_get();
-+  HTTPStatus cache_response_code = cached_response-&gt;status_get();
- 
-   // First check if client allows cached response
-   // Note does_client_permit_lookup was set to
-@@ -5760,6 +5761,12 @@
-   if (!s-&gt;cache_info.directives.does_client_permit_lookup) {
-     return false;
-   }
-+  // We don't serve stale negative cache.
-+  if (cache_response_code == HTTP_STATUS_INTERNAL_SERVER_ERROR || cache_response_code == HTTP_STATUS_GATEWAY_TIMEOUT ||
-+      cache_response_code == HTTP_STATUS_BAD_GATEWAY || cache_response_code == HTTP_STATUS_SERVICE_UNAVAILABLE) {
-+    TxnDebug("http_trans", "[is_stale_cache_response_returnable] stale negative cache");
-+    return false;
-+  }
-   // Spec says that we can not serve a stale document with a
-   //   "must-revalidate header"
-   // How about "s-maxage" and "no-cache" directives?
-```
-
-              </div></li><li><div>
-                I think this was fixed in #7401 ? If so, we should close this.
-              </div></li><li><div>
-                &gt; I think this was fixed in #7401 ? If so, we should close this.
-
-Thanks for looking into this. I believe, however, that the issue described here is orthogonal to #7401. #7401 fixed an issue that was introduced recently (a few weeks ago) via #7361 , but the issue described here is seen in 8.0.2 (per Kazuhiko's previous comment):
-
-&gt; I verified this behaviour on ATS version 7.1.1 and 8.0.2.
-
-8.0.2 is a couple years old:
-https://github.com/apache/trafficserver/releases/tag/8.0.2
-              </div></li><li><div>
-                Thanks for comments.
-I just tried ATS 8.1.1 and confirmed that the issue still existed but could be fixed by my patch above.
-              </div></li><li><div>
-                @fdiary could you open a PR with your patch on the master branch?
-              </div></li><li><div>
-                @masaori335 Sure. I just opened a PR : #7422 
-              </div></li><li><div>
-                Thanks for the PR. Let me clarify a bit.
-
-&gt; When it becomes stale, i.e. more than 60 seconds later, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. 
-
-Is this because `proxy.config.http.negative_revalidating_lifetime` is not used at `is_stale_cache_response_returnable()` as you pointed out #7425?
-I tried to repro the scenario. And seems like the stale negative response is updated if `proxy.config.http.cache.max_stale_age` is short enough.
-              </div></li><li><div><div><b>body:</b> &gt; And seems like the stale negative response is updated if proxy.config.http.cache.max_stale_age is short enough.
-
-Indeed, `is_stale_cache_response_returnable` refers `max_stale_age` but not `negative_revalidating_lifetime`. But if we have short `max_stale_age`, good 'positive' cache will be also unavailable shortly, that is not good.
-
-So regardless which value `is_stale_cache_response_returnable` refers, I believe that the proposal here is still meaningful to fix this issue, i.e. to provide a good 'positive' cache for long period but to make updating 'negative' cache possible and also to reduce requests to the 'negative response' backend.
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                I agree. It'd be useful if we can change the period of serving stale contents by the cached status code.
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
-                </div></div></li><li><div><div><b>title:</b> Do not provide a stale negative cache
-                </div><div><b>body:</b> ATS does not update an existing cache of 'negative' response even if ATS fetches a fresh equally-negative response from the backend.
-
-When a negative cache becomes stale, ATS fetchs a new version from the backend, which, if it is equally negative to the cached version, will be discarded and the stale entry will be sent to the client. That means :
-
-* The client cannot get a newer 'negative' response.
-* Once the negative cache becomes stale, all incoming requests will involve requests to the backend.
-
-With this PR, ATS will no longer provide a stale negative cache if the revalidated response is also negative, so that we can fix these issues still providing a stale 'positive' cache if available.
-
-This closes #7417
+                </div></div></li><li><div><div><b>title:</b> Replace psutil.pid() with psutil.process_iter() for safer execution
+                </div><div><b>body:</b> This fixes #7514.
                 </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                @fdiary can you run `make clang-format` and amend your commit with the changed files?
-              </div></li><li><div>
-                @randall : "can you run `make clang-format` and amend your commit with the changed files?"
+                ### 9.0.x and 9.1.x cherry pick justification:
 
-Oops, I just did so.
-              </div></li><li><div>
-                @masaori335 Thanks !
+This is a simple test change that merges cleanly to 9.0.x and 9.1.x that makes the thread config tests more stable. I just triaged an autest-9.1.x failure that would have been fixed by this:
+
+https://ci.trafficserver.apache.org/job/autest-9.1.x/9/console
+
+Getting this into these branches will save people time figuring out why it failed.
               </div></li><li><div>
                 Cherry-picked to v9.0.x branch.
-              </div></li><li><div>
-                Cherry-picked to v9.1.x branch.
-              </div></li><li><div>
-                Can we get a backport PR for 8.1.x for this?
+Cherry-picked to v9.1.x branch.
               </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                This might have a pretty big impact in other places where calls this function.
+                Looks good.
 
-@sudheerv Is this change safe with `CACHE_WL_FAIL_ACTION_STALE_ON_REVALIDATE`? 
-https://github.com/apache/trafficserver/blob/690ec54950611a1955b34911b73a222365998667/proxy/http/HttpTransact.cc#L7215-L7216
+As a tweak, reading the docs, it looks like the preferable way to do this is by passing in the subset of process attributes that are desired. In this case, perhaps:
 
-
+```
+for p in psutil.process_iter(['name', 'cwd', 'threads']):
+   ...
+   p.info['name'] == '[TS_MAIN]' and p.info['cwd'] == ts_path:
+        ...
+```
               </div></li><li><div>
-                @fdiary How about move this change under the if-block of doing negative revalidating to minimize side effects? 
-https://github.com/apache/trafficserver/blob/b6b61fbd3e232dbef010dc8b712bb2076510bd7f/proxy/http/HttpTransact.cc#L4347
-
-My concern is this changes behavior of setting `2` and `3` of  `proxy.config.http.cache.open_write_fail_action`[*1]. It's a config to do stale-while-revalidate, so if we never serve negative stale cache, all simultaneous requests might go to the origin server.
-
-[*1] https://docs.trafficserver.apache.org/en/latest/admin-guide/files/records.config.en.html#proxy-config-http-cache-open-write-fail-action
-              </div></li><li><div>
-                @masaori335 Thanks for your proposal, that is reasonable. I force-updated the change in this PR.
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                done
+              </div></li><li><div><div><b>body:</b> Great. I'm glad you used p.name rather than p.info['name'] like I suggested. That's much nicer.
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

@@ -1,109 +1,439 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 171
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 pylint: disable=assignment-from-no-return
-              </div></li><li><div>
-                 Positional relay function to create conv2d NCHWc operator
- used by frontend FFI.
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [RELAY][TOPI] `alter_op_layout` for x86 (#2602)
-                </div><div><b>message:</b> [RELAY][TOPI] `alter_op_layout` for x86 (#2602)
-
-* alter_op_layout for x86
-
-* cleanup
-
-* cleanup
-
-* fix lint
-
-* fix lint
-
-* fix lint
-
-* fix lint
-
-* change support level
-
-* change other support levels
-
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> [Relay] x86 conv2d_alter_layout support
-                </div><div><b>body:</b> Got the warning message "Only support alter layout for x86 in NNVM now. This pass is ignored in relay" when running codes in from_tensorflow tutorial. 
-
-https://github.com/dmlc/tvm/blob/master/topi/python/topi/x86/conv2d.py#L287-L291
-                </div></div></li><li><div><div><b>title:</b> [Relay] x86 conv2d_alter_layout support
-                </div><div><b>body:</b> Got the warning message "Only support alter layout for x86 in NNVM now. This pass is ignored in relay" when running codes in from_tensorflow tutorial. 
-
-https://github.com/dmlc/tvm/blob/master/topi/python/topi/x86/conv2d.py#L287-L291
-                </div></div></li><li><div><div><b>title:</b> [Relay] x86 conv2d_alter_layout support
-                </div><div><b>body:</b> Got the warning message "Only support alter layout for x86 in NNVM now. This pass is ignored in relay" when running codes in from_tensorflow tutorial. 
-
-https://github.com/dmlc/tvm/blob/master/topi/python/topi/x86/conv2d.py#L287-L291
-                </div></div></li><li><div><div><b>title:</b> [Relay] x86 conv2d_alter_layout support
-                </div><div><b>body:</b> Got the warning message "Only support alter layout for x86 in NNVM now. This pass is ignored in relay" when running codes in from_tensorflow tutorial. 
-
-https://github.com/dmlc/tvm/blob/master/topi/python/topi/x86/conv2d.py#L287-L291
-                </div></div></li><li><div><div><b>title:</b> [Relay] x86 conv2d_alter_layout support
-                </div><div><b>body:</b> Got the warning message "Only support alter layout for x86 in NNVM now. This pass is ignored in relay" when running codes in from_tensorflow tutorial. 
-
-https://github.com/dmlc/tvm/blob/master/topi/python/topi/x86/conv2d.py#L287-L291
-                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div>
-                Would you mind shoot a PR and test for this? I believe the functionality is all prepared.
-              </div></li><li><div>
-                @yzhliu  Sure, I am working on another pr, will work on this fix after that, hopefully in this week.
-              </div></li><li><div>
-                Actually I need this support for some experiments with AutoTVM, so I opened a PR for this #2602.
-
-(It was a little more involved than I anticipated, because TOPI still separates x86 NCHWc from vanilla conv2d)
-              </div></li></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
+                 negative part explicity
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Expose clip to frontend mxnet (#512)
+                </div><div><b>message:</b> Expose clip to frontend mxnet (#512)
 
 
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
 
-                </div></div></li><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
 
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
 
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
 
-                </div></div></li><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
 
-
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
 
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
+                </div></div></li><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
+
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
+
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
+
+                </div></div></li><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
+
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
+
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
+
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
+
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
+
+                </div></div></li><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
+
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
+
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
+
+                </div></div></li><li><div><div><b>title:</b> slightly different matmul algorithm causes an error message
+                </div><div><b>body:</b> Hi, 
+I've rewritten the matmul algorithm as follows by peeling the first iteration of the summation. When I run the following code, 
+```python
+import tvm
+M = 600
+N = 650
+P = 700
+# Algorithm
+k = tvm.reduce_axis((1, N), 'k') # note the starting value of 1 (instead of 0)
+A = tvm.placeholder((M, N), name = 'A')
+B = tvm.placeholder((N, P), name = 'B')
+C = tvm.compute(
+    (M, P),
+    lambda x, y: A[x,0]*B[0,y] + tvm.sum(A[x, k] * B[k, y], axis = k),
+    name = 'C')
+
+# Default schedule
+s = tvm.create_schedule(C.op)
+print(tvm.lower(s, [A, B, C], simple_mode=True))
+```
+I get the following error message. Am I doing anything wrong? Is there a way to specify the matmul algorithm while explicitly peeling the first iteration of the sum reduction? 
+The reason I want do this is that I don't want tvm to generate zero-initialization code for C. I want C[x,y] to be initialized to A[x,0]*B[0,k] and then to generate the summation code.
+
+Thanks!
+```
+[17:01:51] /hwapwork/s00327669/software/tvm/dmlc-core/include/dmlc/logging.h:308: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+
+Traceback (most recent call last):
+  File "test_sum.py", line 61, in &lt;module&gt;
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/build_module.py", line 228, in lower
+    stmt = ir_pass.Simplify(stmt)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/function.py", line 255, in my_api_func
+    return flocal(*args)
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/_ctypes/function.py", line 183, in __call__
+    ctypes.byref(ret_val), ctypes.byref(ret_tcode)))
+  File "/home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/_ffi/base.py", line 62, in check_call
+    raise TVMError(py_str(_LIB.TVMGetLastError()))
+tvm._ffi.base.TVMError: [17:01:51] src/lang/ir.cc:23: Reduce do not work with old Visitor, use IRFunctor style visitor
+
+Stack trace returned 10 entries:
+[bt] (0) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(dmlc::LogMessageFatal::~LogMessageFatal()+0x39) [0x7faae5e37bb9]
+[bt] (1) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::ExprNode&lt;tvm::ir::Reduce&gt;::accept(Halide::Internal::IRVisitor*, Halide::Expr const&amp;) const+0x4f) [0x7faae5ed7c9f]
+[bt] (2) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (3) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Add const*, Halide::Expr const&amp;)+0xdf) [0x7faae61319af]
+[bt] (4) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Expr)+0x1a) [0x7faae6193cba]
+[bt] (5) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::Store const*, Halide::Internal::Stmt const&amp;)+0xca) [0x7faae6114f1a]
+[bt] (6) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (7) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+[bt] (8) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::IRMutator::mutate(Halide::Internal::Stmt)+0x1a) [0x7faae6193d2a]
+[bt] (9) /home/s00327669/.local/lib/python2.7/site-packages/tvm-0.1.0-py2.7-linux-x86_64.egg/tvm/libtvm.so(Halide::Internal::Simplify::visit(Halide::Internal::For const*, Halide::Internal::Stmt const&amp;)+0x15a) [0x7faae6163aca]
+```
+
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>github_issues_comments:</b> <ol><li><div><div><b>body:</b> Currently, we do not support inlining of reduction with another stage. What we can do is to declare reduction in one stage and add in another.
+
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I see. When I put it in stages, tvm still generates code that initializes C's elements to zero before computing the sum. 
+Basically, what I need to do is to guide tvm to peel the first iteration of a summation, i.e., generate something like this (the following is not matmul obviously, just an example to illustrate the idea)
+```
+for (x,0,600) {
+  C[x] = A[x,0]*B[x,0]
+  for (y,0,599) {
+    C[x] = C[x] + A[x,y+1]*B[x,y+1]
+  }
+}
+```
+instead of
+```
+for (x,0,600) {
+  C[x] = 0
+  for (y,0,600) {
+    C[x] = C[x] + A[x,y]*B[x,y]
+  }
+}
+```
+Is that possible? Thanks!
+              </div></li><li><div><div><b>body:</b> This requires an update of the reduction operator implementation, which is doable but not supported so far. In general we find that zero initialization makes it easier to support reductions of multiple levels and tiling patterns. So brings more benefit than a peeled version of reduction. If you have evidence that the peeled version works better, we can work to bring this into tvm
 
 
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
-
-                </div></div></li><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
-
-
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
-
-                </div></div></li><li><div><div><b>title:</b> [RELAY][TOPI] `alter_op_layout` for x86
-                </div><div><b>body:</b> Adds support for `alter_op_layout` for x86 that was discussed in #2585.
-
-
-Additional comments:
-Currently we have an issue where the "vanilla" conv2d operator can be instantiated with some "NCHWc" style layouts, such as "NCHW4c," but not others (e.g., "NCHW8c" or "NCHW16c"). This seems to be due to an issue where the latter two are treated as a special case and handled by the x86 operator. This version seems to share basically all of the same properties as vanilla conv2d, but is not merged together with vanilla conv2d, and other parts of the stack (e.g., AutoTVM) treat these variants of conv2d as separate. It seems theoretically possible to merge the two, but that would likely come at the cost of breaking/changing a few other things (e.g., AutoTVM) and currently TOPI (shared between NNVM and Relay) treats them as separate. This PR mostly preserves the current "organization," but it reuses the Conv2DAttrs node for Conv2DNCHWc, as it seems very excessive to create another identical definition. However, please let me know if reusing the attribute node type is not kosher.
-
-                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
-                @eqy Could you also help to change the other contrib oplevels in this file?
-              </div></li><li><div>
-                Thanks @eqy @tqchen This is now merged
-              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
-                maybe use level 5 instead for contrib op?
-              </div></li><li><div>
-                contrib level is 10
-              </div></li></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                I don't think it would be bring any measurable benefit in CPU or GPU since the zero initialization happens in registers or the first level cache. However, if the region to be initialized is large (a fairly large tensor) or the memory to be initialized is expensive to update, peeling the first iteration (and therefore, avoiding the zero initialization) could be beneficial. 
+For now, this is not on my critical path so I close this issue.
+              </div></li></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol></ol></div><div><b>jira_issues_comments:</b> <ol></ol></div></div></html>

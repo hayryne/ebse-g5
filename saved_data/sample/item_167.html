@@ -1,393 +1,306 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 167
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div><div><b>comment:</b>  TODO: make it mutable and update it after each writing back to HDFS
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div>
-                *
-   * Check if we can start the write (back to HDFS) now. If there is no hole for
-   * writing, and there is no other threads writing (i.e., asyncStatus is
-   * false), start the writing and set asyncStatus to true.
-   * 
-   * @return True if the new write is sequencial and we can start writing
-   *         (including the case that there is already a thread writing).
-   
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 degenerate case: blocked regions require recursive enqueues
               </div></li><li><div>
-                * Dump data into a file 
+                 now test for compaction
               </div></li><li><div>
-                 update nextOffset
-              </div></li><li><div>
-                 offset &gt; nextOffset. check if we need to dump data
+                 look for a split first
+ don't split regions that are blocking
               </div></li><li><div>
                 *
-   * The current offset of the file in HDFS. All the content before this offset
-   * has been written back to HDFS.
+   * @param r Region to compact
+   * @param s Store within region to compact
+   * @param why Why compaction was requested -- used in debug messages
+   * @param pri Priority of this compaction. minHeap. &lt;=0 is critical
    
               </div></li><li><div>
                 *
-   * Creates and adds a WriteCtx into the pendingWrites map. This is a
-   * synchronized method to handle concurrent writes.
-   * 
-   * @return A non-null {@link WriteCtx} instance if the incoming write
-   *         request's offset &gt;= nextOffset. Otherwise null.
+   * @param r Region to compact
+   * @param s Store within region to compact
+   * @param why Why compaction was requested -- used in debug messages
    
               </div></li><li><div>
-                 The writes is added to pendingWrites.
- Check and start writing back if necessary
+                 Number of compactions running.
               </div></li><li><div>
-                 shouldn't happen since we do sync for overlapped concurrent writers
+                 since we're enqueuing a major, update the compaction wait interval
               </div></li><li><div>
-                 Fail non-append call
+                 sanity check: we're compacting files that this store knows about
+ TODO: change this to LOG.error() after more debugging
               </div></li><li><div>
-                 In test, noticed some Linux client sends a batch (e.g., 1MB)
- of reordered writes and won't send more writes until it gets
- responses of the previous batch. So here send response immediately
- for unstable non-sequential write
+                 everything went better than expected. create a compaction request
               </div></li><li><div>
-                * Process an overwrite write request 
+                 Ready to go. Have list of files to compact.
               </div></li><li><div>
-                *
-   * Get (and remove) the next WriteCtx from {@link #pendingWrites} if possible.
-   * 
-   * @return Null if {@link #pendingWrites} is null, or the next WriteCtx's
-   *         offset is larger than nextOffSet.
-   
+                 ASSUMPTION!!! filesCompacting is locked when calling this function
               </div></li><li><div>
-                * Invoked by AsynDataService to write back to HDFS 
+                 basic sanity check: do not try to compact the same StoreFile twice.
               </div></li><li><div>
-                 after writing, remove the WriteCtx from cache 
+                 candidates = all storefiles not already in compaction queue
               </div></li><li><div>
-                 Handle repeated write requests (same xid or not).
- If already replied, send reply again. If not replied, drop the
- repeated request.
+                 TODO: change this from an IAE to LOG.error after sufficient testing
               </div></li><li><div>
-                 not a repeated write request
+                 exclude all files older than the newest file we're currently
+ compacting. this allows us to preserve contiguity (HBASE-2856)
               </div></li><li><div>
-                 check if alive again
+                 safe bc: lock.writeLock()
               </div></li><li><div>
-                 We use the ReverseComparatorOnMin as the comparator of the map. In this
- way, we first dump the data with larger offset. In the meanwhile, we
- retrieve the last element to write back to HDFS.
+                 no files to compact
               </div></li><li><div>
-                 wake up the dumper thread to dump the data
+                 don't even select for compaction if writes are disabled
               </div></li><li><div>
-                 update the memory size
+                * Gets the StoreFiles for the request 
               </div></li><li><div>
-                 The write is not protected by lock. asyncState is used to make sure
- there is one thread doing write back at any time
+                 break the tie based on hash code
               </div></li><li><div>
-                 stop the dump thread
-              </div></li><li><div>
-                 make sure we reset asyncStatus to false
-              </div></li><li><div>
-                 check if there is a WriteCtx with the same range in pendingWrites
-              </div></li><li><div><div><b>comment:</b>  TODO: let executor handle perfect overwrite
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                 read back from dumped file
-              </div></li><li><div><div><b>comment:</b>  it is possible that while we dump the data, the data is also being
- written back to HDFS. After dump, if the writing back has not finished
- yet, we change its flag to DUMPED and set the data to null. Otherwise
- this WriteCtx instance should have been removed from the buffer.
-                </div><div><b>label:</b> requirement
-                </div></div></li><li><div>
-                * 
-   * Data belonging to the same {@link OpenFileCtx} may be dumped to a file. 
-   * After being dumped to the file, the corresponding {@link WriteCtx} records 
-   * the dump file and the offset.  
-   
-              </div></li><li><div>
-                * 
-   * Writing the data into a local file. After the writing, if 
-   * {@link #dataState} is still ALLOW_DUMP, set {@link #data} to null and set 
-   * {@link #dataState} to DUMPED.
-   
-              </div></li><li><div>
-                10 minutes
-10 seconds
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li.
-                </div><div><b>message:</b> HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li.
+                * Gets the total size of all StoreFiles in compaction 
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-3797 StoreFile Level Compaction Locking
+                </div><div><b>message:</b> HBASE-3797 StoreFile Level Compaction Locking
 
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/common/trunk@1525681 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1101676 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Move IO operations out of locking in OpenFileCtx
-                </div><div><b>description:</b> Currently some IO operations (such as writing data to HDFS and dumping to local disk) in OpenFileCtx may hold a lock which can block processing incoming writing requests. This jira aims to optimize OpenFileCtx and move the IO operations out of the locking.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> StoreFile Level Compaction Locking
+                </div><div><b>description:</b> Multithreaded compactions (HBASE-1476) will solve the problem of major compactions clogging high-priority minor compactions.  However, there is still a problem here.  Since compactions are store-level, the store undergoing major compaction will have it's storefile count increase during the major.  We really need a way to allow multiple outstanding compactions per store.  compactSelection() should lock/reserve the files being used for compaction.  This will also allow us to know what we're going to compact when inserting into the CompactSplitThread and make more informed priority queueing decisions.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Initial patch just for review.
+                Combined patch for HBASE-3797 &amp; HBASE-1476.  I did not split them up because &gt;50% of HBASE-1476 is refactoring code written for HBASE-3797.  Most of the comments I got internally about HBASE-3797 were pertaining to those deprecated code segments, so I wanted to save myself some grief on the external review :)  Note that I am having problems creating a Review Board account on review.apache.org, or I would post this up (2000+ line patch).
               </div></li><li><div>
-                Rebase the patch.
+                I got 'Something broke! (Error 500)' when I tried uploading it.  Will try again in morning and then ask INFRA if it persists.
               </div></li><li><div>
-                Update the patch: 
-1) simply the locking mechanism,
-2) handle the concurrent overlap writer scenario,
-3) handle a race on nextOffset,
-4) refactor OpenFileCtx#receivedNewWrite and OpenFileCtx#executeWriteBack.
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603698/HDFS-4971.002.patch
-  against trunk revision .
+                
+-----------------------------------------------------------
+This is an automatically generated e-mail. To reply, visit:
+https://reviews.apache.org/r/693/
+-----------------------------------------------------------
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+Review request for hbase.
 
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
 
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+Summary
+-------
 
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+hbase-3797 StoreFile Level Compaction Locking
 
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+I posted this here for nicolas
 
-    {color:red}-1 findbugs{color}.  The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
 
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+This addresses bug hbase-3797.
+    https://issues.apache.org/jira/browse/hbase-3797
 
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
 
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
+Diffs
+-----
 
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4984//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/4984//artifact/trunk/patchprocess/newPatchFindbugsWarningshadoop-hdfs-nfs.html
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4984//console
+  src/main/java/org/apache/hadoop/hbase/regionserver/CompactSplitThread.java 24450ae 
+  src/main/java/org/apache/hadoop/hbase/regionserver/CompactionRequestor.java fdbf659 
+  src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java 11fd50e 
+  src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java b910254 
+  src/main/java/org/apache/hadoop/hbase/regionserver/MemStoreFlusher.java f66a7cd 
+  src/main/java/org/apache/hadoop/hbase/regionserver/PriorityCompactionQueue.java 13bcb3f 
+  src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java PRE-CREATION 
+  src/main/java/org/apache/hadoop/hbase/regionserver/Store.java e2295c2 
+  src/main/java/org/apache/hadoop/hbase/regionserver/compactions/CompactionRequest.java 98f962b 
+  src/main/java/org/apache/hadoop/hbase/regionserver/metrics/RegionServerMetrics.java 345e393 
+  src/test/java/org/apache/hadoop/hbase/regionserver/TestCompactSelection.java 6517ba7 
+  src/test/java/org/apache/hadoop/hbase/regionserver/TestPriorityCompactionQueue.java c5d876d 
+  src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java adfe1f8 
 
-This message is automatically generated.
-              </div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603711/HDFS-4971.003.patch
-  against trunk revision .
+Diff: https://reviews.apache.org/r/693/diff
 
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
+Testing
+-------
 
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+Thanks,
 
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+Michael
 
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4989//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4989//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Rebase the patch.
-              </div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603874/HDFS-4971.004.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/4997//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/4997//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Update the patch after offline discussion with [~brandonli]. The main change includes:
-
-# Add processing logic for overlapped write
-# Handling closed FSDataOutputStream 
-# Start dumper thread only when necessary
-# Initialize nextOffset
-              </div></li><li><div>
-                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603970/HDFS-4971.005.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:red}-1 findbugs{color}.  The patch appears to introduce 1 new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5000//testReport/
-Findbugs warnings: https://builds.apache.org/job/PreCommit-HDFS-Build/5000//artifact/trunk/patchprocess/newPatchFindbugsWarningshadoop-hdfs-nfs.html
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5000//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Fix the findbug.
-              </div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12603983/HDFS-4971.006.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5002//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5002//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Thanks for the patch. Some quick comments:
-1. in the cleanup(), it should check if dumpOut==null before trying to delete the dump file.
-2. in the dumper thread, it should check if dump is still enable before each loop:
-    while (activeState &amp;&amp; enabledDump) {
-              </div></li><li><div>
-                Update the patch. Thanks Brandon for offline review, testing, and bug fix!
-              </div></li><li><div>
-                +1. Thanks you, Jing!!
-              </div></li><li><div>
-                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12604472/HDFS-4971.007.patch
-  against trunk revision .
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 1.3.9) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs-nfs.
-
-    {color:green}+1 contrib tests{color}.  The patch passed contrib unit tests.
-
-Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/5019//testReport/
-Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/5019//console
-
-This message is automatically generated.
-              </div></li><li><div>
-                Thanks again Brandon! I will commit the patch soon.
-              </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-trunk-Commit #4458 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/4458/])
-HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1525681)
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/AsyncDataService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OpenFileCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteManager.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/test/java/org/apache/hadoop/hdfs/nfs/nfs3/TestOffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
 
               </div></li><li><div>
-                I've committed this to trunk, branch-2 and branch-2.1-beta.
-              </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-Yarn-trunk #342 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/342/])
-HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1525681)
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/AsyncDataService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OpenFileCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteManager.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/test/java/org/apache/hadoop/hdfs/nfs/nfs3/TestOffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+                
+-----------------------------------------------------------
+This is an automatically generated e-mail. To reply, visit:
+https://reviews.apache.org/r/693/#review646
+-----------------------------------------------------------
+
+
+This looks great.  Some comments in below.  Have you tried it Nicolas?  Does it work for you?  I'm game for getting this into TRUNK sooner rather than earlier but was thinking the default settings conservative.  Should we have at least one small compactions thread running (Default is zero).
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/CompactSplitThread.java
+&lt;https://reviews.apache.org/r/693/#comment1293&gt;
+
+    Funny. What you doing at walmart?  Oh yeah, you are from the south!
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/CompactionRequestor.java
+&lt;https://reviews.apache.org/r/693/#comment1294&gt;
+
+    Deprecate this in favor of the new API?  Or just remove this one since its an internal-only API?
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/MemStoreFlusher.java
+&lt;https://reviews.apache.org/r/693/#comment1304&gt;
+
+    How we ensure a compaction and split of same region do not clash?  Or is that not a prob. in this redo?
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1300&gt;
+
+    Missing license
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1301&gt;
+
+    Is this good name for this?  Would 'Split' be a better name?  Or 'Splitter'
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1302&gt;
+
+    Can you pass this on construction?  Seems like something that should not be changed post-creation
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1303&gt;
+
+    This is a nice refactoring.
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/Store.java
+&lt;https://reviews.apache.org/r/693/#comment1299&gt;
+
+    Did we remove this.  Is it not needed any more?
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/compactions/CompactionRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1296&gt;
+
+    The class comment is off now, is that right?  Now it does more than hold the details.  Now it actually runs the compaction? If so, should we rename the class?
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/compactions/CompactionRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1297&gt;
+
+    You have white space throughout your patch.  No biggie but you might want to fix on commit.
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/compactions/CompactionRequest.java
+&lt;https://reviews.apache.org/r/693/#comment1298&gt;
+
+    Do we check that the files that make up the compaction are still around when we go to run?  Is it possible they might have changed between queu'ing and running?
+
+
+
+src/main/java/org/apache/hadoop/hbase/regionserver/metrics/RegionServerMetrics.java
+&lt;https://reviews.apache.org/r/693/#comment1295&gt;
+
+    Good
+
+
+- Michael
+
+
+On 2011-05-04 15:48:58, Michael Stack wrote:
+bq.  
+bq.  -----------------------------------------------------------
+bq.  This is an automatically generated e-mail. To reply, visit:
+bq.  https://reviews.apache.org/r/693/
+bq.  -----------------------------------------------------------
+bq.  
+bq.  (Updated 2011-05-04 15:48:58)
+bq.  
+bq.  
+bq.  Review request for hbase.
+bq.  
+bq.  
+bq.  Summary
+bq.  -------
+bq.  
+bq.  hbase-3797 StoreFile Level Compaction Locking
+bq.  
+bq.  I posted this here for nicolas
+bq.  
+bq.  
+bq.  This addresses bug hbase-3797.
+bq.      https://issues.apache.org/jira/browse/hbase-3797
+bq.  
+bq.  
+bq.  Diffs
+bq.  -----
+bq.  
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/CompactSplitThread.java 24450ae 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/CompactionRequestor.java fdbf659 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/HRegion.java 11fd50e 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java b910254 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/MemStoreFlusher.java f66a7cd 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/PriorityCompactionQueue.java 13bcb3f 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/SplitRequest.java PRE-CREATION 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/Store.java e2295c2 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/compactions/CompactionRequest.java 98f962b 
+bq.    src/main/java/org/apache/hadoop/hbase/regionserver/metrics/RegionServerMetrics.java 345e393 
+bq.    src/test/java/org/apache/hadoop/hbase/regionserver/TestCompactSelection.java 6517ba7 
+bq.    src/test/java/org/apache/hadoop/hbase/regionserver/TestPriorityCompactionQueue.java c5d876d 
+bq.    src/test/java/org/apache/hadoop/hbase/regionserver/TestStore.java adfe1f8 
+bq.  
+bq.  Diff: https://reviews.apache.org/r/693/diff
+bq.  
+bq.  
+bq.  Testing
+bq.  -------
+bq.  
+bq.  
+bq.  Thanks,
+bq.  
+bq.  Michael
+bq.  
+bq.
+
+
+              </div></li><li><div><div><b>body:</b> @Stack: review board comments.  Note that this is being used in our 0.89 branch, but the 0.90 port hasn't had any cluster testing, just unit testing.  The main differences were: (1) coprocessors, (2) have to pass the server to CompactRequest/SplitRequest classes, &amp; (3) Split code has changed.  All 3 differences were pretty trivial, so it should work out of the box and we plan to use it for our 0.90 build as well.
+
+I wanted to keep the defaults the same as the old algorithm, but I certainly agree that we should think of some reasonable default for the throttle size and default to 1 large + 1 small compaction.  It's just that our use case has 10GB StoreFiles, and I don't think that's normal.  Maybe after some auto-split workload uses/tunes this feature?  Also, note that 2 compactions/server means that up to 6 hard disks/server could be busy handling compactions, so there's diminished benefits on increasing the number of compaction threads past your HD/server count.  However, throttle partitioning will probably always be useful for congestion scenarios even if HD/server is low.
+
+CompactionRequestor.java#34 : we can remove the Region-level compaction API; but user-requested compactions and unit tests still use it for simplicity, so I was going to limit my refactoring.
+
+MemStoreFlusher.java#257 : Concurrent Splits &amp; Compactions are fine.  The first thing a split request does is region.close().  This waits for region.writestate.compacting == 0, or all the compactions to finish.  Additionally, compactions prematurely interrupt on a  close request, so the split won't be stalled for long.
+
+SplitRequest.java#34 : The whole setServer() stuff was hacked together [you can call region.getHRegionServer() in 0.89].  I tried to be consistent with CompactionRequest, but constructor is fine as well.
+
+Store.java#632 : Note that the old store.compact() code was moved to store.requestCompaction().
+
+CompactionRequest.java#48 : Feel free to change the comments for the class header.  You don't technically have to call CompactionRequest.run() to execute a compaction [see HRegion.compactStores()]; however you do need a CompactionRequest object for the Store to get the details about a compaction.
+
+CompactionRequest.java#177 : The Store.filesCompacting variable and associated locking ensures that 2 compactions for the same Store will not have overlapping StoreFiles.  See the Collections.disjoint() check at Store.java#881. Currently, a user can independently add StoreFiles [e.g. bulk import], but not remove StoreFiles.  We would have to check some code here if the user was allowed to arbitrarily remove StoreFiles outside of a custom compaction algorithm.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div>
+                @N
+
+That sounds like some good testing done already.  Agree should be good for TRUNK.  Yeah, on commit, lets change default. I'm ok if its sub-optimal on commit and we tune it later rather than other way around because then folks will notice that this fancy new stuff exists.
+
+CompactionRequestor.java#34: I'm ok on limiting refactoring.
+
+Would suggest you remove setServer method for SplitRequest.java#34 on commit.
+
+I'm good on the rest.  You want to make a new patch or you just want me to commit this (with amendments above)?
+
+
+
 
               </div></li><li><div>
-                FAILURE: Integrated in Hadoop-Mapreduce-trunk #1558 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/1558/])
-HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1525681)
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/AsyncDataService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OpenFileCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteManager.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/test/java/org/apache/hadoop/hdfs/nfs/nfs3/TestOffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-
+                Added with Stack's requests.  Compaction throttling is turned off by default.  I agree that it should be enabled by default, but decided to save that for another JIRA so we can discuss how we arrive at the default.
               </div></li><li><div>
-                SUCCESS: Integrated in Hadoop-Hdfs-trunk #1532 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/1532/])
-HDFS-4971. Move IO operations out of locking in OpenFileCtx. Contributed by Jing Zhao and Brandon Li. (jing9: http://svn.apache.org/viewcvs.cgi/?root=Apache-SVN&amp;view=rev&amp;rev=1525681)
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/AsyncDataService.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/OpenFileCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteCtx.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/main/java/org/apache/hadoop/hdfs/nfs/nfs3/WriteManager.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs-nfs/src/test/java/org/apache/hadoop/hdfs/nfs/nfs3/TestOffsetRange.java
-* /hadoop/common/trunk/hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
-
+                This issue was closed as part of a bulk closing operation on 2015-11-20. All issues that have been resolved and where all fixVersions have been released have been closed (following discussions on the mailing list).
               </div></li></ol></div></div></html>

@@ -1,235 +1,111 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 343
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-1380 mock root user's password is empty
-                </div><div><b>message:</b> ACCUMULO-1380 mock root user's password is empty
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> ACCUMULO-727 add exponential back-off when bulk loading files
+                </div><div><b>message:</b> ACCUMULO-727 add exponential back-off when bulk loading files
 
-git-svn-id: https://svn.apache.org/repos/asf/accumulo/branches/1.4@1482370 13f79535-47bb-0310-9956-ffa450edef68
+git-svn-id: https://svn.apache.org/repos/asf/accumulo/trunk@1457056 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div><div><b>label:</b> documentation
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
-                </div></div></li><li><div><div><b>summary:</b> Add MiniAccumuloCluster to the Accumulo documentation
-                </div><div><b>description:</b> 
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Bulk Import retry time needs to be longer/configurable
+                </div><div><b>description:</b> Bulk import retries way too fast (at least under some circumstances).  We had a tablet server that the master killed (we were overloading it with ingest and the hold time got too big so the master killed it).  At the same time, a bulk import operation had begun and several map files were assigned to the server that was just killed.  The bulk import retried three times in an 8 second span, each time failing with a connection refused error, and then gave up, failing the file completely.  Meanwhile, it took the master about 1m 20s to reassign the tablet to another server.
+
+The bulk import process should account for this possibility.  Either it needs to recognize that it can't connect to a tablet server so it must be down and the tablet will be reassigned somewhere else, or it should wait longer (such that the default max wait time is &gt; the average tablet reassignment time).  In the latter case, the retry interval should be made into a configurable option at the same time.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                I'd like to see this in 1.5, if possible.
+                Could use exponential backoff for the retry time and a max number of retries.
               </div></li><li><div>
-                yeah, this is needed for 1.5
+                made communication timeout for bulk importing configurable
               </div></li><li><div>
-                I'm going to work on this. At the same time, I agree with Dave Medinets about the MockAccumulo documentation- in its current form, it doesn't give much info. I'll probably combine the MockAccumulo and MAC docs into a single html.
-              </div></li><li><div><div><b>body:</b> Could delete the mock html file and put the documentation in the user manual.  Those html files predate the user manual.   
-                </div><div><b>label:</b> documentation
+                We don't need only configurable timeout, but need to retry slower.  If a tserver dies, bulk can try and fail on the dead tserver before the master ever has a chance to reassign the tablet.
+              </div></li><li><div>
+                Added exponential back-off, with a maximum wait between retries of 60 seconds.  Set the number of retries to 5, up from 3.
+
+              </div></li><li><div><div><b>body:</b> A possible work around for 1.4 is to up tserver.bulk.retry.max.  1.4 does not have the exponential back off that Eric just added, it just sleeps 4 secs between retries.   So this may need to be set higher.  Like setting it to 120/4 to get at least 2 min of retries.
+                </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Integrated in Accumulo-1.5-Hadoop-2.0 #104 (See [https://builds.apache.org/job/Accumulo-1.5-Hadoop-2.0/104/])
-    ACCUMULO-1010 ACCUMULO-1380 update upgrade section and API section in README (Revision 1480408)
-
-     Result = SUCCESS
-kturner : 
-Files : 
-* /accumulo/branches/1.5/README
-
-              </div></li><li><div>
-                Integrated in Accumulo-1.5 #102 (See [https://builds.apache.org/job/Accumulo-1.5/102/])
-    ACCUMULO-1010 ACCUMULO-1380 update upgrade section and API section in README (Revision 1480408)
-
-     Result = FAILURE
-kturner : 
-Files : 
-* /accumulo/branches/1.5/README
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk-Hadoop-2.0 #214 (See [https://builds.apache.org/job/Accumulo-Trunk-Hadoop-2.0/214/])
-    ACCUMULO-1010 ACCUMULO-1380 update upgrade section and API section in README (Revision 1480414)
-
-     Result = SUCCESS
-kturner : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/README
-* /accumulo/trunk/assemble
-* /accumulo/trunk/core
-* /accumulo/trunk/examples
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
-* /accumulo/trunk/pom.xml
-* /accumulo/trunk/proxy/README
-* /accumulo/trunk/server
-* /accumulo/trunk/src
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk #856 (See [https://builds.apache.org/job/Accumulo-Trunk/856/])
-    ACCUMULO-1010 ACCUMULO-1380 update upgrade section and API section in README (Revision 1480414)
-
-     Result = SUCCESS
-kturner : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/README
-* /accumulo/trunk/assemble
-* /accumulo/trunk/core
-* /accumulo/trunk/examples
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
-* /accumulo/trunk/pom.xml
-* /accumulo/trunk/proxy/README
-* /accumulo/trunk/server
-* /accumulo/trunk/src
-
-              </div></li><li><div>
-                [~ctubbsii] I'm finishing this up now. Is it too late to incorporate this into the RC?
-              </div></li><li><div>
-                {quote}I'm finishing this up now. Is it too late to incorporate this into the RC?{quote}
-
-Too late for RC2, but if that fails, it can go in RC3. Don't let that stop you from contributing it to the 1.5 branch, though. It can go in 1.5.1 if RC2 passes a vote.
-              </div></li><li><div>
-                I'm having issues getting pdflatex on my Mac. I've looked over the changes I made several times but need someone with the appropriate binaries to execute the latex plugin and verify that this builds as expected.
-              </div></li><li><div>
-                [~sonixbp] The standard community distribution of LaTeX is [TeXLive|http://www.tug.org/texlive/], and the Mac version is called [MacTeX|http://tug.org/mactex/]. I've never had a problem with pdflatex on Mac with MacTeX (but it's been awhile since I used a Mac).
-              </div></li><li><div>
-                I had installed MaCTeX and it didn't look like it had the right binaries but I'll try this again and dig a little deeper. Thanks Chris!
-              </div></li><li><div>
-                Integrated in Accumulo-1.4.x #302 (See [https://builds.apache.org/job/Accumulo-1.4.x/302/])
-    Applying patch ACCUMULO-1380 (Revision 1481697)
-
-     Result = SUCCESS
-cjnolet : 
-Files : 
-* /accumulo/branches/1.4/docs/mockAccumulo.html
-* /accumulo/branches/1.4/docs/src/user_manual/accumulo_user_manual.tex
-* /accumulo/branches/1.4/docs/src/user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-1.5 #107 (See [https://builds.apache.org/job/Accumulo-1.5/107/])
-    Applying patch ACCUMULO-1380 (Revision 1481699)
-
-     Result = SUCCESS
-cjnolet : 
-Files : 
-* /accumulo/branches/1.5/docs/mockAccumulo.html
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/accumulo_user_manual.tex
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk #860 (See [https://builds.apache.org/job/Accumulo-Trunk/860/])
-    Merging ACCUMULO-1380 from 1.5 (Revision 1481700)
-
-     Result = SUCCESS
-cjnolet : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/docs/mockAccumulo.html
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/accumulo_user_manual.tex
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-1.5-Hadoop-2.0 #109 (See [https://builds.apache.org/job/Accumulo-1.5-Hadoop-2.0/109/])
-    Applying patch ACCUMULO-1380 (Revision 1481699)
-
-     Result = SUCCESS
-cjnolet : 
-Files : 
-* /accumulo/branches/1.5/docs/mockAccumulo.html
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/accumulo_user_manual.tex
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk-Hadoop-2.0 #218 (See [https://builds.apache.org/job/Accumulo-Trunk-Hadoop-2.0/218/])
-    Merging ACCUMULO-1380 from 1.5 (Revision 1481700)
-
-     Result = SUCCESS
-cjnolet : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/docs/mockAccumulo.html
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/accumulo_user_manual.tex
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk-Hadoop-2.0 #221 (See [https://builds.apache.org/job/Accumulo-Trunk-Hadoop-2.0/221/])
-    ACCUMULO-1380 mock root user's password is empty (Revision 1481957)
-
-     Result = FAILURE
-ecn : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/assemble
-* /accumulo/trunk/core
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-* /accumulo/trunk/examples
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
-* /accumulo/trunk/pom.xml
-* /accumulo/trunk/proxy/README
-* /accumulo/trunk/server
-* /accumulo/trunk/src
-
-              </div></li><li><div>
-                Integrated in Accumulo-1.5 #110 (See [https://builds.apache.org/job/Accumulo-1.5/110/])
-    ACCUMULO-1380 mock root user's password is empty (Revision 1481956)
-
-     Result = SUCCESS
-ecn : 
-Files : 
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-
-              </div></li><li><div>
-                Integrated in Accumulo-Trunk #863 (See [https://builds.apache.org/job/Accumulo-Trunk/863/])
-    ACCUMULO-1380 mock root user's password is empty (Revision 1481957)
-
-     Result = SUCCESS
-ecn : 
-Files : 
-* /accumulo/trunk
-* /accumulo/trunk/assemble
-* /accumulo/trunk/core
-* /accumulo/trunk/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
-* /accumulo/trunk/examples
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
-* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
-* /accumulo/trunk/pom.xml
-* /accumulo/trunk/proxy/README
-* /accumulo/trunk/server
-* /accumulo/trunk/src
-
-              </div></li><li><div>
-                Integrated in Accumulo-1.5-Hadoop-2.0 #112 (See [https://builds.apache.org/job/Accumulo-1.5-Hadoop-2.0/112/])
-    ACCUMULO-1380 mock root user's password is empty (Revision 1481956)
+                Integrated in Accumulo-Trunk #778 (See [https://builds.apache.org/job/Accumulo-Trunk/778/])
+    ACCUMULO-727 retry more times (Revision 1457060)
+ACCUMULO-727 add exponential back-off when bulk loading files (Revision 1457056)
 
      Result = UNSTABLE
 ecn : 
 Files : 
-* /accumulo/branches/1.5/docs/src/main/latex/accumulo_user_manual/chapters/development_clients.tex
+* /accumulo/trunk
+* /accumulo/trunk/assemble
+* /accumulo/trunk/core
+* /accumulo/trunk/core/src/main/java/org/apache/accumulo/core/conf/Property.java
+* /accumulo/trunk/examples
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
+* /accumulo/trunk/server
+* /accumulo/trunk/src
+
+ecn : 
+Files : 
+* /accumulo/trunk
+* /accumulo/trunk/assemble
+* /accumulo/trunk/core
+* /accumulo/trunk/examples
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
+* /accumulo/trunk/server
+* /accumulo/trunk/server/src/main/java/org/apache/accumulo/server/client/BulkImporter.java
+* /accumulo/trunk/src
 
               </div></li><li><div>
-                Integrated in Accumulo-1.4.x #303 (See [https://builds.apache.org/job/Accumulo-1.4.x/303/])
-    ACCUMULO-1380 mock root user's password is empty (Revision 1482370)
-ACCUMULO-1380 set svn eol property (Revision 1482364)
+                Integrated in Accumulo-1.5-Hadoop-2.0 #32 (See [https://builds.apache.org/job/Accumulo-1.5-Hadoop-2.0/32/])
+    ACCUMULO-727 retry more times (Revision 1457059)
+ACCUMULO-727 add exponential back-off when bulk loading files (Revision 1457055)
 
-     Result = SUCCESS
-kturner : 
+     Result = UNSTABLE
+ecn : 
 Files : 
-* /accumulo/branches/1.4/docs/src/user_manual
-* /accumulo/branches/1.4/docs/src/user_manual/chapters/development_clients.tex
+* /accumulo/branches/1.5/core/src/main/java/org/apache/accumulo/core/conf/Property.java
 
-kturner : 
+ecn : 
 Files : 
-* /accumulo/branches/1.4/docs/src/user_manual/chapters/development_clients.tex
+* /accumulo/branches/1.5/server/src/main/java/org/apache/accumulo/server/client/BulkImporter.java
+
+              </div></li><li><div>
+                Integrated in Accumulo-1.5 #34 (See [https://builds.apache.org/job/Accumulo-1.5/34/])
+    ACCUMULO-727 retry more times (Revision 1457059)
+ACCUMULO-727 add exponential back-off when bulk loading files (Revision 1457055)
+
+     Result = ABORTED
+ecn : 
+Files : 
+* /accumulo/branches/1.5/core/src/main/java/org/apache/accumulo/core/conf/Property.java
+
+ecn : 
+Files : 
+* /accumulo/branches/1.5/server/src/main/java/org/apache/accumulo/server/client/BulkImporter.java
+
+              </div></li><li><div>
+                Integrated in Accumulo-Trunk-Hadoop-2.0 #137 (See [https://builds.apache.org/job/Accumulo-Trunk-Hadoop-2.0/137/])
+    ACCUMULO-727 retry more times (Revision 1457060)
+ACCUMULO-727 add exponential back-off when bulk loading files (Revision 1457056)
+
+     Result = ABORTED
+ecn : 
+Files : 
+* /accumulo/trunk
+* /accumulo/trunk/assemble
+* /accumulo/trunk/core
+* /accumulo/trunk/core/src/main/java/org/apache/accumulo/core/conf/Property.java
+* /accumulo/trunk/examples
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
+* /accumulo/trunk/server
+* /accumulo/trunk/src
+
+ecn : 
+Files : 
+* /accumulo/trunk
+* /accumulo/trunk/assemble
+* /accumulo/trunk/core
+* /accumulo/trunk/examples
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/ZooStore.java
+* /accumulo/trunk/fate/src/main/java/org/apache/accumulo/fate/zookeeper/ZooSession.java
+* /accumulo/trunk/server
+* /accumulo/trunk/server/src/main/java/org/apache/accumulo/server/client/BulkImporter.java
+* /accumulo/trunk/src
 
               </div></li></ol></div></div></html>

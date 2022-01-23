@@ -1,131 +1,315 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 191
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                 the parent thread remains blocked to simulate the child thread holding some lock in the registry/reporter
- the child thread continues execution and calls getAllVariables()
- in the past this would block indefinitely since the method acquires the locks of all parent groups
+                 what a great day!
               </div></li><li><div>
-                 start both threads and have them block in the registry, so they acquire the lock of their respective group
+                 create a scheduler with 6 instances where always two are on the same host
               </div></li><li><div>
-                 wait with a timeout to ensure the finally block is executed _at some point_, un-blocking the parent
-              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [FLINK-10761][metrics] Do not acquire lock for getAllVariables()
-                </div><div><b>message:</b> [FLINK-10761][metrics] Do not acquire lock for getAllVariables()
+                 host one gets three subtasks (but two remain empty)
+ host two get two subtasks where one gets two splits, the other one split
+ host three gets two subtasks where one gets five splits, the other gets four splits
+              </div></li><li><div>
+                
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 custom class to ensure behavior works for subclasses of LocatableInputSplit
+              </div></li><li><div>
+                 silence the compiler
+              </div></li><li><div>
+                 the current assignment leaves those with empty constraints
+              </div></li><li><div>
+                 This should fail with an exception, since the DOP of 2 does not
+ support strictly local assignment onto 3 hosts
+              </div></li><li><div>
+                 --------------------------------------------------------------------------------------------
+              </div></li><li><div>
+                 This should fail with an exception, since strictly local assignment
+ currently supports only one choice of host
+              </div></li><li><div>
+                 This should fail with an exception, since one of the hosts does not exist
+              </div></li><li><div>
+                 dandy!
+              </div></li><li><div>
+                 get list of hosts in deterministic order
+              </div></li><li><div>
+                 we go over all hosts and distribute the hosts' input splits
+ over the subtasks
+              </div></li><li><div>
+                 sanity check
+              </div></li><li><div>
+                 check if we need to do pre-assignment of tasks
+              </div></li><li><div>
+                 go over the subtasks and grab a subrange of the input splits
+              </div></li><li><div>
+                 the number of subtasks to split this over.
+ NOTE: if the host has few splits, some subtasks will not get anything.
+              </div></li><li><div>
+                 kick off the tasks
+              </div></li><li><div>
+                 store the instance in the by-host-lookup
+              </div></li><li><div>
+                * All instances by hostname 
+              </div></li><li><div>
+                 make sure we get notifications about slots becoming available
+              </div></li><li><div>
+                 add all slots as available
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> [FLINK-1478] [jobmanager] Add deterministic strictly local split assignment (part 2)
+                </div><div><b>message:</b> [FLINK-1478] [jobmanager] Add deterministic strictly local split assignment (part 2)
 
+This closes #375
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
-                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
-
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
-
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
-
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
-
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
-                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
-
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
-
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
-
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
-
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
-
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
                 </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+                </div></div></li><li><div><div><b>title:</b> [FLINK-1478] Add support for strictly local input splits
+                </div><div><b>body:</b> This adds the possibility to make input split assignment strictly local, with pre-assignment from splits to tasks on the JobManager.
 
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
+                </div></div></li></ol></div><div><b>github_pulls_comments:</b> <ol><li><div>
+                Looks good.
 
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
+              </div></li><li><div>
+                Only minor remarks. 
+Looks good otherwise.
 
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
+              </div></li></ol></div><div><b>github_pulls_reviews:</b> <ol><li><div>
+                Doesn't this potentially cause multiple subtasks being assigned to the same instance?
+I guess that would fail in the scheduler. Shouldn't we catch the case here and return a more detailed exception why scheduling constraint could not be fulfilled?
 
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
+              </div></li><li><div>
+                It should be possible that multiple subtasks go to the same instance. If there are too many, it would fail in the scheduler, yes. We can check the the number of subtasks on the instance does not exceed the number of slots.
 
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
-                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
+This seems to me like a workaround solution anyways (until we can tie splits to tasks), so it might be okay.
 
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
+              </div></li><li><div><div><b>body:</b> Ah, yes sure. I confused instances and slots...
 
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
-
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
-
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
-
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
-                </div></div></li><li><div><div><b>summary:</b> MetricGroup#getAllVariables can deadlock
-                </div><div><b>description:</b> {{AbstractMetricGroup#getAllVariables}} acquires the locks of both the current and all parent groups when assembling the variables map. This can lead to a deadlock if metrics are registered concurrently on a child and parent if the child registration is applied first and the reporter uses said method (which many do).
-
-Assume we have a MetricGroup Mc(hild) and Mp(arent).
-
-2 separate threads Tc and Tp each register a metric on their respective group, acquiring the lock.
-Let's assume that Tc has a slight headstart.
-Tc will now call {{MetricRegistry#register}} first, acquiring the MR lock.
-Tp will block on this lock.
-
-Tc now iterates over all reporters calling {{MetricReporter#notifyOfAddedMetric}}. Assume that in this method {{MetricGroup#getAllVariables}} is called on Mc by Tc.
-Tc still holds the lock to Mc, and attempts to acquire the lock to Mp.
-The lock to Mp is still held by Tp however, which waits for the MR lock to be released by Tc.
-
-Thus a deadlock is created. This may deadlock anything, be it minor threads, tasks, or entire components.
-
-This has not surfaced so far since usually metrics are no longer added to a group once children have been created (since the component initialization at that point is complete).
+                </div><div><b>label:</b> code-design
+                </div></div></li></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Add strictly local input split assignment
+                </div><div><b>description:</b> 
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Is this strictly a blocker given that it is in Flink for a couple of versions [~chesnay]. I think we should try to fix for 1.7, though.
-              </div></li><li><div>
-                Probably doesn't have to be a blocker considering we've never observed it so far outside of dev branches.
-It's fairly unlikely to happen; the only case i can imagine on master is a registration in a UDF from a separate thread while a latency histogram is being registered. This is quite specific, but would deadlock a single task.
-              </div></li><li><div><div><b>body:</b> This is a bit difficult to solve since multiple methods may violate the lock-order. It would be easier to fix if asynchronous registration of metrics is already in place, as in that case no thread could be blocked while registering a metric, and thus while holding a MetricGroup lock.
+                Github user rmetzger commented on the pull request:
 
-Given that these issues aren't new and have never been observed I'm unblocking the 1.7 release. We should look into these issues for 1.8 as part of a general concurrency-cleanup in the metric system.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                master: aa92438c4aa6218c5d7e67083152733271697089
-1.7: 45d53d27e4dec934057404674e38c6eab2e66e62
-1.6: cb85e62b5b122b7cbb9eeb72a116dd133467a920
+    https://github.com/apache/flink/pull/375#issuecomment-73477321
+  
+    Looks good.
+
+              </div></li><li><div>
+                Github user fhueske commented on the pull request:
+
+    https://github.com/apache/flink/pull/375#issuecomment-73505358
+  
+    Only minor remarks. 
+    Looks good otherwise.
+
+              </div></li><li><div>
+                Github user fhueske commented on a diff in the pull request:
+
+    https://github.com/apache/flink/pull/375#discussion_r24327047
+  
+    --- Diff: flink-runtime/src/main/java/org/apache/flink/runtime/executiongraph/ExecutionJobVertex.java ---
+    @@ -260,15 +260,49 @@ public void connectToPredecessors(Map&lt;IntermediateDataSetID, IntermediateResult&gt;
+     	
+     	public void scheduleAll(Scheduler scheduler, boolean queued) throws NoResourceAvailableException {
+     		
+    -//		ExecutionVertex[] vertices = this.taskVertices;
+    -//		
+    -//		for (int i = 0; i &lt; vertices.length; i++) {
+    -//			ExecutionVertex v = vertices[i];
+    -//			
+    -//			if (v.get 
+    -//		}
+    +		ExecutionVertex[] vertices = this.taskVertices;
+     		
+    -		for (ExecutionVertex ev : getTaskVertices()) {
+    +		// check if we need to do pre-assignment of tasks
+    +		if (inputSplitsPerSubtask != null) {
+    +		
+    +			final Map&lt;String, List&lt;Instance&gt;&gt; instances = scheduler.getInstancesByHost();
+    +			final Map&lt;String, Integer&gt; assignments = new HashMap&lt;String, Integer&gt;();
+    +			
+    +			for (int i = 0; i &lt; vertices.length; i++) {
+    +				List&lt;LocatableInputSplit&gt; splitsForHost = inputSplitsPerSubtask[i];
+    +				if (splitsForHost == null || splitsForHost.isEmpty()) {
+    +					continue;
+    +				}
+    +				
+    +				String[] hostNames = splitsForHost.get(0).getHostnames();
+    +				if (hostNames == null || hostNames.length == 0 || hostNames[0] == null) {
+    +					continue;
+    +				}
+    +				
+    +				String host = hostNames[0];
+    +				ExecutionVertex v = vertices[i];
+    +				
+    +				List&lt;Instance&gt; instancesOnHost = instances.get(host);
+    +				
+    +				if (instancesOnHost == null || instancesOnHost.isEmpty()) {
+    +					throw new NoResourceAvailableException("Cannot schedule a strictly local task to host " + host
+    +							+ ". No TaskManager available on that host.");
+    +				}
+    +				
+    +				Integer pos = assignments.get(host);
+    +				if (pos == null) {
+    +					pos = 0;
+    +					assignments.put(host, 0);
+    +				} else {
+    +					assignments.put(host, pos + 1 % instancesOnHost.size());
+    --- End diff --
+    
+    Doesn't this potentially cause multiple subtasks being assigned to the same instance?
+    I guess that would fail in the scheduler. Shouldn't we catch the case here and return a more detailed exception why scheduling constraint could not be fulfilled?
+
+              </div></li><li><div>
+                Github user StephanEwen commented on a diff in the pull request:
+
+    https://github.com/apache/flink/pull/375#discussion_r24329907
+  
+    --- Diff: flink-runtime/src/main/java/org/apache/flink/runtime/executiongraph/ExecutionJobVertex.java ---
+    @@ -260,15 +260,49 @@ public void connectToPredecessors(Map&lt;IntermediateDataSetID, IntermediateResult&gt;
+     	
+     	public void scheduleAll(Scheduler scheduler, boolean queued) throws NoResourceAvailableException {
+     		
+    -//		ExecutionVertex[] vertices = this.taskVertices;
+    -//		
+    -//		for (int i = 0; i &lt; vertices.length; i++) {
+    -//			ExecutionVertex v = vertices[i];
+    -//			
+    -//			if (v.get 
+    -//		}
+    +		ExecutionVertex[] vertices = this.taskVertices;
+     		
+    -		for (ExecutionVertex ev : getTaskVertices()) {
+    +		// check if we need to do pre-assignment of tasks
+    +		if (inputSplitsPerSubtask != null) {
+    +		
+    +			final Map&lt;String, List&lt;Instance&gt;&gt; instances = scheduler.getInstancesByHost();
+    +			final Map&lt;String, Integer&gt; assignments = new HashMap&lt;String, Integer&gt;();
+    +			
+    +			for (int i = 0; i &lt; vertices.length; i++) {
+    +				List&lt;LocatableInputSplit&gt; splitsForHost = inputSplitsPerSubtask[i];
+    +				if (splitsForHost == null || splitsForHost.isEmpty()) {
+    +					continue;
+    +				}
+    +				
+    +				String[] hostNames = splitsForHost.get(0).getHostnames();
+    +				if (hostNames == null || hostNames.length == 0 || hostNames[0] == null) {
+    +					continue;
+    +				}
+    +				
+    +				String host = hostNames[0];
+    +				ExecutionVertex v = vertices[i];
+    +				
+    +				List&lt;Instance&gt; instancesOnHost = instances.get(host);
+    +				
+    +				if (instancesOnHost == null || instancesOnHost.isEmpty()) {
+    +					throw new NoResourceAvailableException("Cannot schedule a strictly local task to host " + host
+    +							+ ". No TaskManager available on that host.");
+    +				}
+    +				
+    +				Integer pos = assignments.get(host);
+    +				if (pos == null) {
+    +					pos = 0;
+    +					assignments.put(host, 0);
+    +				} else {
+    +					assignments.put(host, pos + 1 % instancesOnHost.size());
+    --- End diff --
+    
+    It should be possible that multiple subtasks go to the same instance. If there are too many, it would fail in the scheduler, yes. We can check the the number of subtasks on the instance does not exceed the number of slots.
+    
+    This seems to me like a workaround solution anyways (until we can tie splits to tasks), so it might be okay.
+
+              </div></li><li><div>
+                Github user fhueske commented on a diff in the pull request:
+
+    https://github.com/apache/flink/pull/375#discussion_r24330528
+  
+    --- Diff: flink-runtime/src/main/java/org/apache/flink/runtime/executiongraph/ExecutionJobVertex.java ---
+    @@ -260,15 +260,49 @@ public void connectToPredecessors(Map&lt;IntermediateDataSetID, IntermediateResult&gt;
+     	
+     	public void scheduleAll(Scheduler scheduler, boolean queued) throws NoResourceAvailableException {
+     		
+    -//		ExecutionVertex[] vertices = this.taskVertices;
+    -//		
+    -//		for (int i = 0; i &lt; vertices.length; i++) {
+    -//			ExecutionVertex v = vertices[i];
+    -//			
+    -//			if (v.get 
+    -//		}
+    +		ExecutionVertex[] vertices = this.taskVertices;
+     		
+    -		for (ExecutionVertex ev : getTaskVertices()) {
+    +		// check if we need to do pre-assignment of tasks
+    +		if (inputSplitsPerSubtask != null) {
+    +		
+    +			final Map&lt;String, List&lt;Instance&gt;&gt; instances = scheduler.getInstancesByHost();
+    +			final Map&lt;String, Integer&gt; assignments = new HashMap&lt;String, Integer&gt;();
+    +			
+    +			for (int i = 0; i &lt; vertices.length; i++) {
+    +				List&lt;LocatableInputSplit&gt; splitsForHost = inputSplitsPerSubtask[i];
+    +				if (splitsForHost == null || splitsForHost.isEmpty()) {
+    +					continue;
+    +				}
+    +				
+    +				String[] hostNames = splitsForHost.get(0).getHostnames();
+    +				if (hostNames == null || hostNames.length == 0 || hostNames[0] == null) {
+    +					continue;
+    +				}
+    +				
+    +				String host = hostNames[0];
+    +				ExecutionVertex v = vertices[i];
+    +				
+    +				List&lt;Instance&gt; instancesOnHost = instances.get(host);
+    +				
+    +				if (instancesOnHost == null || instancesOnHost.isEmpty()) {
+    +					throw new NoResourceAvailableException("Cannot schedule a strictly local task to host " + host
+    +							+ ". No TaskManager available on that host.");
+    +				}
+    +				
+    +				Integer pos = assignments.get(host);
+    +				if (pos == null) {
+    +					pos = 0;
+    +					assignments.put(host, 0);
+    +				} else {
+    +					assignments.put(host, pos + 1 % instancesOnHost.size());
+    --- End diff --
+    
+    Ah, yes sure. I confused instances and slots...
+
+              </div></li><li><div>
+                Github user asfgit closed the pull request at:
+
+    https://github.com/apache/flink/pull/375
+
+              </div></li><li><div>
+                Fixed in 4386620c06e94c9f4e3030ea7ae0f480845e2969
               </div></li></ol></div></div></html>

@@ -1,89 +1,68 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 253
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
-                *
- * Marker interface for streaming output formats. For now, this is used to out out of the
- * optimizations that do not output empty results to avoid empty files.
- 
-              </div></li><li><div>
-                *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- 
-              </div></li><li><div><div><b>comment:</b>  TODO# this
-                </div><div><b>label:</b> requirement
-                </div></div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HIVE-14071 : HIVE-14014 breaks non-file outputs (Sergey Shelukhin, reviewed by Pengcheng Xiong)
-                </div><div><b>message:</b> HIVE-14071 : HIVE-14014 breaks non-file outputs (Sergey Shelukhin, reviewed by Pengcheng Xiong)
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HIVE-8654 : CBO: parquet_ctas test returns incorrect results (Sergey Shelukhin, reviewed by Ashutosh Chauhan)
+                </div><div><b>message:</b> HIVE-8654 : CBO: parquet_ctas test returns incorrect results (Sergey Shelukhin, reviewed by Ashutosh Chauhan)
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
+git-svn-id: https://svn.apache.org/repos/asf/hive/branches/branch-0.14@1635604 13f79535-47bb-0310-9956-ffa450edef68
 
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> CBO: parquet_ctas test returns incorrect results
+                </div><div><b>description:</b> I am investigating right now. 
+The issue is specific to Parquet:
 
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
+{noformat}
+set hive.cbo.enable=true;
+drop table staging;
+drop table parquet_ctas;
 
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
+create table staging (key int, value string) stored as textfile;
+insert into table staging select * from src order by key limit 10;
+select * from staging;
 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
+create table parquet_ctas stored as parquet as select * from staging;
+select * from parquet_ctas;
+create table orc_ctas stored as orc as select * from staging;
+select * from orc_ctas;
+create table txt_ctas stored as textfile as select * from staging;
+select * from txt_ctas;
+{noformat}
 
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
-
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
-
-                </div></div></li><li><div><div><b>summary:</b> HIVE-14014 breaks non-file outputs
-                </div><div><b>description:</b> Cannot avoid creating outputs when outputs are e.g. streaming
-
+The parquet query returns all NULLs with CBO on.
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                [~jdere] [~pxiong] can you take a look? thanks
+                [~brocknoland] do you guys have any feedback? We will probably look more at this, but I wonder why query would break on Parquet specifically. Does writing to Parquet table depend on something in addition to what other output formats do? CBO can change query plan, column names, etc.
               </div></li><li><div>
-                [~sershe], thanks for your fast patch and response. So basically, when the file (to be streamed) is empty, your patch will still create the file (the streaming pipeline)? Is there any other way we can improve that so that we do not create the pipeline at all? If I understand correctly, the root cause of the problem is that streaming client is writing data to streaming server but server may wait infinitely when client does not have anything to write (file is empty). Is it possible to use "push" model for the client to push data to the server rather than current "pull" model for the server to pull data from client? Thanks.
-              </div></li><li><div>
-                This is writer; this is server pushing data to client. If the server never pushes anything or disconnects, the client just sits around forever waiting for data. At least the close() call should be performed, so that the notification is sent to client and/or the socket is closed. Otherwise the client doesn't know whether server is still doing work, or if it's done. So there's no way to avoid the pipeline.
-              </div></li><li><div><div><b>body:</b> I had a discussion with [~sershe]. The main draw back of current solution in this patch is that we call "createBucketFiles" and we call "closeWriters" to close it immediately. The reason behind is to keep the client from endless waiting. We explored and discussed different other solutions. As far as we know, it seems that we could not find anything better. I would suggest that we could put some comments about this drawback and some "TODO" comments for future improvement in the code. +1. ccing [~ashutoshc]
+                The only thing I could thing of is if the column names written to the file are getting messed up. Parquet does column resolution by name. You can view the contents of a parquet file with the parquet dump command.
+              </div></li><li><div><div><b>body:</b> Looks like changing the output schema, as we do now, is not enough for parquet. Patching AST column names in addition fixes parquet, but that is problematic because it breaks other things (e.g. references from order by to select expressions), and patching those also is too hacky. I'll look for some other fix
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
+                If the parquet code needs to be updated to get the column names from some other location. That is fine with ne.
+              </div></li><li><div>
+                tiny fix to populate fixed colName not just in fieldschemas, but also in tabledesc cols. Just in case, only do it when running CBO.
+
+[~ashutoshc] [~jpullokkaran] [~hagleitn] ok for trunk/14?
+
+if someone feels like committing things, please don't yet :)
+              </div></li><li><div>
                 
 
+{color:red}Overall{color}: -1 at least one tests failed
+
 Here are the results of testing the latest attachment:
-https://issues.apache.org/jira/secure/attachment/12812304/HIVE-14071.patch
+https://issues.apache.org/jira/secure/attachment/12678112/HIVE-8654.patch
 
-{color:red}ERROR:{color} -1 due to no test(s) being added or modified.
-
-{color:red}ERROR:{color} -1 due to 3 failed/errored test(s), 10247 tests executed
+{color:red}ERROR:{color} -1 due to 3 failed/errored test(s), 6590 tests executed
 *Failed tests:*
 {noformat}
-TestMinimrCliDriver-bucketmapjoin6.q-leftsemijoin_mr.q-bucket5.q-and-1-more - did not produce a TEST-*.xml file
-org.apache.hadoop.hive.cli.TestCliDriver.testCliDriver_constantPropagateForSubQuery
-org.apache.hadoop.hive.cli.TestMiniSparkOnYarnCliDriver.testCliDriver_index_bitmap3
+org.apache.hadoop.hive.cli.TestMiniTezCliDriver.testCliDriver_optimize_nullscan
+org.apache.hive.hcatalog.streaming.TestStreaming.testTransactionBatchCommit_Json
+org.apache.hive.minikdc.TestJdbcWithMiniKdc.testNegativeTokenAuth
 {noformat}
 
-Test results: https://builds.apache.org/job/PreCommit-HIVE-MASTER-Build/216/testReport
-Console output: https://builds.apache.org/job/PreCommit-HIVE-MASTER-Build/216/console
-Test logs: http://ec2-50-18-27-0.us-west-1.compute.amazonaws.com/logs/PreCommit-HIVE-MASTER-Build-216/
+Test results: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/1557/testReport
+Console output: http://ec2-174-129-184-35.compute-1.amazonaws.com/jenkins/job/PreCommit-HIVE-TRUNK-Build/1557/console
+Test logs: http://ec2-174-129-184-35.compute-1.amazonaws.com/logs/PreCommit-HIVE-TRUNK-Build-1557/
 
 Messages:
 {noformat}
-Executing org.apache.hive.ptest.execution.TestCheckPhase
 Executing org.apache.hive.ptest.execution.PrepPhase
 Executing org.apache.hive.ptest.execution.ExecutionPhase
 Executing org.apache.hive.ptest.execution.ReportingPhase
@@ -92,7 +71,14 @@ Tests exited with: TestsFailedException: 3 tests failed
 
 This message is automatically generated.
 
-ATTACHMENT ID: 12812304 - PreCommit-HIVE-MASTER-Build
+ATTACHMENT ID: 12678112 - PreCommit-HIVE-TRUNK-Build
               </div></li><li><div>
-                Committed to branches; thanks for the review!
+                test failures are unrelated
+              </div></li><li><div>
+                +1
+              </div></li><li><div>
+                committed to both
+              </div></li><li><div>
+                This has been fixed in 0.14 release. Please open new jira if you see any issues.
+
               </div></li></ol></div></div></html>

@@ -1,1230 +1,199 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 112
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> CAMEL-12871: disconnect on handshake failure
-                </div><div><b>message:</b> CAMEL-12871: disconnect on handshake failure
-
-If we can't connect and perform the handshake, disconnecting will
-trigger client restart with back-off. Also when restarting as the signal
-to restart can occur on multiple threads we need to guard against
-restart happening in parallel.
-
-(cherry picked from commit e1760b1de6adbb5a0f10c02c677e69a04feaad26)
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li><li><div><div><b>summary:</b> Camel-salesforce component drops the streaming topic
-                </div><div><b>description:</b> h1. Summary
-Salesforce component tries to reconnect to salesforce, if it gets disconnect. Most of the time it is succeeded. However, there is case when re-connect does not work. At that time salesforce component drops the topic which is subscribe and reconnects back. Everything looks normal again, however, no new streaming messages are received, as the component has dropped the topic.
-
-h1. Observation
-Here is the logs which show good reconnect. We can see that camel attempts to subscribe to topic /topic/AccountOwner
-
-{quote}
-2018-09-12 02:54:23.530 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}]
-2018-09-12 02:54:23.531 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.531  WARN 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=410, error=403::Unknown client, successful=false}
-2018-09-12 02:54:23.588 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}]
-2018-09-12 02:54:23.589 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=p1t17l7111gqk4p6eff60893qeev, supportedConnectionTypes=[Ljava.lang.Object;@471ebac8, channel=/meta/handshake, id=411, version=1.0, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}]
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=p1t17l7111gqk4p6eff60893qeev, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=412, successful=true}
-2018-09-12 02:54:23.625 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626  INFO 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}]
-2018-09-12 02:54:23.693 DEBUG 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-2018-09-12 02:54:23.693  INFO 1 --- [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribed to channel /topic/AccountOwners
-2018-09-12 02:54:25.453 DEBUG 1 --- [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages ....
-{quote}
-
-
-Here is the logs which shows connection fails. Camel tries to reconnect, but fails. Then camel reconnects after dropping the topic. After this incident, no new messages are received. 
-{quote}
-2018-09-22 05:26:17.121  WARN 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8770, error=403::Unknown client, successful=false}
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}]
-2018-09-22 05:26:18.738 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=5vgmiblu8etx0q3typo6d5tgn, supportedConnectionTypes=[Ljava.lang.Object;@5814852c, channel=/meta/handshake, id=8771, version=1.0, successful=true}
-2018-09-22 05:26:18.775 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}]
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8772, successful=true}
-2018-09-22 05:26:18.776 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776  INFO 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{channel=/meta/disconnect}, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.014  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Restarting on unexpected disconnect from Salesforce...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=none, interval=0}, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Waiting to disconnect...
-2018-09-22 05:26:19.014 DEBUG 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Pausing for 1000 msecs before restart attempt
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}]
-2018-09-22 05:26:19.043 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_SUBSCRIBE]: {clientId=5vgmiblu8etx0q3typo6d5tgn, advice={reconnect=handshake, interval=0}, channel=/meta/subscribe, id=8773, subscription=/topic/AccountOwners, error=403::Unknown client, successful=false}
-2018-09-22 05:26:19.054  WARN 1 --- [ent@2362f559-23] o.a.c.c.salesforce.SalesforceConsumer    : Error subscribing to AccountOwners: 403::Unknown client. Caused by: [org.apache.camel.component.salesforce.api.SalesforceException - Error subscribing to AccountOwners: 403::Unknown client]
-
-org.apache.camel.component.salesforce.api.SalesforceException: Error subscribing to AccountOwners: 403::Unknown client
-	at org.apache.camel.component.salesforce.internal.streaming.SubscriptionHelper$7.onMessage(SubscriptionHelper.java:404) [camel-salesforce-2.21.1.jar!/:2.21.1]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyOnMessage(AbstractClientSession.java:594) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession$AbstractSessionChannel.notifyMessageListeners(AbstractClientSession.java:579) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.notifyListeners(AbstractClientSession.java:291) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.common.AbstractClientSession.receive(AbstractClientSession.java:257) [cometd-java-common-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessage(BayeuxClient.java:822) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.processMessages(BayeuxClient.java:618) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient.access$3100(BayeuxClient.java:100) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.BayeuxClient$MessageTransportListener.onMessages(BayeuxClient.java:1189) [cometd-java-client-3.1.2.jar!/:na]
-	at org.cometd.client.transport.LongPollingTransport$2.onComplete(LongPollingTransport.java:236) [cometd-java-client-3.1.2.jar!/:na]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:193) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.ResponseNotifier.notifyComplete(ResponseNotifier.java:185) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.terminateResponse(HttpReceiver.java:464) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.HttpReceiver.responseSuccess(HttpReceiver.java:410) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.messageComplete(HttpReceiverOverHTTP.java:301) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.handleContentMessage(HttpParser.java:628) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseContent(HttpParser.java:1594) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.http.HttpParser.parseNext(HttpParser.java:1442) [jetty-http-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.parse(HttpReceiverOverHTTP.java:173) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.process(HttpReceiverOverHTTP.java:134) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpReceiverOverHTTP.receive(HttpReceiverOverHTTP.java:72) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpChannelOverHTTP.receive(HttpChannelOverHTTP.java:133) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.client.http.HttpConnectionOverHTTP.onFillable(HttpConnectionOverHTTP.java:155) [jetty-client-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.AbstractConnection$ReadCallback.succeeded(AbstractConnection.java:281) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection.onFillable(SslConnection.java:291) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ssl.SslConnection$3.succeeded(SslConnection.java:151) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.FillInterest.fillable(FillInterest.java:102) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.io.ChannelEndPoint$2.run(ChannelEndPoint.java:118) [jetty-io-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.doProduce(EatWhatYouKill.java:319) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.tryProduce(EatWhatYouKill.java:175) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.strategy.EatWhatYouKill.run(EatWhatYouKill.java:133) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.ReservedThreadExecutor$ReservedThread.run(ReservedThreadExecutor.java:366) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool.runJob(QueuedThreadPool.java:754) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at org.eclipse.jetty.util.thread.QueuedThreadPool$2.run(QueuedThreadPool.java:672) [jetty-util-9.4.9.v20180320.jar!/:9.4.9.v20180320]
-	at java.lang.Thread.run(Thread.java:748) [na:1.8.0_171]
-
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}]
-2018-09-22 05:26:20.070 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=91ffaqyez0nsf71n1yganknag4o, supportedConnectionTypes=[Ljava.lang.Object;@249260ff, channel=/meta/handshake, id=8775, version=1.0, successful=true}
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}]
-2018-09-22 05:26:20.108 DEBUG 1 --- [ent@2362f559-23] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=91ffaqyez0nsf71n1yganknag4o, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8776, successful=true}
-2018-09-22 05:26:20.108  INFO 1 --- [ent@2362f559-22] o.a.c.c.s.i.s.SubscriptionHelper         : Successfully restarted!
-{quote}
-
-Here are the logs afterward, where on getting 403 error camel tries to reconnect, but does not subscribe to topic
-{quote}
-2018-09-22 08:27:54.440  WARN 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : Connect failure: {advice={reconnect=handshake, interval=0}, channel=/meta/connect, id=8876, error=403::Unknown client, successful=false}
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}]
-2018-09-22 08:27:54.489 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_HANDSHAKE]: {ext={replay=true, payload.format=true}, minimumVersion=1.0, clientId=8318v3qm6whrb71uj5d6w2qv97q, supportedConnectionTypes=[Ljava.lang.Object;@1b0b2091, channel=/meta/handshake, id=8877, version=1.0, successful=true}
-2018-09-22 08:27:54.526 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}]
-2018-09-22 08:27:54.527 DEBUG 1 --- [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper         : [CHANNEL:META_CONNECT]: {clientId=8318v3qm6whrb71uj5d6w2qv97q, advice={reconnect=retry, interval=0, timeout=110000}, channel=/meta/connect, id=8878, successful=true}
-2018-09-22 08:29:44.566 DEBUG 1 --- [ent@2362f559-19] o.a.c.c.s.i.s.SubscriptionHelper$5       : Received messages [{clientId=8318v3qm6whrb71uj5d6w2qv97q, channel=/meta/connect, id=8879, successful=true}]
-{quote}
-
-h1. Desired functionality
-Salesforce component to continue to try reconnect *without* dropping the topic
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                [~hemangajmera] can you explain what do you mean by dropping a topic?
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                *
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
               </div></li><li><div>
-                There are three set logs
- # Camel reconnection before it dropped
- # Camel error after which it could not reconnect
- # Camel reconnection after the error in log 2
+                *
+ * A default {@link ExchangeFormatter} which just uses the {@link org.apache.camel.Exchange#toString()} method
+ *  
+ * @version $Revision: 1.1 $
+ 
+              </div></li><li><div>
+                *
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                *
+ * A plugin used to turn an {@link Exchange} into a String
+ * so it can be logged to a file
+ *
+ * @version $Revision: 1.1 $
+ 
+              </div></li><li><div>
+                *
+     * Generates a string representation of the exchange
+     
+              </div></li><li><div>
+                *
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 Implementation methods
+-------------------------------------------------------------------------
+              </div></li><li><div>
+                *
+ * @version $Revision: 1.1 $
+ 
+              </div></li><li><div>
+                 Properties
+-------------------------------------------------------------------------
+              </div></li><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                *
+     * Returns true if the given exchange should be logged in the trace list
+     
+              </div></li><li><div>
+                 Implementation methods
+-------------------------------------------------------------------------
+              </div></li><li><div>
+                *
+ * An interceptor for debugging and tracing routes
+ *
+ * @version $Revision$
+ 
+              </div></li><li><div>
+                *
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                 do nothing
+              </div></li><li><div>
+                *
+ * @version $Revision: 1.1 $
+ 
+              </div></li><li><div>
+                 lets add the debugger which traces by default
+              </div></li><li><div>
+                *
+     * Returns the unique ID of this unit of work, lazily creating one if it does not yet have one
+     *
+     * @return
+     
+              </div></li><li><div>
+                *
+     * Returns the unique ID of this unit of work, lazily creating one if it does not yet have one
+     *
+     * @return
+     
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> first spike at implementing https://issues.apache.org/activemq/browse/CAMEL-619
+                </div><div><b>message:</b> first spike at implementing https://issues.apache.org/activemq/browse/CAMEL-619
 
-If we compare the logs in section 1 and section 3, there is difference in reconnection.
+git-svn-id: https://svn.apache.org/repos/asf/activemq/camel/trunk@669650 13f79535-47bb-0310-9956-ffa450edef68
 
-In the first set of logs ( good re-connection ) I can see
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> make it easy to trace route executions in the log
+                </div><div><b>description:</b> so that folks can help diagnose issues...
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                I've spun off the remaining tasks as separate JIRAs, CAMEL-639 and CAMEL-640.
 
-2018-09-12 02:54:23.625 DEBUG 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : Refreshing subscriptions to 1 channels on reconnect
- 2018-09-12 02:54:23.626 INFO 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
- 2018-09-12 02:54:23.626 INFO 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : *Subscribing to channel /topic/AccountOwners*...
+I made a minor refactor at the last minute to use 'trace' as the property rather than 'tracing'
 
-&nbsp;
+The Spring XML test case is in camel-spring called SpringTraceTest
+              </div></li><li><div>
+                there's now a trace flag on DefaultCamelContext and &lt;camelContext trace="true"/&gt; to easily enable tracing
+              </div></li><li><div><div><b>body:</b> If its part of the new debugger feature then please add documentation about this new option in the wiki
 
-This is missing in last sets of logs.
+http://activemq.apache.org/camel/debugger.html
 
-Camel is reconnecting to salesforce, but not subscibing to channel. However when we restart, it starts working fine.
-              </div></li><li><div><div><b>body:</b> One more point
-
-I have just extracted relevant part of logs...
-
-For e.g. every 2-3 hours camel gets disconnection, so the first type of logs is seen every 2-3 hours. Then there was issue ( 2nd type of log). After that 3rd type of log is seen to be repeating every 2-3 hours.
-
-&nbsp;
-
-&nbsp;
+And btw the debugger wiki is probably out of date with the latest commits.
+                </div><div><b>label:</b> documentation
+                </div></div></li><li><div>
+                I have enabled the breadcrumb so unit of work id is logged so end users can use it for correlation. 
+              </div></li><li><div><div><b>body:</b> Maybe the exchange id should be outputted by default? If you have concurrent exchanges then it can be harder to view/grep/filter in the logfiles for the same exchange.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                [~hemangajmera] can you please explain what do you mean by "it dropped", *what dropped what*?
+                BTW added a FAQ entry...
+http://cwiki.apache.org/confluence/display/CAMEL/How+do+I+debug+my+route
 
-In the logs you provided I can see:
-
-*The first log:*
-
-{code}
-2018-09-12 02:54:23.625 DEBUG 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : Refreshing subscriptions to 1 channels on reconnect
-2018-09-12 02:54:23.626 INFO 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-12 02:54:23.626 INFO 1 — [ent@2362f559-20] o.a.c.c.s.i.s.SubscriptionHelper : Subscribing to channel /topic/AccountOwners...
-2018-09-12 02:54:23.693 DEBUG 1 — [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper$5 : Received messages [
-Unknown macro: {clientId=p1t17l7111gqk4p6eff60893qeev, channel=/meta/subscribe, id=413, subscription=/topic/AccountOwners, successful=true}
-
-]
-2018-09-12 02:54:23.693 DEBUG 1 — [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper : [CHANNEL:META_SUBSCRIBE]:
-
-2018-09-12 02:54:23.693 INFO 1 — [ent@2362f559-21] o.a.c.c.s.i.s.SubscriptionHelper : Subscribed to channel /topic/AccountOwners
-{code}
-
-*And the second log:*
-
-{code}
-2018-09-22 05:26:18.776 DEBUG 1 — [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper : Refreshing subscriptions to 1 channels on reconnect
-2018-09-22 05:26:18.776 INFO 1 — [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper : Set Replay extension to replay from `-2` for channel `/topic/AccountOwners`
-2018-09-22 05:26:18.776 INFO 1 — [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper : Subscribing to channel /topic/AccountOwners...
-2018-09-22 05:26:19.013 DEBUG 1 — [ent@2362f559-24] o.a.c.c.s.i.s.SubscriptionHelper$5 : Received messages [
-Unknown macro: {channel=/meta/disconnect}
-
-, {clientId=5vgmiblu8etx0q3typo6d5tgn, advice=
-Unknown macro: {reconnect=none, interval=0}
-
-, channel=/meta/connect, id=8774, error=403::Unknown client, successful=false}]
-{code}
-
-The only difference here is that Salesforce replied with an error: *{{error=403::Unknown client, successful=false}}*.
-
-Can you explain why Salesforce issued a *403* error, this would help me reproduce the issue?
-
-Are you saying that after Salesforce reports a *403* error that *the topic subscription is not performed on re-connect*?
               </div></li><li><div>
-                Hi
- # From salesforce we get 403 error every 2-3 hours. We currently do not know the reason, and we are trying to seek help for sf.
- # In log one, upon 403 error, camel was able to reconnect back to salesforce. After that it was able to subscribed to the topic. This is repeated every 2-3 hours
- # As you rightly said, something went wrong during log 2, and camel was not able to subscribe to salesforce
- # In log three, camel tried to log in again to salesforce, but&nbsp; this time camel is not trying to subscribe the topic at all.
- # So my question here is why is camel to trying to subscribe again after failure in log 2? Shouldn't it try to come out of error?
- # If I restart camel code, everything just works fine
- # I think when we get&nbsp; error in log 2, camel maintains list of topics and replay id to be connected to salesforce. From that list this topic is removed. Thus in all future tried, camel does not have any topic to connect. What we should fix is that camel should continue to try to connect to topic and not drop it.
+                Updated the wiki. Only a spring XML example is missing.
+              </div></li><li><div>
+                Would be great if the tracer could output the from parts as well ;) 
 
-&nbsp;
-              </div></li><li><div>
-                Hi [~zregvart] &amp; [~cibsen@e-ma.net]
+from: XXXX -&gt; to: YYYY: exchange: AAAA, BBBB, CCCC
 
-&nbsp;&nbsp; Any thoughts on this issue? I think camel got error which subscribing topic after successful handshake. After that camel stopped subscribing the topic. Can we add retry logic?
+And then it could also consider redelivery as well. Outputting if the execution is a redelivery and what count it is.
               </div></li><li><div>
-                [~hemangajmera] I've made the change on my [github fork|https://github.com/zregvart/camel/tree/CAMEL-12871], but I'm struggling to create a test or to validate this in any other way.
-              </div></li><li><div>
-                Hi
+                James could we have the wiki updated with your new option and some sample output from the new trace interceptor?
 
-&nbsp;&nbsp; Is it possible for you to send me compiled jar file for this component. I will try to use your jar instead of original the keep it running for couple of days to see how it behaves.
+I do think I will try to give a go at it so I can see what it really does ;)
+This is more or less the last ticket for 1.4 so we could cut a new RC this week.
               </div></li><li><div>
-                Fix is targeted to be released in 3.7.1 and 3.8.0, in the interim I would appreciate anyone trying this out in their environment and reporting any issues so we get them fixed.
+                BTW Claus did a great job of documenting it here...
+
+http://cwiki.apache.org/CAMEL/tracer.html
+
               </div></li></ol></div></div></html>

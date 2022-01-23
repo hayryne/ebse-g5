@@ -1,940 +1,64 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 24
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> Revert "HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (Nick Dimiduk)"
-                </div><div><b>message:</b> Revert "HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (Nick Dimiduk)"
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 This should never happen. But as the pool is provided by the end user,
+ let's secure this a little.
+              </div></li><li><div>
+                 see #HBASE-14359 for more details
+              </div></li><li><div>
+                 We're likely to fail again, but this will increment the attempt counter,
+ so it will finish.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu)
+                </div><div><b>message:</b> HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu)
 
-This reverts commit 5e403cb3d92133b15faf955d16c6dbafed960c6f.
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction
+                </div><div><b>description:</b> Currently in AsyncProcess#sendMultiAction, we only catch the RejectedExecutionException and let other error/exception go, which will cause decTaskCounter not invoked. Meanwhile, the recommendation for using HTable is to close the table in the finally clause, and HTable#close will call flushCommits and wait until all task done.
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
+The problem is when unchecked error/exception like OutOfMemoryError thrown, taskSent will never be equal to taskDone, so AsyncProcess#waitUntilDone will never return. Especially, if autoflush is set thus no data to flush during table close, there would be no rpc call so rpcTimeOut will not break the call, and thread will wait there forever.
 
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
-                </div></div></li><li><div><div><b>summary:</b> LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad
-                </div><div><b>description:</b> Seems HBASE-13328 wasn't quite sufficient.
-
-{noformat}
-015-06-02 05:49:23,578|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 WARN mapreduce.LoadIncrementalHFiles: Skipping non-directory hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/_SUCCESS
-2015-06-02 05:49:23,720|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO hfile.CacheConfig: CacheConfig:disabled
-2015-06-02 05:49:23,859|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:49:23 INFO mapreduce.LoadIncrementalHFiles: Trying to load hfile=hdfs://dal-pqc1:8020/tmp/192f21dd-cc89-4354-8ba1-78d1f228e7c7/LARGE_TABLE/0/00870fd0a7544373b32b6f1e976bf47f first=\x80\x00\x00\x00 last=\x80LK?
-2015-06-02 05:50:32,028|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:32 INFO client.RpcRetryingCaller: Call exception, tries=10, retries=35, started=68154 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-2015-06-02 05:50:52,128|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:50:52 INFO client.RpcRetryingCaller: Call exception, tries=11, retries=35, started=88255 ms ago, cancelled=false, msg=row '' on table 'LARGE_TABLE' at region=LARGE_TABLE,,1433222865285.e01e02483f30a060d3f7abb1846ea029., hostname=dal-pqc5,16020,1433222547221, seqNum=2
-...
-...
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|15/06/02 05:01:56 ERROR mapreduce.CsvBulkLoadTool: Import job on table=LARGE_TABLE failed due to exception.
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|java.io.IOException: BulkLoad encountered an unrecoverable problem
-2015-06-02 05:01:56,121|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.bulkLoadPhase(LoadIncrementalHFiles.java:474)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:405)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles.doBulkLoad(LoadIncrementalHFiles.java:300)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:517)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.mapreduce.CsvBulkLoadTool$TableLoader.call(CsvBulkLoadTool.java:466)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.FutureTask.run(FutureTask.java:266)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at org.apache.phoenix.job.JobManager$InstrumentedJobFutureTask.run(JobManager.java:172)
-2015-06-02 05:01:56,122|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
-2015-06-02 05:01:56,124|beaver.machine|INFO|7800|2276|MainThread|at java.lang.Thread.run(Thread.java:745)
-...
-...
-...
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|Caused by: org.apache.hadoop.hbase.client.NeedUnmanagedConnectionException: The connection has to be unmanaged.
-2015-06-02 05:58:34,993|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:724)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:708)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.ConnectionManager$HConnectionImplementation.getTable(ConnectionManager.java:542)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:733)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles$4.call(LoadIncrementalHFiles.java:720)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|at org.apache.hadoop.hbase.client.RpcRetryingCaller.callWithRetries(RpcRetryingCaller.java:126)
-2015-06-02 05:58:34,994|beaver.machine|INFO|2828|7140|MainThread|... 7 more
-2015-06-02 05:58:35,000|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO client.ConnectionManager$HConnectionImplementation: Closing zookeeper sessionid=0x14db2ae02800050
-2015-06-02 05:58:35,006|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ZooKeeper: Session: 0x14db2ae02800050 closed
-2015-06-02 05:58:35,007|beaver.machine|INFO|2828|7140|MainThread|15/06/02 05:58:35 INFO zookeeper.ClientCnxn: EventThread shut down
-{noformat}
-
+In our product env, the unchecked error we observed is "java.lang.OutOfMemoryError: unable to create new native thread", and we observed the client thread hang for hours
                 </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
-                Attaching a patch for branch-1.1. Still testing some combinations.
+                Submit patches for master, branch-1.X and 0.98.
               </div></li><li><div>
-                +1
+                Add jstack output for this issue:
+{noformat}
+"Thread-14" daemon prio=10 tid=0x00007fc9f7c0d800 nid=0x125b in Object.wait() [0x0000000043acc000]
+   java.lang.Thread.State: TIMED_WAITING (on object monitor)
+        at java.lang.Object.wait(Native Method)
+        at org.apache.hadoop.hbase.client.AsyncProcess.waitForNextTaskDone(AsyncProcess.java:988)
+        - locked &lt;0x0000000788126080&gt; (a java.util.concurrent.atomic.AtomicLong)
+        at org.apache.hadoop.hbase.client.AsyncProcess.waitForMaximumCurrentTasks(AsyncProcess.java:1014)
+        at org.apache.hadoop.hbase.client.AsyncProcess.waitUntilDone(AsyncProcess.java:1027)
+        at org.apache.hadoop.hbase.client.HTable.backgroundFlushCommits(HTable.java:1092)
+        - locked &lt;0x0000000788126168&gt; (a java.lang.Object)
+        at org.apache.hadoop.hbase.client.HTable.flushCommits(HTable.java:1424)
+        at org.apache.hadoop.hbase.client.HTable.close(HTable.java:1461)
+        at com.alibaba.search.offline.sync.common.hbase.HBaseTable.returnHTable(HBaseTable.java:136)
+        at com.alibaba.search.offline.sync.common.hbase.HBaseTable.batchPut(HBaseTable.java:185)
+        at com.alibaba.search.offline.sync.common.hbase.HBaseTable.batchPut(HBaseTable.java:159)
+        at com.alibaba.search.offline.sync.sync.storage.HBaseStorageHandler.multiPut(HBaseStorageHandler.java:80)
+        at com.alibaba.search.offline.sync.sync.LoaderProcessor.doEveryTable(LoaderProcessor.java:130)
+        at com.alibaba.search.offline.sync.sync.LoaderProcessor.execute(LoaderProcessor.java:50)
+        at com.alibaba.search.offline.sync.sync.ProcessorRunner.perform(ProcessorRunner.java:58)
+        at com.alibaba.search.offline.sync.sync.DaemonWorker.daemonWork(DaemonWorker.java:51)
+        - locked &lt;0x00000007809c4e48&gt; (a com.alibaba.search.offline.sync.sync.ProcessorRunner)
+        at com.alibaba.search.offline.sync.sync.DaemonWorker.run(DaemonWorker.java:31)
+{noformat}
+All user processes hang in the while loop of AsyncProcess#waitForNextTaskDone.
+              </div></li><li><div>
+                Looks good. 
+Does this solve the problem in your cluster ?
 
-I think this log is wrong way around:
-
-        LOG.warn("unmanaged connection cannot be used for bulkload. Creating managed connection.");
-
-Fix on commit if I have it wrong.
+QA can only apply one patch to one branch. There is no need to label patch with two branch names. 
+Also, it should be branch-1, not branch1. 
               </div></li><li><div>
-                Yeah, you're right on the log message. Thanks for the catch.
-              </div></li><li><div><div><b>body:</b> This version is careful to clean up the connection after itself. Hat-tip to [~enis].
-
-Also fix the log line.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Might as well use the same connection for the table instance and region locator instances we pass down too.
+                Resubmit patches for master and branch-1.
               </div></li><li><div>
-                Not sure about other fix versions, need to check.
-              </div></li><li><div>
-                +1. 
-              </div></li><li><div>
-                Pushed v02 to branch-1.1. Will look at master and branch-1 in the next couple days.
+                Yes, it does. It's not easy to reproduce this issue in UT, so I tested this patch on production cluster.
               </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12737429/HBASE-13833.02.branch-1.1.patch
-  against branch-1.1 branch at commit e8e5a9f6398f5a99f1d89be359212a7a4f1d7b05.
-  ATTACHMENT ID: 12737429
+  http://issues.apache.org/jira/secure/attachment/12753980/HBASE-14359-branch-1-v1.patch
+  against branch-1 branch at commit 3341f13e71a25bf3f8eb5a6a57ce330b3d8a3495.
+  ATTACHMENT ID: 12753980
 
     {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
@@ -942,104 +66,7 @@ Also fix the log line.
                         Please justify why no new tests are needed for this patch.
                         Also please list what manual steps were performed to verify this patch.
 
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-                {color:red}-1 checkstyle{color}.  The applied patch generated 3811 checkstyle errors (more than the master's current 3810 errors).
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-     
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/14273//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/14273//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/14273//artifact/patchprocess/checkstyle-aggregate.html
-
-                Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/14273//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                SUCCESS: Integrated in HBase-1.1 #524 (See [https://builds.apache.org/job/HBase-1.1/524/])
-HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (Nick Dimiduk) (tedyu: rev 5e403cb3d92133b15faf955d16c6dbafed960c6f)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
-
-              </div></li><li><div>
-                Here's a patch for branch-1.0. The original does not apply cleanly, so maybe [~enis] wants to take a look? Test\{Secure,\}LoadIncrementalHFiles passes locally for me.
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12739097/HBASE-13833.02.branch-1.patch
-  against branch-1 branch at commit 47bd7de6d87f35b2c07ca83be209f73ae2b41c27.
-  ATTACHMENT ID: 12739097
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-                {color:red}-1 checkstyle{color}.  The applied patch generated 3801 checkstyle errors (more than the master's current 3800 errors).
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-                       org.apache.hadoop.hbase.TestRegionRebalancing
-
-     {color:red}-1 core zombie tests{color}.  There are 4 zombie test(s): 	at org.apache.hadoop.hbase.regionserver.TestSplitTransactionOnCluster.testSplitWithRegionReplicas(TestSplitTransactionOnCluster.java:996)
-	at org.apache.camel.component.jetty.jettyproducer.HttpJettyProducerRecipientListCustomThreadPoolTest.testRecipientList(HttpJettyProducerRecipientListCustomThreadPoolTest.java:40)
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/14379//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/14379//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/14379//artifact/patchprocess/checkstyle-aggregate.html
-
-                Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/14379//console
-
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Should we also close this? 
-{code}
-+            conn.getRegionLocator(t.getName()).getStartEndKeys();
-{code}
-
-
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12739101/HBASE-13833.02.branch-1.0.patch
-  against branch-1.0 branch at commit 47bd7de6d87f35b2c07ca83be209f73ae2b41c27.
-  ATTACHMENT ID: 12739101
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
+    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.0 2.7.0 2.7.1)
 
     {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
@@ -1055,106 +82,126 @@ This message is automatically generated.
 
     {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
 
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
+  {color:green}+1 site{color}.  The mvn post-site goal succeeds with this patch.
+
+     {color:red}-1 core tests{color}.  The patch failed these unit tests:
+     
+
+     {color:red}-1 core zombie tests{color}.  There are 5 zombie test(s): 	at org.apache.hadoop.hbase.security.access.TestAccessControlFilter.testQualifierAccess(TestAccessControlFilter.java:96)
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/15405//testReport/
+Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/15405//artifact/patchprocess/newFindbugsWarnings.html
+Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/15405//artifact/patchprocess/checkstyle-aggregate.html
+
+  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/15405//console
+
+This message is automatically generated.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12753973/HBASE-14359-master-branch1-v1.patch
+  against master branch at commit 3341f13e71a25bf3f8eb5a6a57ce330b3d8a3495.
+  ATTACHMENT ID: 12753973
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.0 2.4.1 2.5.0 2.5.1 2.5.2 2.6.0 2.7.0 2.7.1)
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
+
+    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
+
+    {color:green}+1 checkstyle{color}.  The applied patch does not increase the total number of checkstyle errors
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
+
+  {color:green}+1 site{color}.  The mvn post-site goal succeeds with this patch.
 
     {color:green}+1 core tests{color}.  The patch passed unit tests in .
 
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/14380//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/14380//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/14380//artifact/patchprocess/checkstyle-aggregate.html
+     {color:red}-1 core zombie tests{color}.  There are 1 zombie test(s): 
 
-  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/14380//console
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/15404//testReport/
+Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/15404//artifact/patchprocess/newFindbugsWarnings.html
+Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/15404//artifact/patchprocess/checkstyle-aggregate.html
 
-This message is automatically generated.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                bq. Should we also close this?
-
-Yes, we should also close the {{Admin}} instance.
-
-Here's a new round of patches.
-- *master* just close the {{Admin}} and {{RegionLocation}} when we're done with them. No test change because managed/unmanaged connection distinction doesn't exist here.
-- *branch-1,branch-1.1* same patch as existing branch-1.1, but updates the test to check both managed and unmanaged connections. This {{TestSecureLoadIncrementalHFiles}} fails without the associated changes in {{LoadIncrementalHFiles}}. I'll revert the existing patch on branch-1.1 and commit this version pack ported from branch-1, hopefully to make the changes simpler to read
-- *branch-1.0* Same as branch-1 patch, except applied to the un-refactored logic therein.
-- *0.98* nothing applicable as far as I can tell.
-
-On all above branches, both {{TestLoadIncrementalHFiles}} and {{TestSecureLoadIncrementalHFiles}} pass.
-              </div></li><li><div>
-                One other thing: should we somehow handle {{NeedUnmanagedConnectionException}} similarly to {{DoNotRetryIOException}}? It's too late to wire them up thusly, but for the case of bulk load when the bug is expressed, we go through the full 35x retry loop before eventually failing the RPC. This would be applicable to branch-1. (cc [~sduskis], [~busbey])
-              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
-  http://issues.apache.org/jira/secure/attachment/12739528/HBASE-13833.03.master.patch
-  against master branch at commit c6dd3f965ba00722a7b8418f61180e694b846610.
-  ATTACHMENT ID: 12739528
-
-    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
-
-    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
-                        Please justify why no new tests are needed for this patch.
-                        Also please list what manual steps were performed to verify this patch.
-
-    {color:green}+1 hadoop versions{color}. The patch compiles with all supported hadoop versions (2.4.1 2.5.2 2.6.0)
-
-    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
-
-    {color:green}+1 protoc{color}.  The applied patch does not increase the total number of protoc compiler warnings.
-
-    {color:green}+1 javadoc{color}.  The javadoc tool did not generate any warning messages.
-
-    {color:green}+1 checkstyle{color}.  The applied patch does not increase the total number of checkstyle errors
-
-    {color:green}+1 findbugs{color}.  The patch does not introduce any  new Findbugs (version 2.0.3) warnings.
-
-    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
-
-    {color:green}+1 lineLengths{color}.  The patch does not introduce lines longer than 100
-
-  {color:green}+1 site{color}.  The mvn site goal succeeds with this patch.
-
-     {color:red}-1 core tests{color}.  The patch failed these unit tests:
-     
-
-Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/14408//testReport/
-Release Findbugs (version 2.0.3) 	warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/14408//artifact/patchprocess/newFindbugsWarnings.html
-Checkstyle Errors: https://builds.apache.org/job/PreCommit-HBASE-Build/14408//artifact/patchprocess/checkstyle-aggregate.html
-
-  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/14408//console
+  Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/15404//console
 
 This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Looks good.
+                lgtm
+
+Committing shortly after running some local tests unless objection
               </div></li><li><div>
-                bq. One other thing: should we somehow handle NeedUnmanagedConnectionException similarly to DoNotRetryIOException?
-Makes sense. Can be done in a follow up issue I say. 
+                Nice bit of sleuthing here [~victorunique]. Could be a reason our tests hang over on builds.apache.org when resources get tight.
               </div></li><li><div>
-                Opened HBASE-13906 for followup.
+                bq. Could be a reason our tests hang over on builds.apache.org when resources get tight.
+
+For sure we were seeing cases of OOME can't create native threads lately. Some of this has been ameliorated by our spinning up less threads when testing but still work to do.
               </div></li><li><div>
-                Pushed. Thanks for the review.
+                This online issue has been bothering us for a week and now it's a release of suffer. Hope it could cure the zombie tests here also. :-)
               </div></li><li><div>
-                FAILURE: Integrated in HBase-1.1 #542 (See [https://builds.apache.org/job/HBase-1.1/542/])
-Revert "HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (Nick Dimiduk)" (ndimiduk: rev 521f6a9789e30e472f96810541caffeb5de9a06f)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
-HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (ndimiduk: rev 7c6c916a4c9e74499bcd26cd68b9c0dbf7679c8b)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
-* hbase-server/src/test/java/org/apache/hadoop/hbase/mapreduce/TestLoadIncrementalHFiles.java
+                Pushed to 0.98 and up. 
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-1.0 #1039 (See [https://builds.apache.org/job/HBase-1.0/1039/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 0564bfc81a7b035eb49a3d016d094ce9ab2ebb90)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-1.0 #961 (See [https://builds.apache.org/job/HBase-1.0/961/])
-HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (ndimiduk: rev a459dd667ce16b3bf471ade9778eb27a41a1ddda)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/mapreduce/TestLoadIncrementalHFiles.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
+                FAILURE: Integrated in HBase-TRUNK #6777 (See [https://builds.apache.org/job/HBase-TRUNK/6777/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 2481b7f76fa7e4f2b120f8dc96004790b357e569)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
 
               </div></li><li><div>
-                FAILURE: Integrated in HBase-TRUNK #6573 (See [https://builds.apache.org/job/HBase-TRUNK/6573/])
-HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (ndimiduk: rev 461f5307ba999d73e3f0e0110faf045a5ebe5dfc)
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
+                FAILURE: Integrated in HBase-1.2 #150 (See [https://builds.apache.org/job/HBase-1.2/150/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 1e411c8ead80067bc4c57c4d357b05e161d29eed)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
 
               </div></li><li><div>
-                SUCCESS: Integrated in HBase-1.2 #12 (See [https://builds.apache.org/job/HBase-1.2/12/])
-HBASE-13833 LoadIncrementalHFile.doBulkLoad(Path,HTable) doesn't handle unmanaged connections when using SecureBulkLoad (ndimiduk: rev 35818ad2cde7bb6f4304cfb354ab143e128fa33f)
-* hbase-server/src/test/java/org/apache/hadoop/hbase/mapreduce/TestLoadIncrementalHFiles.java
-* hbase-server/src/main/java/org/apache/hadoop/hbase/mapreduce/LoadIncrementalHFiles.java
+                SUCCESS: Integrated in HBase-1.1 #649 (See [https://builds.apache.org/job/HBase-1.1/649/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev beaecd11398f465c05d742b49e496133179dbb09)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
 
               </div></li><li><div>
-                Closing this issue after 1.0.2 release.
+                SUCCESS: Integrated in HBase-1.2-IT #126 (See [https://builds.apache.org/job/HBase-1.2-IT/126/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 1e411c8ead80067bc4c57c4d357b05e161d29eed)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-1.3 #148 (See [https://builds.apache.org/job/HBase-1.3/148/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 513b37603dec42e54a7ea4add0254c71ba6c87b6)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.98 #1110 (See [https://builds.apache.org/job/HBase-0.98/1110/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 3e68b1e9957df83173730b00bdf8dd5159e1a1a9)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in HBase-0.98-on-Hadoop-1.1 #1063 (See [https://builds.apache.org/job/HBase-0.98-on-Hadoop-1.1/1063/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 3e68b1e9957df83173730b00bdf8dd5159e1a1a9)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
+
+              </div></li><li><div>
+                SUCCESS: Integrated in HBase-1.3-IT #132 (See [https://builds.apache.org/job/HBase-1.3-IT/132/])
+HBASE-14359 HTable#close will hang forever if unchecked error/exception thrown in AsyncProcess#sendMultiAction (Victor Xu) (apurtell: rev 513b37603dec42e54a7ea4add0254c71ba6c87b6)
+* hbase-client/src/main/java/org/apache/hadoop/hbase/client/AsyncProcess.java
+
+              </div></li><li><div>
+                Attaching addendum patch for adding UT for this case. The patch for trunk also applies for branch-1, while branch-0.98 needs a different one.
+              </div></li><li><div>
+                Tests Done:
+Reverted patch of this JIRA on trunk/branch-1/branch-0.98 and confirmed all failed the newly added test case, while all could pass with current code base.
+              </div></li><li><div>
+                Bulk closing 1.1.3 issues.
               </div></li></ol></div></div></html>

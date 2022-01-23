@@ -1,506 +1,316 @@
 <!DOCTYPE html><html><div class="item-title">
         Item 160
-      </div> <div class="item-details"><div><b>git_comments:</b> <ol></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-8674. Improve performance of postponed block scans. Contributed by Daryn Sharp.
-                </div><div><b>message:</b> HDFS-8674. Improve performance of postponed block scans. Contributed by Daryn Sharp.
+      </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
+                 Make it look like the block report was scheduled to be sent between 1-3
+ intervals ago but sent just now.
+              </div></li><li><div>
+                *
+   * If resetBlockReportTime is false then the next block report must be scheduled
+   * exactly at (now + BLOCK_REPORT_INTERVAL_SEC).
+   
+              </div></li><li><div>
+                 5 seconds
+ 10 seconds
+              </div></li><li><div>
+                *
+ * Verify the block report and heartbeat scheduling logic of BPServiceActor
+ * using a few different values .
+ 
+              </div></li><li><div>
+                 test boundaries
+ test integer overflow
+ positive random
+ negative random
+              </div></li><li><div>
+                *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * &lt;p/&gt;
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * &lt;p/&gt;
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ 
+              </div></li><li><div>
+                *
+   * Tests the case when a block report was delayed past its scheduled time.
+   * In that case the next block report should not be delayed for a full interval.
+   
+              </div></li><li><div>
+                *
+   * If resetBlockReportTime is true then the next block report must be scheduled
+   * in the range [now, now + BLOCK_REPORT_INTERVAL_SEC).
+   
+              </div></li><li><div>
+                 send BR after random delay
+ Numerical overflow is possible here and is okay.
+              </div></li><li><div>
+                 say the last block report was at 8:20:14. The current report
+         * should have started around 9:20:14 (default 1 hour interval).
+         * If current time is :
+         *   1) normal like 9:20:18, next report should be at 10:20:14
+         *   2) unexpected like 11:35:43, next report should be at 12:20:14
+         
+              </div></li><li><div>
+                *
+     * Wrapped for testing.
+     * @return
+     
+              </div></li><li><div>
+                 nextBlockReportTime and nextHeartbeatTime may be assigned/read
+ by testing threads (through BPServiceActor#triggerXXX), while also
+ assigned/read by the actor thread.
+              </div></li><li><div>
+                *
+     * This methods  arranges for the data node to send the block report at
+     * the next heartbeat.
+     
+              </div></li><li><div>
+                *
+   * Utility class that wraps the timestamp computations for scheduling
+   * heartbeats and block reports.
+   
+              </div></li><li><div>
+                *
+     * Schedule the next block report after the block report interval. If the
+     * current block report was delayed then the next block report is sent per
+     * the original schedule.
+     * Numerical overflow is possible here.
+     
+              </div></li><li><div>
+                 Numerical overflow is possible here and is okay.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal)
+                </div><div><b>message:</b> HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal)
 
-(cherry picked from commit 0d8a35bd6de5d2a5a9b816ca98f31975e94bd7c6)
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Using monotonicNow for block report scheduling causes test failures on recently restarted systems
+                </div><div><b>description:</b> {{BPServiceActor#blockReport}} has the following check:
 
-Conflicts:
-	hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java
+{code}
+  List&lt;DatanodeCommand&gt; blockReport() throws IOException {
+    // send block report if timer has expired.
+    final long startTime = monotonicNow();
+    if (startTime - lastBlockReport &lt;= dnConf.blockReportInterval) {
+      return null;
+    }
+{code}
 
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+Many tests trigger an immediate block report via {{BPServiceActor#triggerBlockReportForTests}} which sets {{lastBlockReport = 0}}. However if the machine was restarted recently then startTime may be less than {{dnConf.blockReportInterval}} and the block report is not sent.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+{{Time#monotonicNow}} uses {{System#nanoTime}} which represents time elapsed since an arbitrary origin. The time should be used only for comparison with other values returned by {{System#nanoTime}}.
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Preliminary v01 patch for Jenkins. Not ready for review yet.
+              </div></li><li><div><div><b>body:</b> {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12725980/HDFS-8163.01.patch
+  against trunk revision 9595cc0.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:red}-1 tests included{color}.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/10292//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/10292//console
 
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div></div></li><li><div><div><b>summary:</b> Improve performance of postponed block scans
-                </div><div><b>description:</b> When a standby goes active, it marks all nodes as "stale" which will cause block invalidations for over-replicated blocks to be queued until full block reports are received from the nodes with the block.  The replication monitor scans the queue with O(N) runtime.  It picks a random offset and iterates through the set to randomize blocks scanned.
-
-The result is devastating when a cluster loses multiple nodes during a rolling upgrade. Re-replication occurs, the nodes come back, the excess block invalidations are postponed. Rescanning just 2k blocks out of millions of postponed blocks may take multiple seconds. During the scan, the write lock is held which stalls all other processing.
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> No additional tests due to simple performance optimization that existing tests cover.
-                </div><div><b>label:</b> test
-                </div></div></li><li><div>
-                \\
-\\
-| (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:red}-1{color} | pre-patch |  15m 16s | Findbugs (version ) appears to be broken on trunk. |
-| {color:green}+1{color} | @author |   0m  0s | The patch does not contain any @author tags. |
-| {color:red}-1{color} | tests included |   0m  0s | The patch doesn't appear to include any new or modified tests.  Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. |
-| {color:green}+1{color} | javac |   7m 30s | There were no new javac warning messages. |
-| {color:green}+1{color} | javadoc |   9m 38s | There were no new javadoc warning messages. |
-| {color:green}+1{color} | release audit |   0m 22s | The applied patch does not increase the total number of release audit warnings. |
-| {color:green}+1{color} | checkstyle |   0m 50s | There were no new checkstyle issues. |
-| {color:green}+1{color} | whitespace |   0m  0s | The patch has no lines that end in whitespace. |
-| {color:green}+1{color} | install |   1m 35s | mvn install still works. |
-| {color:green}+1{color} | eclipse:eclipse |   0m 34s | The patch built with eclipse:eclipse. |
-| {color:red}-1{color} | findbugs |   3m 24s | The patch appears to introduce 1 new Findbugs (version 3.0.0) warnings. |
-| {color:green}+1{color} | native |   3m 14s | Pre-build of native portion |
-| {color:green}+1{color} | hdfs tests | 162m 31s | Tests passed in hadoop-hdfs. |
-| | | 204m 57s | |
-\\
-\\
-|| Reason || Tests ||
-| FindBugs | module:hadoop-hdfs |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Patch URL | http://issues.apache.org/jira/secure/attachment/12742164/HDFS-8674.patch |
-| Optional Tests | javadoc javac unit findbugs checkstyle |
-| git revision | trunk / 60b858b |
-| Findbugs warnings | https://builds.apache.org/job/PreCommit-HDFS-Build/11502/artifact/patchprocess/newPatchFindbugsWarningshadoop-hdfs.html |
-| hadoop-hdfs test log | https://builds.apache.org/job/PreCommit-HDFS-Build/11502/artifact/patchprocess/testrun_hadoop-hdfs.txt |
-| Test Results | https://builds.apache.org/job/PreCommit-HDFS-Build/11502/testReport/ |
-| Java | 1.7.0_55 |
-| uname | Linux asf902.gq1.ygridcore.net 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/11502/console |
-
-
-This message was automatically generated.
-              </div></li><li><div><div><b>body:</b> Thanks [~daryn]!
-
-* The motivation of randomization is to make sure we don't end up scanning the same blocks if there isn't much update to postponedMisreplicatedBlocks. But maybe that doesn't matter much as it will eventually be drained; also HashSet doesn't make order guarantee.
-* Does the latency of couple seconds come from HashSet iteration? Some quick test indicates iterating through 5M entries of a HashSet take around 50ms.
-* What is the reason to change from HashSet to LinkedHashSet, to have some order guarantee? HashSet is faster than LinkedHashSet.
-* During the scan, if a block is marked as POSTPONE, it will be removed from postponedMisreplicatedBlocks first and add it back later via rescannedMisreplicatedBlocks. Can it just remove those blocks from postponedMisreplicatedBlocks that aren't marked as POSTPONE without using rescannedMisreplicatedBlocks?
+This message is automatically generated.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                [~daryn] / [~mingma], any update on this? Considering this for a 2.7.2 RC this weekend. Thanks.
+                {color:red}-1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12726045/HDFS-8163.02.patch
+  against trunk revision 9595cc0.
+
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
+
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:red}-1 core tests{color}.  The patch failed these unit tests in hadoop-hdfs-project/hadoop-hdfs:
+
+                  org.apache.hadoop.hdfs.util.TestByteArrayManager
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/10293//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/10293//console
+
+This message is automatically generated.
               </div></li><li><div>
-                \\
-\\
-| (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:red}-1{color} | patch |   0m  0s | The patch command could not apply the patch during dryrun. |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Patch URL | http://issues.apache.org/jira/secure/attachment/12742164/HDFS-8674.patch |
-| Optional Tests | javadoc javac unit findbugs checkstyle |
-| git revision | trunk / 96677be |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/13211/console |
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12726045/HDFS-8163.02.patch
+  against trunk revision 76e7264.
 
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-This message was automatically generated.
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
+
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
+
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
+
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-hdfs-project/hadoop-hdfs.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/10295//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/10295//console
+
+This message is automatically generated.
               </div></li><li><div>
-                Moving this out of 2.7.2 as there's been no update in a while.
-              </div></li><li><div><div><b>body:</b> [~mingma] It's a LinkedHashSet to cover the cases you state.  
+                While working on more tests I found some more issues with the timestamp usage. The [System.nanotime|https://docs.oracle.com/javase/7/docs/api/java/lang/System.html#nanoTime()] docs state that it can return a negative value and can overflow between successive invocations. So two values should never be compared directly but diffed to handle overflow.
 
-bq. The motivation of randomization is to make sure we don't end up scanning the same blocks if there isn't much update to postponedMisreplicatedBlocks. &lt;...&gt; What is the reason to change from HashSet to LinkedHashSet, to have some order guarantee?  HashSet is faster than LinkedHashSet. &lt;...&gt; During the scan, if a block is marked as POSTPONE, it will be removed from postponedMisreplicatedBlocks first and add it back later via rescannedMisreplicatedBlocks. Can it just remove those blocks from postponedMisreplicatedBlocks that aren't marked as POSTPONE without using rescannedMisreplicatedBlocks?
+My guess is that negative values/overflow are unlikely on the platforms we care about but we should be handling them correctly anyway. I plan to split out the timestamp handling logic of BPServiceActor into a separate utility class for clarity and ease of unit testing. Will post an updated patch later today.
+              </div></li><li><div>
+                Updated v03 patch to handle negative values and overflows. Split out the timestamp manipulation into a nested class Scheduler.
 
-The LHS iterator is effectively functioning as a cheap circular array with acceptable insert/remove performance.  Yes, the order guarantee ensures all blocks are visited w/o "skipping" to a random location.  The block always has to be removed and re-inserted for the ordering to work.  Otherwise the same blocks will be scanned over and over again.
+Reviews welcome!
+              </div></li><li><div>
+                {color:green}+1 overall{color}.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12726311/HDFS-8163.03.patch
+  against trunk revision f47a576.
 
-bq. Does the latency of couple seconds come from HashSet iteration? Some quick test indicates iterating through 5M entries of a HashSet take around 50ms.
+    {color:green}+1 @author{color}.  The patch does not contain any @author tags.
 
-Yes, the cycles wasted to skip the through the set were the killer.  A micro-benchmark doesn't capture the same chaotic runtime environment of over a 100 threads competing for resources.  Kihwal says (ironically) the performance "improved" under 5M.
+    {color:green}+1 tests included{color}.  The patch appears to include 1 new or modified test files.
 
-In multiple production incidents, the postponed queue backed up with 10-20M+ blocks.  Scans determined the blocks are all still postponed.  Pre-patch, the cycles took up to a few seconds and averaged in the many hundreds of ms.  Performance was obviously atrocious.  Post-patch, same scans took no more than a few ms.
+    {color:green}+1 javac{color}.  The applied patch does not increase the total number of javac compiler warnings.
 
+    {color:green}+1 javadoc{color}.  There were no new javadoc warning messages.
 
+    {color:green}+1 eclipse:eclipse{color}.  The patch built with eclipse:eclipse.
+
+    {color:green}+1 findbugs{color}.  The patch does not introduce any new Findbugs (version 2.0.3) warnings.
+
+    {color:green}+1 release audit{color}.  The applied patch does not increase the total number of release audit warnings.
+
+    {color:green}+1 core tests{color}.  The patch passed unit tests in hadoop-common-project/hadoop-common hadoop-hdfs-project/hadoop-hdfs.
+
+Test results: https://builds.apache.org/job/PreCommit-HDFS-Build/10308//testReport/
+Console output: https://builds.apache.org/job/PreCommit-HDFS-Build/10308//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> Thanks for working on this, [~arpitagarwal]! The patch looks pretty good to me. The only nits is that the following code can be reformatted:
+{code}
++    @VisibleForTesting volatile long nextBlockReportTime = monotonicNow();
++    @VisibleForTesting volatile long nextHeartbeatTime = monotonicNow();
++    @VisibleForTesting boolean resetBlockReportTime = true;
+{code}
+
+I think you can address this while committing the patch. +1.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                [~mingma], comments?
-              </div></li><li><div>
-                Thanks [~daryn]. Your explanation makes sense. It is good to know the perf difference between "the # of items &lt; 5M" and "larger number of items". +1 on the patch.
-              </div></li><li><div>
-                Updated patch since a data structure change prevented it from applying cleanly.
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue} 0m 0s {color} | {color:blue} Docker mode activated. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green} 0m 0s {color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:red}-1{color} | {color:red} test4tests {color} | {color:red} 0m 0s {color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 7m 30s {color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 40s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 41s {color} | {color:green} trunk passed with JDK v1.7.0_91 {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green} 0m 15s {color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 0m 51s {color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 14s {color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 1m 52s {color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 5s {color} | {color:green} trunk passed with JDK v1.8.0_66 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 52s {color} | {color:green} trunk passed with JDK v1.7.0_91 {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 0m 48s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 38s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
-| {color:red}-1{color} | {color:red} javac {color} | {color:red} 6m 16s {color} | {color:red} hadoop-hdfs-project_hadoop-hdfs-jdk1.8.0_66 with JDK v1.8.0_66 generated 1 new issues (was 32, now 32). {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 38s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green} 0m 40s {color} | {color:green} the patch passed with JDK v1.7.0_91 {color} |
-| {color:red}-1{color} | {color:red} javac {color} | {color:red} 6m 57s {color} | {color:red} hadoop-hdfs-project_hadoop-hdfs-jdk1.7.0_91 with JDK v1.7.0_91 generated 1 new issues (was 34, now 34). {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green} 0m 40s {color} | {color:green} the patch passed {color} |
-| {color:red}-1{color} | {color:red} checkstyle {color} | {color:red} 0m 14s {color} | {color:red} Patch generated 1 new checkstyle issues in hadoop-hdfs-project/hadoop-hdfs (total was 161, now 160). {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green} 0m 50s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green} 0m 14s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green} 0m 0s {color} | {color:green} Patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green} 2m 2s {color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 4s {color} | {color:green} the patch passed with JDK v1.8.0_66 {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green} 1m 46s {color} | {color:green} the patch passed with JDK v1.7.0_91 {color} |
-| {color:red}-1{color} | {color:red} unit {color} | {color:red} 52m 16s {color} | {color:red} hadoop-hdfs in the patch failed with JDK v1.8.0_66. {color} |
-| {color:red}-1{color} | {color:red} unit {color} | {color:red} 50m 8s {color} | {color:red} hadoop-hdfs in the patch failed with JDK v1.7.0_91. {color} |
-| {color:red}-1{color} | {color:red} asflicense {color} | {color:red} 0m 25s {color} | {color:red} Patch generated 58 ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 128m 44s {color} | {color:black} {color} |
-\\
-\\
-|| Reason || Tests ||
-| JDK v1.8.0_66 Failed junit tests | hadoop.hdfs.TestDFSClientRetries |
-|   | hadoop.hdfs.server.namenode.ha.TestDNFencingWithReplication |
-|   | hadoop.hdfs.server.namenode.TestDecommissioningStatus |
-|   | hadoop.hdfs.server.balancer.TestBalancerWithHANameNodes |
-|   | hadoop.hdfs.server.namenode.ha.TestDNFencing |
-|   | hadoop.hdfs.TestDFSStripedOutputStreamWithFailure050 |
-|   | hadoop.hdfs.TestDFSUpgradeFromImage |
-|   | hadoop.hdfs.TestSetrepDecreasing |
-|   | hadoop.hdfs.server.blockmanagement.TestNodeCount |
-|   | hadoop.hdfs.TestDFSStripedOutputStreamWithFailure |
-|   | hadoop.hdfs.server.blockmanagement.TestBlocksWithNotEnoughRacks |
-| JDK v1.7.0_91 Failed junit tests | hadoop.hdfs.server.namenode.ha.TestDNFencingWithReplication |
-|   | hadoop.hdfs.TestLeaseRecovery2 |
-|   | hadoop.hdfs.server.balancer.TestBalancerWithHANameNodes |
-|   | hadoop.hdfs.server.namenode.ha.TestDNFencing |
-|   | hadoop.hdfs.TestSetrepDecreasing |
-|   | hadoop.hdfs.server.blockmanagement.TestNodeCount |
-|   | hadoop.hdfs.server.blockmanagement.TestBlocksWithNotEnoughRacks |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker |  Image:yetus/hadoop:0ca8df7 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12778098/HDFS-8674.patch |
-| JIRA Issue | HDFS-8674 |
-| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
-| uname | Linux 4f4d2df9b67c 3.13.0-36-lowlatency #63-Ubuntu SMP PREEMPT Wed Sep 3 21:56:12 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
-| git revision | trunk / 0f708d4 |
-| findbugs | v3.0.0 |
-| javac | hadoop-hdfs-project_hadoop-hdfs-jdk1.8.0_66: https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/diff-compile-javac-hadoop-hdfs-project_hadoop-hdfs-jdk1.8.0_66.txt |
-| javac | hadoop-hdfs-project_hadoop-hdfs-jdk1.7.0_91: https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/diff-compile-javac-hadoop-hdfs-project_hadoop-hdfs-jdk1.7.0_91.txt |
-| checkstyle | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/diff-checkstyle-hadoop-hdfs-project_hadoop-hdfs.txt |
-| unit | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/patch-unit-hadoop-hdfs-project_hadoop-hdfs-jdk1.8.0_66.txt |
-| unit | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/patch-unit-hadoop-hdfs-project_hadoop-hdfs-jdk1.7.0_91.txt |
-| unit test logs |  https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/patch-unit-hadoop-hdfs-project_hadoop-hdfs-jdk1.8.0_66.txt https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/patch-unit-hadoop-hdfs-project_hadoop-hdfs-jdk1.7.0_91.txt |
-| JDK v1.7.0_91  Test Results | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/testReport/ |
-| asflicense | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/artifact/patchprocess/patch-asflicense-problems.txt |
-| modules | C: hadoop-hdfs-project/hadoop-hdfs U: hadoop-hdfs-project/hadoop-hdfs |
-| Max memory used | 75MB |
-| Powered by | Apache Yetus 0.2.0-SNAPSHOT   http://yetus.apache.org |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/13903/console |
+                Thanks for the review Jing.
 
+Fixed the formatting and committed to trunk, branch-2 and branch-2.7. Here is the delta:
 
-This message was automatically generated.
-
+{code:java}
+-    // assigned/read by the actor thread. Thus they should be declared as vol
+-    // to make sure the "happens-before" consistency.
+-    @VisibleForTesting volatile long nextBlockReportTime = monotonicNow();
+-    @VisibleForTesting volatile long nextHeartbeatTime = monotonicNow();
+-    @VisibleForTesting boolean resetBlockReportTime = true;
++    // assigned/read by the actor thread.
++    @VisibleForTesting
++    volatile long nextBlockReportTime = monotonicNow();
++
++    @VisibleForTesting
++    volatile long nextHeartbeatTime = monotonicNow();
++
++    @VisibleForTesting
++    boolean resetBlockReportTime = true;
+{code}
 
               </div></li><li><div>
-                Daryn, from failed tests's logs, the latest patch uses LightWeightLinkedSet whose iterator doesn't support remove.
-              </div></li><li><div>
-                I'll try to rebase again.
-              </div></li><li><div>
-                [~daryn] / [~mingma], is it possible to get this in 2.7.3 in a week? Tx?
-              </div></li><li><div>
-                Haven't gotten any update, dropping this off into 2.7.4..
-              </div></li><li><div>
-                Added some more target versions for tracking. Seems like this would still be good to get in.
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m  0s{color} | {color:blue} Docker mode activated. {color} |
-| {color:red}-1{color} | {color:red} patch {color} | {color:red}  0m  6s{color} | {color:red} HDFS-8674 does not apply to trunk. Rebase required? Wrong Branch? See https://wiki.apache.org/hadoop/HowToContribute for help. {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| JIRA Issue | HDFS-8674 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12778098/HDFS-8674.patch |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/17194/console |
-| Powered by | Apache Yetus 0.4.0-SNAPSHOT   http://yetus.apache.org |
-
-
-This message was automatically generated.
-
+                FAILURE: Integrated in Hadoop-trunk-Commit #7624 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/7624/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
 
               </div></li><li><div>
-                I'll update this patch.
-              </div></li><li><div>
-                Resolved minor conflicts.
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m  0s{color} | {color:blue} Docker mode activated. {color} |
-| {color:red}-1{color} | {color:red} patch {color} | {color:red}  0m  9s{color} | {color:red} HDFS-8674 does not apply to trunk. Rebase required? Wrong Branch? See https://wiki.apache.org/hadoop/HowToContribute for help. {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| JIRA Issue | HDFS-8674 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12840925/HDFS-8674.2.patch |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/17702/console |
-| Powered by | Apache Yetus 0.4.0-SNAPSHOT   http://yetus.apache.org |
-
-
-This message was automatically generated.
-
+                FAILURE: Integrated in Hadoop-Hdfs-trunk #2103 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk/2103/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
 
               </div></li><li><div>
-                Looks like {{HDFS-8674.2.patch}} is for branch-2.  Can you post a trunk version?
-              </div></li><li><div>
-                fix conflicts on trunk stemming from under replicated now being low redundancy.
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 12s{color} | {color:blue} Docker mode activated. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green} 15m 46s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  2m  5s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  1m 23s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  1m 21s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 13s{color} | {color:green} trunk passed {color} |
-| {color:red}-1{color} | {color:red} findbugs {color} | {color:red}  1m 49s{color} | {color:red} hadoop-hdfs-project/hadoop-hdfs in trunk has 1 extant Findbugs warnings. {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 41s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 49s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  0m 49s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green}  0m 49s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 30s{color} | {color:green} hadoop-hdfs-project/hadoop-hdfs: The patch generated 0 new + 119 unchanged - 2 fixed = 119 total (was 121) {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 54s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 10s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 56s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 39s{color} | {color:green} the patch passed {color} |
-| {color:red}-1{color} | {color:red} unit {color} | {color:red} 74m 34s{color} | {color:red} hadoop-hdfs in the patch failed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 21s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black}105m 37s{color} | {color:black} {color} |
-\\
-\\
-|| Reason || Tests ||
-| Failed junit tests | hadoop.hdfs.server.blockmanagement.TestNodeCount |
-|   | hadoop.hdfs.server.blockmanagement.TestBlocksWithNotEnoughRacks |
-|   | hadoop.hdfs.server.datanode.TestDataNodeUUID |
-|   | hadoop.hdfs.server.datanode.TestDataNodeMultipleRegistrations |
-|   | hadoop.hdfs.server.blockmanagement.TestReconstructStripedBlocksWithRackAwareness |
-|   | hadoop.hdfs.server.blockmanagement.TestRBWBlockInvalidation |
-|   | hadoop.hdfs.server.datanode.checker.TestThrottledAsyncChecker |
-|   | hadoop.hdfs.server.balancer.TestBalancerWithHANameNodes |
-|   | hadoop.hdfs.server.datanode.TestDataNodeMXBean |
-|   | hadoop.hdfs.server.namenode.TestAddStripedBlockInFBR |
-|   | hadoop.hdfs.TestLeaseRecoveryStriped |
-|   | hadoop.hdfs.server.datanode.TestDirectoryScanner |
-|   | hadoop.hdfs.server.namenode.snapshot.TestSnapshot |
-|   | hadoop.hdfs.server.namenode.ha.TestDNFencingWithReplication |
-|   | hadoop.hdfs.server.namenode.ha.TestDNFencing |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker |  Image:yetus/hadoop:a9ad5d6 |
-| JIRA Issue | HDFS-8674 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12841132/HDFS-8674.trunk.patch |
-| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
-| uname | Linux 9ceb14463035 3.13.0-95-generic #142-Ubuntu SMP Fri Aug 12 17:00:09 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
-| git revision | trunk / 3fd844b |
-| Default Java | 1.8.0_111 |
-| findbugs | v3.0.0 |
-| findbugs | https://builds.apache.org/job/PreCommit-HDFS-Build/17715/artifact/patchprocess/branch-findbugs-hadoop-hdfs-project_hadoop-hdfs-warnings.html |
-| unit | https://builds.apache.org/job/PreCommit-HDFS-Build/17715/artifact/patchprocess/patch-unit-hadoop-hdfs-project_hadoop-hdfs.txt |
-|  Test Results | https://builds.apache.org/job/PreCommit-HDFS-Build/17715/testReport/ |
-| modules | C: hadoop-hdfs-project/hadoop-hdfs U: hadoop-hdfs-project/hadoop-hdfs |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/17715/console |
-| Powered by | Apache Yetus 0.4.0-SNAPSHOT   http://yetus.apache.org |
-
-
-This message was automatically generated.
-
+                FAILURE: Integrated in Hadoop-Hdfs-trunk-Java8 #162 (See [https://builds.apache.org/job/Hadoop-Hdfs-trunk-Java8/162/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
 
               </div></li><li><div>
-                {{LightWeightLinkedSet}} does not support {{remove()}}.
-              </div></li><li><div>
-                Posted wrong patches.  Changed the set from the lightweight back to standard one due to iterator issues.
-              </div></li><li><div>
-                | (x) *{color:red}-1 overall{color}* |
-\\
-\\
-|| Vote || Subsystem || Runtime || Comment ||
-| {color:blue}0{color} | {color:blue} reexec {color} | {color:blue}  0m 10s{color} | {color:blue} Docker mode activated. {color} |
-| {color:green}+1{color} | {color:green} @author {color} | {color:green}  0m  0s{color} | {color:green} The patch does not contain any @author tags. {color} |
-| {color:red}-1{color} | {color:red} test4tests {color} | {color:red}  0m  0s{color} | {color:red} The patch doesn't appear to include any new or modified tests. Please justify why no new tests are needed for this patch. Also please list what manual steps were performed to verify this patch. {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  6m 45s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  0m 44s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 26s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 51s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 12s{color} | {color:green} trunk passed {color} |
-| {color:red}-1{color} | {color:red} findbugs {color} | {color:red}  1m 41s{color} | {color:red} hadoop-hdfs-project/hadoop-hdfs in trunk has 1 extant Findbugs warnings. {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 39s{color} | {color:green} trunk passed {color} |
-| {color:green}+1{color} | {color:green} mvninstall {color} | {color:green}  0m 45s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} compile {color} | {color:green}  0m 43s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javac {color} | {color:green}  0m 43s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} checkstyle {color} | {color:green}  0m 24s{color} | {color:green} hadoop-hdfs-project/hadoop-hdfs: The patch generated 0 new + 119 unchanged - 2 fixed = 119 total (was 121) {color} |
-| {color:green}+1{color} | {color:green} mvnsite {color} | {color:green}  0m 48s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} mvneclipse {color} | {color:green}  0m 10s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} whitespace {color} | {color:green}  0m  0s{color} | {color:green} The patch has no whitespace issues. {color} |
-| {color:green}+1{color} | {color:green} findbugs {color} | {color:green}  1m 45s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} javadoc {color} | {color:green}  0m 36s{color} | {color:green} the patch passed {color} |
-| {color:green}+1{color} | {color:green} unit {color} | {color:green} 61m  9s{color} | {color:green} hadoop-hdfs in the patch passed. {color} |
-| {color:green}+1{color} | {color:green} asflicense {color} | {color:green}  0m 18s{color} | {color:green} The patch does not generate ASF License warnings. {color} |
-| {color:black}{color} | {color:black} {color} | {color:black} 79m 16s{color} | {color:black} {color} |
-\\
-\\
-|| Subsystem || Report/Notes ||
-| Docker |  Image:yetus/hadoop:a9ad5d6 |
-| JIRA Issue | HDFS-8674 |
-| JIRA Patch URL | https://issues.apache.org/jira/secure/attachment/12841300/HDFS-8674.trunk.2.patch |
-| Optional Tests |  asflicense  compile  javac  javadoc  mvninstall  mvnsite  unit  findbugs  checkstyle  |
-| uname | Linux 06df29fbcd5a 3.13.0-93-generic #140-Ubuntu SMP Mon Jul 18 21:21:05 UTC 2016 x86_64 x86_64 x86_64 GNU/Linux |
-| Build tool | maven |
-| Personality | /testptch/hadoop/patchprocess/precommit/personality/provided.sh |
-| git revision | trunk / e0fa492 |
-| Default Java | 1.8.0_111 |
-| findbugs | v3.0.0 |
-| findbugs | https://builds.apache.org/job/PreCommit-HDFS-Build/17731/artifact/patchprocess/branch-findbugs-hadoop-hdfs-project_hadoop-hdfs-warnings.html |
-|  Test Results | https://builds.apache.org/job/PreCommit-HDFS-Build/17731/testReport/ |
-| modules | C: hadoop-hdfs-project/hadoop-hdfs U: hadoop-hdfs-project/hadoop-hdfs |
-| Console output | https://builds.apache.org/job/PreCommit-HDFS-Build/17731/console |
-| Powered by | Apache Yetus 0.4.0-SNAPSHOT   http://yetus.apache.org |
-
-
-This message was automatically generated.
-
+                FAILURE: Integrated in Hadoop-Yarn-trunk-Java8 #171 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk-Java8/171/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
 
               </div></li><li><div>
-                +1 The patch looks good.
-              </div></li><li><div>
-                Committed to trunk, branch-2 and branch-2.8. Thanks for working on this, Daryn.
-              </div></li><li><div>
-                SUCCESS: Integrated in Jenkins build Hadoop-trunk-Commit #10924 (See [https://builds.apache.org/job/Hadoop-trunk-Commit/10924/])
-HDFS-8674. Improve performance of postponed block scans. Contributed by (kihwal: rev 96c574927a600d15fab919df1fdc9e07887af6c5)
-* (edit) hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/blockmanagement/BlockManager.java
+                SUCCESS: Integrated in Hadoop-Yarn-trunk #905 (See [https://builds.apache.org/job/Hadoop-Yarn-trunk/905/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
 
               </div></li><li><div>
-                Attaching backport patch from HDFS-11868.
-Committed this to branch-2.7. Thank you [~elgoiri].
+                FAILURE: Integrated in Hadoop-Mapreduce-trunk-Java8 #172 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk-Java8/172/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+
+              </div></li><li><div>
+                FAILURE: Integrated in Hadoop-Mapreduce-trunk #2121 (See [https://builds.apache.org/job/Hadoop-Mapreduce-trunk/2121/])
+HDFS-8163. Using monotonicNow for block report scheduling causes test failures on recently restarted systems. (Arpit Agarwal) (arp: rev dfc1c4c303cf15afc6c3361ed9d3238562f73cbd)
+* hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/util/Time.java
+* hadoop-hdfs-project/hadoop-hdfs/src/test/java/org/apache/hadoop/hdfs/server/datanode/TestBpServiceActorScheduler.java
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPOfferService.java
+* hadoop-hdfs-project/hadoop-hdfs/CHANGES.txt
+* hadoop-hdfs-project/hadoop-hdfs/src/main/java/org/apache/hadoop/hdfs/server/datanode/BPServiceActor.java
+
               </div></li></ol></div></div></html>

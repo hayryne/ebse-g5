@@ -2,19 +2,26 @@
         Item 40
       </div> <div class="item-details"><div><b>git_comments:</b> <ol><li><div>
                 *
-   * Insert some bogus rows in meta. Master should clean them up.
-   * @throws IOException
+   * Tests launching the cluster by first starting regionserver, and then the master
+   * to ensure that it does not matter which is started first.
    
-              </div></li><li><div><div><b>comment:</b> *
- * Tests master cleanup of rows in meta table where there is no HRegionInfo
- 
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                 ignore
+              </div></li><li><div>
+                manually setup hbase dir to point to minidfscluster
               </div></li><li><div>
                 *
- * Copyright 2008 The Apache Software Foundation
- *
+   * Tests launching the cluster by first starting master, and then the regionserver
+   * to ensure that it does not matter which is started first.
+   
+              </div></li><li><div>
+                *
+ * Tests the boot order indifference between regionserver and master
+ 
+              </div></li><li><div>
+                we cannot block on wait for rs at this point , since master is not up.
+              </div></li><li><div>
+                 Keep waiting
+              </div></li><li><div>
+                *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -31,1151 +38,424 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  
-              </div></li><li><div><div><b>comment:</b>  Take a look at split parents to see if any we can clean up.
+              </div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY
+                </div><div><b>message:</b> HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY
+
+git-svn-id: https://svn.apache.org/repos/asf/hbase/trunk@1330116 13f79535-47bb-0310-9956-ffa450edef68
+
+                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> On first cluster startup, RS aborts if root znode is not available
+                </div><div><b>description:</b> When launching a fresh new cluster, the master has to be started first, which might create race conditions for starting master and rs at the same time. 
+
+Master startup code is smt like this: 
+ - establish zk connection
+ - create root znodes in zk (/hbase)
+ - create ephemeral node for master /hbase/master, 
+
+ Region server start up code is smt like this: 
+ - establish zk connection
+ - check whether the root znode (/hbase) is there. If not, shutdown. 
+ - wait for the master to create znodes /hbase/master
+
+So, the problem is on the very first launch of the cluster, RS aborts to start since /hbase znode might not have been created yet (only the master creates it if needed). Since /hbase/ is not deleted on cluster shutdown, on subsequent cluster starts, it does not matter which order the servers are started. So this affects only first launchs. 
+                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div>
+                Upon inspecting further, it seems the patch for HBASE-4138 added the check for the base server at region server start code. While it makes sense to check for znode.parent from the client side, we should not do that for the regionserver. 
+              </div></li><li><div>
+                Sounds good Enis.  What should RS do then?
+              </div></li><li><div>
+                Attaching a simple patch. Applies to trunk, 0.92 and 0.94 branches. 
+
+Tested this with pseudo-distributed setup on my laptop, by first launching regionserver, and observing that it does actually wait for the master to boot up, instead of aborting. I'll try to come up with a boot order unit test shortly.
+              </div></li><li><div>
+                Patch lgtm.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12523865/HBASE-5849_v1.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    -1 tests included.  The patch doesn't appear to include any new or modified tests.
+                        Please justify why no new tests are needed for this patch.
+                        Also please list what manual steps were performed to verify this patch.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    -1 findbugs.  The patch appears to introduce 3 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.io.hfile.TestForceCacheImportantBlocks
+                  org.apache.hadoop.hbase.util.TestProcessBasedCluster
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/1617//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/1617//artifact/trunk/patchprocess/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/1617//console
+
+This message is automatically generated.
+              </div></li><li><div><div><b>body:</b> Thanks Stack for taking a look into this. I have added a unit test for boot order for the cluster. 
+
+To answer you earlier comment, I think the region server should just keep waiting until there is an active master. 
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                Rerunning hudson for patch v2. 
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12523888/HBASE-5849_v2.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 2 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    -1 findbugs.  The patch appears to introduce 3 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+    +1 core tests.  The patch passed unit tests in .
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/1620//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/1620//artifact/trunk/patchprocess/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/1620//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Enis's v2 patch with this added to end of test:
+
+{code}
++  @org.junit.Rule
++  public org.apache.hadoop.hbase.ResourceCheckerJUnitRule cu =
++    new org.apache.hadoop.hbase.ResourceCheckerJUnitRule();
+{code}
+
+Nice test.
+              </div></li><li><div>
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12523905/5849v3.txt
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 3 new or modified tests.
+
+    -1 patch.  The patch command could not apply the patch.
+
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/1622//console
+
+This message is automatically generated.
+              </div></li><li><div>
+                Committed to 0.92, 0.94, and to trunk.  Thanks for the patch Enis.
+              </div></li><li><div>
+                Integrated in HBase-0.92 #386 (See [https://builds.apache.org/job/HBase-0.92/386/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329530)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-TRUNK #2803 (See [https://builds.apache.org/job/HBase-TRUNK/2803/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329527)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.94 #139 (See [https://builds.apache.org/job/HBase-0.94/139/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329528)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                I tried it before committing and it passed then.  I just tried it on trunk now:
+
+{code}
+-------------------------------------------------------
+ T E S T S
+-------------------------------------------------------
+Running org.apache.hadoop.hbase.TestClusterBootOrder
+2012-04-23 21:27:45.213 java[97823:d007] Unable to load realm info from SCDynamicStore
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 19.727 sec
+
+Results :
+
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+
+[INFO] 
+[INFO] --- maven-surefire-plugin:2.10:test (secondPartTestsExecution) @ hbase ---
+[INFO] Tests are skipped.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time: 34.313s
+[INFO] Finished at: Mon Apr 23 21:28:02 PDT 2012
+[INFO] Final Memory: 21M/81M
+[INFO] ------------------------------------------------------------------------
+{code}
+              </div></li><li><div><div><b>body:</b> There is something wrong now.  This test won't complete for me (though it has previous).  I thought it the subsequent commit:
+
+{code}------------------------------------------------------------------------
+r1329555 | larsh | 2012-04-23 22:12:45 -0700 (Mon, 23 Apr 2012) | 1 line
+
+Refuse operations from Admin before master is initialized - fix for all branches
+{code}
+
+..that was bringing on the problem but removing that, its still not completing.
+
+I poked around in debugger and was getting an NPE in reportForDuty after master came up because this.hbaseMaster was null; we were failing allocating the Interface (hard to trace because toString would throw its on exception).
+
+For now backing this out.
+                </div><div><b>label:</b> code-design
+                </div></div></li><li><div><div><b>body:</b> I mean, it even passed hadoopqa above apart from my testing.  Backing it out though... its ugly hang when it happens.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                * @return true if initial scan completed successfully 
+                So, yes, I'm seeing what Ted reports above.
               </div></li><li><div>
-                 Scan is finished.
-              </div></li><li><div><div><b>comment:</b>  First clean up any meta region rows which had null HRegionInfos
+                Reopening.  Backing out patch.
+              </div></li><li><div>
+                Integrated in HBase-0.92 #387 (See [https://builds.apache.org/job/HBase-0.92/387/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329548)
+
+     Result = ABORTED
+stack : 
+Files : 
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                I killed all running builds in case they'd run into this hang.
+              </div></li><li><div>
+                Enis, might taking a look at this?
+              </div></li><li><div>
+                Integrated in HBase-TRUNK-security #182 (See [https://builds.apache.org/job/HBase-TRUNK-security/182/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329527)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-TRUNK #2804 (See [https://builds.apache.org/job/HBase-TRUNK/2804/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329560)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.94 #141 (See [https://builds.apache.org/job/HBase-0.94/141/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329561)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.92 #388 (See [https://builds.apache.org/job/HBase-0.92/388/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329562)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div><div><b>body:</b> Interesting that Hudson did not report any test failures. let me dig down to this. 
+                </div><div><b>label:</b> test
+                </div></div></li><li><div>
+                @Enis Agreed.  I tried this before applying too.
+              </div></li><li><div><div><b>body:</b> I have found 2 issues, that caused timeouts in 0.92 branch: 
+1. hbase dir was not setup to use the temp dir under target/, but used the default one under /tmp/hadoop-${username}, so running the  test on 0.92 causes rs to not come up if you have dirty data under /tmp/. 
+2. giving timeouts like @Test(timeout=xxx) causes 0.92 master to not shutdown properly. I could not inspect this further, there might be an issue with surefire. 
+
+As a result, I updated the patch to first boot up a mini dfs, and setup the hbase dir. And I also removed the timeouts (the test runner (maven) will timeout instead if something goes wrong).
+
+All my tests for trunk,0.94, and 0.92 seem to pass.  
+
+@Ted, @Stack, can you please try the patch to see whether you can replicate?
+
+On an unrelated note, the ResourceChecker notifies that some of the daemon threads (like LruBlockCache.EvictionThread) are not shutdown properly (even when using MiniHBaseCluster, and shutting down properly). Any idea, whether we should dig into that?
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                *
-   * Wait until root region is available
-   
+                Reattaching for Jenkins. 
               </div></li><li><div>
-                
-   * When we find rows in a meta region that has an empty HRegionInfo, we
-   * clean them up here.
-   * 
-   * @param server connection to server serving meta region
-   * @param metaRegionName name of the meta region we scanned
-   * @param emptyRows the row keys that had empty HRegionInfos
-   
+                Integrated in HBase-0.94-security #20 (See [https://builds.apache.org/job/HBase-0.94-security/20/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329561)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329528)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
               </div></li><li><div>
-                 Scan complete. Remove any rows which had empty HRegionInfos
+                -1 overall.  Here are the results of testing the latest attachment 
+  http://issues.apache.org/jira/secure/attachment/12524099/HBASE-5849_v4.patch
+  against trunk revision .
+
+    +1 @author.  The patch does not contain any @author tags.
+
+    +1 tests included.  The patch appears to include 2 new or modified tests.
+
+    +1 javadoc.  The javadoc tool did not generate any warning messages.
+
+    +1 javac.  The applied patch does not increase the total number of javac compiler warnings.
+
+    -1 findbugs.  The patch appears to introduce 5 new Findbugs (version 1.3.9) warnings.
+
+    +1 release audit.  The applied patch does not increase the total number of release audit warnings.
+
+     -1 core tests.  The patch failed these unit tests:
+                       org.apache.hadoop.hbase.TestRegionRebalancing
+                  org.apache.hadoop.hbase.replication.TestReplication
+
+Test results: https://builds.apache.org/job/PreCommit-HBASE-Build/1637//testReport/
+Findbugs warnings: https://builds.apache.org/job/PreCommit-HBASE-Build/1637//artifact/trunk/patchprocess/newPatchFindbugsWarnings.html
+Console output: https://builds.apache.org/job/PreCommit-HBASE-Build/1637//console
+
+This message is automatically generated.
               </div></li><li><div>
-                *
-   * @param address server address
-   * @return HServerInfo for the given server address
-   
-              </div></li><li><div>
-                * @return the number of active servers 
-              </div></li><li><div>
-                *
-   * @param serverName
-   * @return true if server is dead
-   
-              </div></li><li><div>
-                * @return the average load across all region servers 
-              </div></li><li><div>
-                *
-   * @param master
-   
-              </div></li><li><div>
-                *
-   * @param serverName
-   
-              </div></li><li><div>
-                *
-   * Wakes up threads waiting on serversToServerInfo
-   
-              </div></li><li><div>
-                *
-   * A region has split.
-   *
-   * @param serverName
-   * @param serverInfo
-   * @param region
-   * @param splitA
-   * @param splitB
-   * @param returnMsgs
-   
-              </div></li><li><div>
-                *
-   * @param serverInfo
-   * @param msgs
-   * @return messages from master to region server indicating what region
-   * server should do.
-   * 
-   * @throws IOException
-   
-              </div></li><li><div>
-                *
-   * Let the server manager know a new regionserver has come online
-   * 
-   * @param serverInfo
-   
-              </div></li><li><div><div><b>comment:</b>  Get rid of any rows that have a null HRegionInfo
-                </div><div><b>label:</b> code-design
-                </div></div></li></ol></div><div><b>git_commits:</b> <ol><li><div><div><b>summary:</b> HBASE-27 hregioninfo cell empty in meta table
-                </div><div><b>message:</b> HBASE-27 hregioninfo cell empty in meta table
-
-Summary of changes:
-
-HMaster:
-
-- When a row has an empty HRegionInfo (info:regioninfo), log it with the row name and and the other keys still in the row.
-
-- Log the number of rows with empty HRegionInfo
-
-- Delete the rows
-
-- Make RowMap inner class static, change methods to have package scope to avoid synthetic accessors.
-
-- Provide row name to getHRegionInfo so it can issue better log messages
-
-- add method deleteEmptyMetaRows to remove rows with empty HRegionInfo
-
-HRegion
-
-- change removeRegionFromMETA to use deleteAll rather than using a BatchUpdate containing deletes for each cell.
-
-TestEmptyMetaInfo
-
-- new test case
-
-
-
-git-svn-id: https://svn.apache.org/repos/asf/hadoop/hbase/trunk@636589 13f79535-47bb-0310-9956-ffa450edef68
-
-                </div></div></li></ol></div><div><b>github_issues:</b> <ol></ol></div><div><b>github_issues_comments:</b> <ol></ol></div><div><b>github_pulls:</b> <ol></ol></div><div><b>github_pulls_comments:</b> <ol></ol></div><div><b>github_pulls_reviews:</b> <ol></ol></div><div><b>jira_issues:</b> <ol><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li><li><div><div><b>summary:</b> [hbase] hregioninfo cell empty in meta table
-                </div><div><b>description:</b> When we notice one of these, instead of reporting on it over and over -- see below -- lets just axe the whole row.   Its never going to get better on its own.  We should also figure how these horked rows get manufactured.  Below is about split cells but also instances where servercode and servername are all thats left in a row.
-
-{code}
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,761 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,762 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,763 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,764 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,765 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,766 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,767 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,768 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,769 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,770 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitB]
-2008-01-24 02:01:02,771 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA, info:splitB]
-2008-01-24 02:01:02,772 WARN org.apache.hadoop.hbase.HMaster:
-info:regioninfo is empty; has keys: [info:splitA]
-
-
-{code}
-                </div></div></li></ol></div><div><b>jira_issues_comments:</b> <ol><li><div><div><b>body:</b> It appears that we are not cleaning out all the possible cells when a region is deleted.
+                I looped TestClusterBootOrder using patch v4 5 times and didn't see hanging test.
+              </div></li><li><div><div><b>body:</b> @Enis LruBlockCache.EvictionThread should be cleaned up on cluster shutdown?  I thought I fixed that a day or so ago.
                 </div><div><b>label:</b> code-design
                 </div></div></li><li><div>
-                Easy enough to switch to deleteAll(row). 
+                TestRegionRebalancing is unrelated (see HBASE-5848). TestReplication passes for me locally with v4 applied.
               </div></li><li><div>
-                Let's get this done in 0.17.
+                Applied to 0.92, 0.94, and trunk (took Ted's work for it that it works -- thanks Ted).   Thanks for the patch Enis and for digging in again.
               </div></li><li><div>
-                Not that important. Does this even happen anymore in trunk?
+                Integrated in HBase-TRUNK-security #183 (See [https://builds.apache.org/job/HBase-TRUNK-security/183/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329560)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
               </div></li><li><div>
-                Patch for 0.1.0
-              </div></li><li><div><div><b>body:</b> Why is the internal class RowMap made public?
+                Integrated in HBase-TRUNK #2811 (See [https://builds.apache.org/job/HBase-TRUNK/2811/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330116)
 
-This patch is a band-aid on a real issue we have yet to find -- improper clean up of rows.  Maybe it can help us figure where the real prob. is by outputting more info about the row its deleting?  E.g., in deleteEmptyMetaRows, do you think it should enumerate all the cells that are remaining?  Might give us clue as to where the meta row removes is working improperly.
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
 
-Otherwise, patch looks good to me.
-
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Is there any chance that we are seeing the row halfway through an update? If so, then deleting the entire thing when one of the cells is empty would really break things. 
-
-The original suggestion was to use deleteAll in situations where we wanted to delete a row, and assume that the problem was some rows were incompletely cleaned up because we weren't doing deleteAll before. In that regard, I think the change to HRegion is correct, but perhaps the cleanup in HMaster is premature. 
-
-Should we commit a patch with just the HRegion deleteAll change, and see if this problem manifests itself any further?
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> stack - 10/Mar/08 02:45 PM 
-&gt; Why is the internal class RowMap made public?
-
-The class is private static meaning that it is only visible to HMaster.
-
-The problem with the methods being private is that they had to be accessed through synthetic accessors. Could use package private I suppose, but if the class itself is not visible outside of HMaster, is it really a problem? I'll change to package visibility if you think so.
-
-&gt; This patch is a band-aid on a real issue we have yet to find - improper clean up of rows.
-&gt; Maybe it can help us figure where the real prob. is by outputting more info about the row its deleting?
-&gt; E.g., in deleteEmptyMetaRows, do you think it should enumerate all the cells that are remaining?
-&gt; Might give us clue as to where the meta row removes is working improperly.
-
-The patch is a band-aid intended to be as minimal as possible while still making 0.1 work well
-enough to release.
-
-Since all the calls to deleteEmptyMetaRows are made after a scan of a meta region (because
-you don't want to update while you're scanning), I could make the callers output more information
-since they know the context better than the low level method.
-
-&gt; Bryan Duxbury - 10/Mar/08 02:53 PM
-&gt; Is there any chance that we are seeing the row halfway through an update? If so, then deleting the entire
-&gt; thing when one of the cells is empty would really break things.
-
-HRegionInfo should never be null so long as any other cell exists. It is written when a region is created
-either via create table or split, and should not be deleted until both splitA and splitB are empty after
-a split.
-
-&gt; The original suggestion was to use deleteAll in situations where we wanted to delete a row, and
-&gt; assume that the problem was some rows were incompletely cleaned up because we weren't doing
-&gt; deleteAll before. In that regard, I think the change to HRegion is correct, but perhaps the cleanup in
-&gt; HMaster is premature. Should we commit a patch with just the HRegion deleteAll change, and see
-&gt; if this problem manifests itself any further?
-
-I think it will continue to happen even with deleteAll and since it really breaks things to have these
-kind of rows around, nuking them can't really make matters worse.
-
-Adding the context around a delete should give us more insight into what we are doing when we
-run over these land mines.
-
-
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div><div><b>body:</b> Summary of changes:
-
-HMaster:
-- When a row has an empty HRegionInfo (info:regioninfo), log it with the row name and and the other keys still in the row.
-
-- Log the number of rows with empty HRegionInfo
-
-- Delete the rows
-
-- Make RowMap inner class static, change methods to have package scope to avoid synthetic accessors.
-
-- Provide row name to getHRegionInfo so it can issue better log messages
-
-- add method deleteEmptyMetaRows to remove rows with empty HRegionInfo
-
-HRegion
-
-- change removeRegionFromMETA to use deleteAll rather than using a BatchUpdate containing deletes for each cell.
-
-TestEmptyMetaInfo
-
-- new test case
-
-Sample of new log messages:
-{code}
-    [junit] 2008-03-11 11:00:34,078 INFO  [HMaster.metaScanner] hbase.HMaster$BaseScanner(211): HMaster.metaScanner scanning meta region {regionname: .META.,,1, startKey: &lt;&gt;, server: 10.69.80.2:3204}
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3231): info:regioninfo is empty for row: tablename,1,1205258426000; has keys: [info:server]
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3231): info:regioninfo is empty for row: tablename,1205258426000; has keys: [info:server]
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3231): info:regioninfo is empty for row: tablename,2,1205258426000; has keys: [info:server]
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3231): info:regioninfo is empty for row: tablename,3,1205258426000; has keys: [info:server]
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3231): info:regioninfo is empty for row: tablename,4,1205258426000; has keys: [info:server]
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster$BaseScanner(288): Found 5 rows with empty HRegionInfo while scanning meta region .META.,,1
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3252): Removed region: tablename,1,1205258426000 from meta region: .META.,,1 because HRegionInfo was empty
-    [junit] 2008-03-11 11:00:34,093 WARN  [HMaster.metaScanner] hbase.HMaster(3252): Removed region: tablename,1205258426000 from meta region: .META.,,1 because HRegionInfo was empty
-    [junit] 2008-03-11 11:00:34,109 WARN  [HMaster.metaScanner] hbase.HMaster(3252): Removed region: tablename,2,1205258426000 from meta region: .META.,,1 because HRegionInfo was empty
-    [junit] 2008-03-11 11:00:34,109 WARN  [HMaster.metaScanner] hbase.HMaster(3252): Removed region: tablename,3,1205258426000 from meta region: .META.,,1 because HRegionInfo was empty
-    [junit] 2008-03-11 11:00:34,109 WARN  [HMaster.metaScanner] hbase.HMaster(3252): Removed region: tablename,4,1205258426000 from meta region: .META.,,1 because HRegionInfo was empty
-    [junit] 2008-03-11 11:00:34,109 INFO  [HMaster.metaScanner] hbase.HMaster$BaseScanner(303): HMaster.metaScanner scan of meta region {regionname: .META.,,1, startKey: &lt;&gt;, server: 10.69.80.2:3204} complete
-{code}
-
-                </div><div><b>label:</b> code-design
-                </div></div></li><li><div>
-                Patch looks great as do the commit comments.  Suggest you include them when you apply the patch.  The patch applied to branch with some noise but no rejections.  All tests pass except TTMR but that ain't nothing new. +1
               </div></li><li><div>
-                Committed to 0.1 and trunk. Resolving issue.
+                Integrated in HBase-0.94 #148 (See [https://builds.apache.org/job/HBase-0.94/148/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330117)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.92 #390 (See [https://builds.apache.org/job/HBase-0.92/390/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330119)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330118)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.94-security #21 (See [https://builds.apache.org/job/HBase-0.94-security/21/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330117)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/branches/0.94/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.94/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Thanks all for pursuing this. From the failed Hudson builds: 
+https://builds.apache.org/job/HBase-TRUNK-security/183/
+https://builds.apache.org/job/HBase-TRUNK/2811/testReport/
+https://builds.apache.org/job/HBase-0.92/390/
+https://builds.apache.org/job/HBase-0.94-security/21/
+None of the tests seem related. 
+
+@Stack, for EvictionThread, I guess since the git repo is falling behind, I might not have your recent changes (I'm so lazy to checkout from svn). Although I saw also some other daemon threads (like a couple of IPC Client threads, etc). Let me dig into that later, and see if we can improve on that. I'll open another jira if I find anything interesting. 
+              </div></li><li><div>
+                Integrated in HBase-TRUNK-security #184 (See [https://builds.apache.org/job/HBase-TRUNK-security/184/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330116)
+
+     Result = FAILURE
+stack : 
+Files : 
+* /hbase/trunk/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/trunk/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+              </div></li><li><div>
+                Integrated in HBase-0.92-security #106 (See [https://builds.apache.org/job/HBase-0.92-security/106/])
+    HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330119)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REAPPLY (Revision 1330118)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available; REVERT (Revision 1329562)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329548)
+HBASE-5849 On first cluster startup, RS aborts if root znode is not available (Revision 1329530)
+
+     Result = SUCCESS
+stack : 
+Files : 
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+stack : 
+Files : 
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
+stack : 
+Files : 
+* /hbase/branches/0.92/CHANGES.txt
+* /hbase/branches/0.92/src/main/java/org/apache/hadoop/hbase/regionserver/HRegionServer.java
+* /hbase/branches/0.92/src/test/java/org/apache/hadoop/hbase/TestClusterBootOrder.java
+
               </div></li></ol></div></div></html>
