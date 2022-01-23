@@ -108,7 +108,7 @@ async function fetchInstance(id) {
             AND github_pull_review.repo_id = github_pull_satd.repo_id
             AND github_pull_satd.type = "review"
             WHERE github_pull_review.number = ${entry.pull_number} AND github_pull_review.repo_id = ${entry.repo_id}
-        `, mapper),
+        `, mapper),  
 
         fetch(`
             SELECT jira_issue.summary, jira_issue.description, jira_issue_satd.label_id 
