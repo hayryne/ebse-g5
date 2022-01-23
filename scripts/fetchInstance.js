@@ -114,6 +114,7 @@ async function fetchInstance(id) {
             LEFT JOIN jira_issue_satd
             ON jira_issue.number = jira_issue_satd.number
             AND jira_issue.identifier = jira_issue_satd.identifier
+            AND jira_issue.id = jira_issue_satd.id
             WHERE jira_issue.number = ${entry.jira_number} AND jira_issue.identifier = "${entry.jira_identifier}"
         `, mapper),
 
