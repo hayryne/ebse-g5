@@ -14,7 +14,7 @@ const sampleDistributions = {
     1: 0.76,
     2: 0.03,
     3: 0.01,
-    4: 0.2
+    0: 0.2
 }
 
 async function sampleLinksFromRepository(repoId, samples=380) {
